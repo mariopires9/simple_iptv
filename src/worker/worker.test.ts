@@ -376,13 +376,11 @@ describe('background + manual syncs of one source (review #3 and #5)', () => {
     });
 
     const ctrl = new AbortController();
-    const first = await startBackgroundSyncIfDue({
-      ...options(ctrl.signal),
-      onProgress: (p) => {
-        if (p.phase === 'live-categories') ctrl.abort();
-      },
-    });
+    const first = await startBackgroundSyncIfDue(options(ctrl.signal));
     expect(first.started).toEqual(['stale', 'never']);
+    // Abort right after dispatch (not from a throttled progress message): with ~7 panel calls of
+    // 300 ms each, the sync cannot finish before the abort lands, even on a loaded machine.
+    ctrl.abort();
     await new Promise((r) => setTimeout(r, 40));
     // The client already rejected, but the worker may still be stopping: no second run yet.
     const restart = await startBackgroundSyncIfDue(options());
