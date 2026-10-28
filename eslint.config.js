@@ -17,6 +17,29 @@ const forbid = (...groups) => ({
   ],
 });
 
+// HTML-string sinks (SEC-01 AC3): external metadata is rendered as text only.
+const HTML_SINK_MESSAGE =
+  'HTML-string sinks are forbidden; render external metadata as text only (SEC-01).';
+const HTML_PROPS = '/^(innerHTML|outerHTML|srcdoc)$/';
+const HTML_MIME = '/^(text\\/html|application\\/xhtml\\+xml|image\\/svg\\+xml)$/i';
+const htmlSinkSelectors = [
+  // el.innerHTML = s / el.outerHTML += s / iframe.srcdoc = s
+  `AssignmentExpression > MemberExpression.left[computed=false][property.name=${HTML_PROPS}]`,
+  // el['innerHTML'] = s
+  `AssignmentExpression > MemberExpression.left[computed=true][property.value=${HTML_PROPS}]`,
+  // el[`innerHTML`] = s
+  `AssignmentExpression > MemberExpression.left[computed=true][property.type='TemplateLiteral'][property.expressions.length=0][property.quasis.0.value.cooked=${HTML_PROPS}]`,
+  // Object.assign(el, { innerHTML: s }) and similar object literals
+  `ObjectExpression > Property[computed=false][key.name=${HTML_PROPS}]`,
+  `ObjectExpression > Property[key.value=${HTML_PROPS}]`,
+  `ObjectExpression > Property[computed=true][key.type='TemplateLiteral'][key.expressions.length=0][key.quasis.0.value.cooked=${HTML_PROPS}]`,
+  // <iframe srcDoc={s} />
+  `JSXAttribute[name.name=/^srcdoc$/i]`,
+  // new DOMParser().parseFromString(s, 'text/html')
+  `CallExpression[callee.property.name='parseFromString'][arguments.1.value=${HTML_MIME}]`,
+  `CallExpression[callee.property.name='parseFromString'][arguments.1.type='TemplateLiteral'][arguments.1.quasis.0.value.cooked=${HTML_MIME}]`,
+];
+
 export default tseslint.config(
   { ignores: ['dist', 'coverage', 'spikes', 'playwright-report', 'test-results', '.claude'] },
   js.configs.recommended,
@@ -35,6 +58,23 @@ export default tseslint.config(
           selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
           message: 'External metadata is rendered as text only (SEC-01).',
         },
+        // HTML sinks (SEC-01). Lint is defence-in-depth alongside the CSP and code review: keys
+        // held in variables (`const k = 'inner' + 'HTML'; el[k] = s`) cannot be caught statically.
+        ...htmlSinkSelectors.map((selector) => ({ selector, message: HTML_SINK_MESSAGE })),
+      ],
+      'no-restricted-properties': [
+        'error',
+        ...[
+          'insertAdjacentHTML',
+          'createContextualFragment',
+          'setHTMLUnsafe',
+          'parseHTMLUnsafe',
+        ].map((property) => ({ property, message: HTML_SINK_MESSAGE })),
+        ...['write', 'writeln'].map((property) => ({
+          object: 'document',
+          property,
+          message: HTML_SINK_MESSAGE,
+        })),
       ],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
