@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-PT">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>S-00 · Teste de compatibilidade</title>
+    <style>
+      :root { color-scheme: dark; --bg: #0b0e13; --s1: #12161d; --t: #e8ecf1; --m: #9aa6b4; --a: #3ddcb0; --d: #ff6b6b; --w: #f5b544; }
+      body { margin: 0; background: var(--bg); color: var(--t); font: 15px/1.5 system-ui, sans-serif; }
+      main { max-width: 860px; margin: 0 auto; padding: 16px; }
+      fieldset { border: 1px solid #2e3845; border-radius: 12px; padding: 16px; display: grid; gap: 10px; }
+      label { display: grid; gap: 4px; color: var(--m); }
+      input { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #2e3845; background: var(--s1); color: var(--t); }
+      button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 0; background: var(--a); color: #04130e; font-weight: 600; cursor: pointer; }
+      button:disabled { opacity: 0.5; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; }
+      video { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; margin-top: 12px; }
+      pre { background: var(--s1); padding: 12px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+      .ok { color: var(--a); } .fail { color: var(--d); } .warn { color: var(--w); }
+      .note { color: var(--m); font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>S-00 · Teste de compatibilidade do fornecedor</h1>
+      <p class="note">
+        Os dados são usados só nesta página, em memória. Não são guardados nem enviados para mais nenhum sítio
+        além do teu servidor IPTV. O relatório mascara o servidor e as credenciais.
+      </p>
+      <form id="form">
+        <fieldset>
+          <label>Servidor <input name="server" required placeholder="http://exemplo.com:8080" autocomplete="off" /></label>
+          <label>Utilizador <input name="username" required autocomplete="off" /></label>
+          <label>Palavra-passe <input name="password" required type="password" autocomplete="off" /></label>
+          <label>ID de um canal live (opcional — por omissão usa o primeiro da lista)
+            <input name="streamId" inputmode="numeric" autocomplete="off" />
+          </label>
+          <div class="row">
+            <button type="submit">1. Testar API</button>
+            <button type="button" id="play-hls" disabled>2a. Reproduzir HLS (hls.js)</button>
+            <button type="button" id="play-native" disabled>2b. HLS nativo</button>
+            <button type="button" id="play-ts" disabled>2c. TS (mpegts.js)</button>
+          </div>
+        </fieldset>
+      </form>
+      <video id="video" controls playsinline muted></video>
+      <h2>Relatório</h2>
+      <p class="note">Copia este texto para o Claude. Não contém credenciais nem o endereço completo do servidor.</p>
+      <pre id="report"></pre>
+    </main>
+    <script type="module" src="./spike.ts"></script>
+  </body>
+</html>
