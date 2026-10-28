@@ -40,7 +40,7 @@ Allowed statuses (exactly one per story):
 | SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | Backlog |
 | SRC-07 | Sync Xtream catalog | E1 | Must | 5 | SRC-02, FND-05, FND-07 | 3 | M1 | Done |
 | VOD-04 | VOD/series classification in M3U | E5 | Must | 3 | SRC-04 | 3 | M2 | Backlog |
-| PLY-02 | Player UI | E3 | Must | 5 | PLY-01, FND-03 | 3 | M1 | Backlog |
+| PLY-02 | Player UI | E3 | Must | 5 | PLY-01, FND-03 | 3 | M1 | In Progress |
 | PLY-04 | Playback errors | E3 | Must | 3 | PLY-01, FND-06 | 3 | M1 | Backlog |
 | PWA-03 | Predictable updates | E10 | Must | 2 | PWA-02 | 3 | M3 | Backlog |
 | PWA-04 | Offline and network errors | E10 | Must | 2 | UX-02 | 3 | M3 | Backlog |
@@ -48,7 +48,7 @@ Allowed statuses (exactly one per story):
 | SRC-08 | "My lists" page | E1 | Must | 3 | SRC-03, SRC-05, SRC-07 | 4 | M2 | Backlog |
 | SRC-09 | Compatibility diagnostics | E1 | Must | 3 | SRC-02, PLY-01 | 4 | M1 | Backlog |
 | SRC-10 | Delete all data | E1 | Must | 2 | FND-05, SRC-01, PWA-02 | 4 | M3 | Backlog |
-| LIV-01 | Categories and channel list | E4 | Must | 5 | FND-04, FND-05, UX-02, SRC-07 | 4 | M1 | Backlog |
+| LIV-01 | Categories and channel list | E4 | Must | 5 | FND-04, FND-05, UX-02, SRC-07 | 4 | M1 | In Progress |
 | VOD-01 | Movie grid | E5 | Must | 3 | FND-04, FND-05, UX-02, SRC-07 | 4 | M2 | Backlog |
 | PLY-03 | Fullscreen and PiP | E3 | Must | 3 | PLY-02 | 4 | M1 | Backlog |
 | SCH-01 | Search index | E8 | Must | 3 | FND-07, SRC-07 | 4 | M2 | Backlog |
