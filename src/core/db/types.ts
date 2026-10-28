@@ -32,6 +32,11 @@ export interface Source {
   /** Reference into the vault (`secrets` table); absent for sources without a secret (e.g. M3U file). */
   secretRef?: string;
   epgUrl?: string;
+  /**
+   * EPG (XMLTV) URLs announced by an M3U list header (`url-tvg` / `x-tvg-url`, SRC-04 AC2), in
+   * list order. Only URLs without credentials are stored here. Not indexed.
+   */
+  epgUrls?: string[];
   prefs: SourcePrefs;
   createdAt: number;
   lastSyncAt?: number;
@@ -100,6 +105,28 @@ export interface Category {
   order: number;
 }
 
+/**
+ * Container of a stream as inferred from its URL (or list hints) — SRC-04 AC8. `dash` (`.mpd`) is
+ * recorded so the player can explain it is unsupported instead of failing.
+ */
+export type StreamContainer =
+  | 'hls'
+  | 'ts'
+  | 'mp4'
+  | 'mkv'
+  | 'webm'
+  | 'flv'
+  | 'mov'
+  | 'avi'
+  | 'dash'
+  | 'mp3'
+  | 'aac'
+  | 'ogg'
+  | 'flac';
+
+/** HTTP headers a list says a stream needs (`#EXTVLCOPT`); browsers cannot send them. */
+export type RequiredHeader = 'user-agent' | 'referer' | 'origin';
+
 interface CatalogItemBase {
   /** `${sourceId}:${type}:${externalId}` — stable across syncs. */
   key: string;
@@ -109,6 +136,20 @@ interface CatalogItemBase {
   name: string;
   /** Position in the source's original list. */
   order: number;
+  // --- M3U playback hints (SRC-04 AC8). Not indexed; absent for Xtream items. ---
+  /**
+   * M3U only: the full playable URL, stored in plain text (ARCHITECTURE.md §5 decision,
+   * SECURITY.md §2). Xtream items never set it (their URL is built in memory with the password).
+   */
+  streamUrl?: string;
+  /** Container inferred from the URL extension / list hints; absent when unknown. */
+  container?: StreamContainer;
+  /** The list declares DRM (`#KODIPROP:inputstream.adaptive.license_*`): not playable here. */
+  drm?: boolean;
+  /** Headers the list requires (`#EXTVLCOPT:http-user-agent|http-referrer|http-origin`). */
+  requiredHeaders?: RequiredHeader[];
+  /** Radio / audio-only stream (`radio="true"` or an audio file extension). */
+  audioOnly?: boolean;
 }
 
 export interface Channel extends CatalogItemBase {

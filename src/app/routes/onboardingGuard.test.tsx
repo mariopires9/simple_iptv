@@ -128,22 +128,35 @@ describe('UX-01 AC2 — onboarding screen', () => {
     expect(router.state.location.pathname).toBe('/settings/privacy');
   });
 
-  it.each([
-    ['m3uUrl', t.sources.comingSoon.m3uUrl],
-    ['m3uFile', t.sources.comingSoon.m3uFile],
-  ] as const)('%s option → "coming soon" with a way back', async (id, text) => {
+  it('m3uUrl option → the add-M3U-URL screen (SRC-05) with a way back', async () => {
     const user = userEvent.setup();
     const router = renderRoute('/onboarding');
     await heading(ONBOARDING);
     await user.click(
-      screen.getByRole('link', { name: startsWith(t.onboarding.options[id].title) }),
+      screen.getByRole('link', { name: startsWith(t.onboarding.options.m3uUrl.title) }),
     );
-    await heading(text.title);
-    expect(screen.getByText(text.message)).toBeInTheDocument();
-    await user.click(screen.getByRole('link', { name: t.sources.comingSoon.back }));
+    await heading(t.sources.addM3uUrl.title);
+    expect(router.state.location.pathname).toBe('/onboarding/m3u-url');
+    await user.click(screen.getByRole('link', { name: t.sources.addM3uUrl.back }));
     await heading(ONBOARDING);
-    expect(router.state.location.pathname).toBe('/onboarding');
   });
+
+  it.each([['m3uFile', t.sources.comingSoon.m3uFile]] as const)(
+    '%s option → "coming soon" with a way back',
+    async (id, text) => {
+      const user = userEvent.setup();
+      const router = renderRoute('/onboarding');
+      await heading(ONBOARDING);
+      await user.click(
+        screen.getByRole('link', { name: startsWith(t.onboarding.options[id].title) }),
+      );
+      await heading(text.title);
+      expect(screen.getByText(text.message)).toBeInTheDocument();
+      await user.click(screen.getByRole('link', { name: t.sources.comingSoon.back }));
+      await heading(ONBOARDING);
+      expect(router.state.location.pathname).toBe('/onboarding');
+    },
+  );
 });
 
 describe('UX-01 AC3 — first source saved → onboardingDone and Home', () => {

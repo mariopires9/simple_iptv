@@ -51,6 +51,8 @@ const defaultDeps: XtreamSourceFormDeps = {
 export interface XtreamSourceFormProps {
   /** Where to go once the source is saved (Home from onboarding, My lists from Settings). */
   doneTo: string;
+  /** Initial field values (e.g. converted from an M3U `get.php` URL, SRC-05 AC2). */
+  initialValues?: Partial<XtreamFormValues> | undefined;
   /** Overrides for tests. */
   deps?: Partial<XtreamSourceFormDeps>;
 }
@@ -117,13 +119,17 @@ function errorFailure(error: unknown): Failure {
   };
 }
 
-export function XtreamSourceForm({ doneTo, deps: depsOverride }: XtreamSourceFormProps) {
+export function XtreamSourceForm({
+  doneTo,
+  initialValues,
+  deps: depsOverride,
+}: XtreamSourceFormProps) {
   const deps = { ...defaultDeps, ...depsOverride };
   const navigate = useNavigate();
   const toast = useToast();
   const text = t.sources;
 
-  const [values, setValues] = useState<XtreamFormValues>(EMPTY);
+  const [values, setValues] = useState<XtreamFormValues>(() => ({ ...EMPTY, ...initialValues }));
   const [errors, setErrors] = useState<XtreamFormErrors>({});
   const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState<Step | undefined>();
