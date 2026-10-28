@@ -2,30 +2,30 @@
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import Typography from '@mui/material/Typography';
+import { Link } from 'react-router';
 import { t } from '@/i18n';
 import { navSize, radii } from '@/ui/theme/tokens';
 import { PRIMARY_NAV_ITEMS, SETTINGS_NAV_ITEM, type NavId, type NavItem } from './navItems';
 
 export interface NavRailProps {
   expanded: boolean;
-  selected: NavId;
-  onNavigate: (id: NavId) => void;
+  /** Current destination (from the route); null when no item is current. */
+  selected: NavId | null;
 }
 
-function RailButton({
+function RailLink({
   item,
   expanded,
   selected,
-  onNavigate,
 }: {
   item: NavItem;
   expanded: boolean;
   selected: boolean;
-  onNavigate: (id: NavId) => void;
 }) {
   return (
     <ButtonBase
-      onClick={() => onNavigate(item.id)}
+      component={Link}
+      to={item.to}
       aria-current={selected ? 'page' : undefined}
       sx={{
         width: '100%',
@@ -75,15 +75,10 @@ function RailButton({
   );
 }
 
-export function NavRail({ expanded, selected, onNavigate }: NavRailProps) {
+export function NavRail({ expanded, selected }: NavRailProps) {
   const renderItem = (item: NavItem) => (
     <Box component="li" key={item.id}>
-      <RailButton
-        item={item}
-        expanded={expanded}
-        selected={item.id === selected}
-        onNavigate={onNavigate}
-      />
+      <RailLink item={item} expanded={expanded} selected={item.id === selected} />
     </Box>
   );
   const listSx = { listStyle: 'none', m: 0, p: 0, display: 'grid', gap: 0.5 } as const;

@@ -1,16 +1,21 @@
-import Typography from '@mui/material/Typography';
-import { t } from '@/i18n';
+import { useState } from 'react';
 import { ThemeModeProvider } from '@/ui/theme';
-import { AppShell } from './AppShell';
+import { DatabaseUnavailableScreen, useDatabaseCheck } from './DatabaseUnavailableScreen';
+import { AppRouter, createAppRouter } from './router';
 
-/** Theme + AppShell with placeholder content until FND-04 (routing) adds the screens. */
+/** Theme + hash router (AppShell and lazy screens), or a full-screen message without storage. */
 export function App() {
+  // One router for the app's lifetime, created on first render (it reads `window.location`).
+  const [router] = useState(createAppRouter);
+  const dbUnavailable = useDatabaseCheck();
+
   return (
     <ThemeModeProvider>
-      <AppShell>
-        <Typography variant="h1">{t.app.name}</Typography>
-        <Typography color="text.secondary">{t.app.placeholder}</Typography>
-      </AppShell>
+      {dbUnavailable ? (
+        <DatabaseUnavailableScreen reason={dbUnavailable} />
+      ) : (
+        <AppRouter router={router} />
+      )}
     </ThemeModeProvider>
   );
 }
