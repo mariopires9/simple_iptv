@@ -4,6 +4,7 @@ import { categoryKey, itemKey } from '../keys';
 import { openFreshDatabase } from '../test-utils';
 import type { CatalogItemInput, CategoryInput } from '../types';
 import { catalogRepo } from './catalog';
+import { sourcesRepo } from './sources';
 
 beforeEach(async () => {
   await openFreshDatabase();
@@ -245,5 +246,50 @@ describe('catalogRepo — queries', () => {
     expect((await catalogRepo.getSeriesDetails('s1:series:7'))?.seasons).toHaveLength(1);
     await catalogRepo.putSearchIndex({ sourceId: 's1', data: '{}', builtAt: 2 });
     expect((await catalogRepo.getSearchIndex('s1'))?.builtAt).toBe(2);
+  });
+});
+
+describe('catalogRepo.replaceForExistingSource (SRC-07 review)', () => {
+  const putSource = (id: string) =>
+    sourcesRepo.put({
+      id,
+      kind: 'xtream',
+      name: id,
+      prefs: { liveFormat: 'auto' },
+      createdAt: 1,
+      lastSyncStatus: 'never',
+      stats: { live: 0, movies: 0, series: 0 },
+    });
+
+  it('writes when the source exists', async () => {
+    await putSource('s1');
+    const result = await catalogRepo.replaceForExistingSource('s1', 'live', {
+      categories: cats(2),
+      items: channels(5, 2),
+    });
+    expect(result).toEqual({ categories: 2, items: 5, duplicates: 0 });
+    expect(await catalogRepo.count('s1', 'live')).toBe(5);
+  });
+
+  it('writes nothing and returns undefined when the source row is gone', async () => {
+    const result = await catalogRepo.replaceForExistingSource('ghost', 'live', {
+      categories: cats(2),
+      items: channels(5, 2),
+    });
+    expect(result).toBeUndefined();
+    expect(await catalogRepo.count('ghost', 'live')).toBe(0);
+    expect(await catalogRepo.listCategories('ghost', 'live')).toEqual([]);
+  });
+
+  it('a removal racing the write never leaves orphan rows', async () => {
+    await putSource('s1');
+    const write = catalogRepo.replaceForExistingSource('s1', 'movie', {
+      categories: cats(3),
+      items: movies(2_000),
+    });
+    const removal = sourcesRepo.remove('s1');
+    await Promise.all([write, removal]);
+    expect(await catalogRepo.count('s1', 'movie')).toBe(0);
+    expect(await catalogRepo.listCategories('s1', 'movie')).toEqual([]);
   });
 });

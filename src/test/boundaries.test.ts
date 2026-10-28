@@ -19,6 +19,12 @@ describe('module boundaries (FND-01 AC5)', { timeout: 30_000 }, () => {
     ['src/player/x.ts', "import { a } from '@/features/live';"],
     ['src/ui/x.ts', "import { a } from '@/app/App';"],
     ['src/features/movies/x.ts', "import { a } from '@/features/series';"],
+    ['src/core/worker/x.ts', "import { a } from '@/worker';"],
+    ['src/core/worker/x.ts', "import { a } from '@/providers/xtream';"],
+    ['src/providers/xtream/x.ts', "import { a } from '@/worker';"],
+    ['src/worker/x.ts', "import { a } from '@/features/sources';"],
+    ['src/worker/x.ts', "import { a } from '@/ui';"],
+    ['src/worker/x.ts', "import { a } from '@/app/App';"],
   ])('%s cannot do %s', async (file, src) => {
     expect(await boundaryErrors(file, `${src}\nexport const b = a;\n`)).toHaveLength(1);
   });
@@ -28,6 +34,9 @@ describe('module boundaries (FND-01 AC5)', { timeout: 30_000 }, () => {
     ['src/features/live/x.ts', "import { a } from '@/player';"],
     ['src/providers/xtream/x.ts', "import { a } from '@/core/net';"],
     ['src/app/x.ts', "import { a } from '@/features/live';"],
+    ['src/worker/x.ts', "import { a } from '@/providers/xtream';"],
+    ['src/worker/x.ts', "import { a } from '@/core/worker';"],
+    ['src/features/sources/x.ts', "import { a } from '@/worker';"],
   ])('%s can do %s', async (file, src) => {
     expect(await boundaryErrors(file, `${src}\nexport const b = a;\n`)).toHaveLength(0);
   });

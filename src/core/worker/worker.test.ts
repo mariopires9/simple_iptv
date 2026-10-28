@@ -4,22 +4,37 @@
 import { expose, wrap } from 'comlink';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDataWorkerApi, type DataWorkerApiOptions, type DataWorkerApi } from './api';
-import {
-  getDataWorker,
-  runTask,
-  runTaskOn,
-  terminateDataWorker,
-  type DataWorkerRemote,
-} from './client';
+import { createWorkerClient, runTaskOn, type DataWorkerRemote } from './client';
 import { WorkerTaskError, deserializeTaskError, serializeTaskError } from './errors';
-import type { TaskName, TaskProgress } from './tasks';
+import type { TaskContext, TaskProgress, TaskRegistry } from './tasks';
+
+interface SelfTestInput {
+  steps: number;
+  delayMs?: number;
+  failAt?: number;
+}
+
+/** Demo task: exercises progress, cancellation and error propagation. */
+async function selfTest(input: SelfTestInput, ctx: TaskContext): Promise<{ steps: number }> {
+  const steps = Math.max(0, Math.floor(input.steps));
+  for (let i = 0; i < steps; i++) {
+    ctx.throwIfCancelled();
+    if (input.failAt === i) throw new WorkerTaskError('failed', `Simulated failure at step ${i}`);
+    await new Promise<void>((resolve) => setTimeout(resolve, input.delayMs ?? 0));
+    ctx.progress({ phase: 'selfTest', done: i + 1, total: steps });
+  }
+  ctx.throwIfCancelled();
+  return { steps };
+}
+
+const testTasks = { selfTest } satisfies TaskRegistry;
 
 const ports: MessagePort[] = [];
 
-function connect(options?: DataWorkerApiOptions): DataWorkerRemote {
+function connect(options: Partial<DataWorkerApiOptions> = {}): DataWorkerRemote {
   const { port1, port2 } = new MessageChannel();
   ports.push(port1, port2);
-  expose(createDataWorkerApi(options), port1);
+  expose(createDataWorkerApi({ ...options, tasks: { ...testTasks, ...options.tasks } }), port1);
   return wrap<DataWorkerApi>(port2);
 }
 
@@ -33,6 +48,13 @@ async function rejection(p: Promise<unknown>): Promise<WorkerTaskError> {
   expect(err).toBeInstanceOf(WorkerTaskError);
   return err as WorkerTaskError;
 }
+
+// Client under test for the worker-lifecycle cases (the Worker global is stubbed there).
+const client = createWorkerClient<typeof testTasks>(
+  () => new Worker(new URL('./fake.worker.ts', import.meta.url), { type: 'module', name: 'data' }),
+);
+const { getDataWorker, runTask } = client;
+const terminateDataWorker = () => client.terminate();
 
 afterEach(() => {
   for (const p of ports.splice(0)) p.close();
@@ -66,7 +88,7 @@ describe('data worker — progress (AC1)', () => {
       },
     });
     const seen: TaskProgress[] = [];
-    await runTaskOn(api, 'burst' as TaskName, { steps: 0 }, { onProgress: (p) => seen.push(p) });
+    await runTaskOn(api, 'burst', { steps: 0 }, { onProgress: (p) => seen.push(p) });
 
     // 1000 synchronous calls → the first goes out at once, the rest stays pending until the final flush.
     expect(seen).toEqual([
@@ -89,7 +111,7 @@ describe('data worker — progress (AC1)', () => {
     });
     const seen: TaskProgress[] = [];
     const start = Date.now();
-    await runTaskOn(api, 'slow' as TaskName, { steps: 0 }, { onProgress: (p) => seen.push(p) });
+    await runTaskOn(api, 'slow', { steps: 0 }, { onProgress: (p) => seen.push(p) });
     const elapsed = Date.now() - start;
 
     // ≥ 300 ms of work with 30 updates → at most 1 message per 50 ms (+1 initial and
@@ -117,7 +139,7 @@ describe('data worker — final progress already in flight (CI regression)', () 
     });
     for (let i = 0; i < 25; i++) {
       const seen: TaskProgress[] = [];
-      await runTaskOn(api, 'once' as TaskName, { steps: 0 }, { onProgress: (p) => seen.push(p) });
+      await runTaskOn(api, 'once', { steps: 0 }, { onProgress: (p) => seen.push(p) });
       expect(seen).toEqual([{ phase: 'once', done: 1 }]);
     }
   });
@@ -167,7 +189,7 @@ describe('data worker — cancellation (AC1)', () => {
       },
     });
     const ctrl = new AbortController();
-    const run = runTaskOn(api, 'deaf' as TaskName, { steps: 0 }, { signal: ctrl.signal });
+    const run = runTaskOn(api, 'deaf', { steps: 0 }, { signal: ctrl.signal });
     ctrl.abort();
     expect((await rejection(run)).kind).toBe('cancelled');
   });
@@ -229,7 +251,7 @@ describe('data worker — errors (AC2)', () => {
     expect(JSON.stringify(raw)).not.toMatch(/SECRET|explodingTask|api\.ts|at /);
 
     // Error recreated on the client.
-    const err = await rejection(runTaskOn(api, 'boom' as TaskName, { steps: 0 }));
+    const err = await rejection(runTaskOn(api, 'boom', { steps: 0 }));
     expect(err.kind).toBe('failed');
     expect(err.message).toBe('server refused');
     expect(err.cause).toBeUndefined();
@@ -250,15 +272,15 @@ describe('data worker — errors (AC2)', () => {
       },
     });
 
-    const json = await rejection(runTaskOn(api, 'json' as TaskName, { steps: 0 }));
+    const json = await rejection(runTaskOn(api, 'json', { steps: 0 }));
     expect(json.kind).toBe('failed');
     expect(json.message).toBe('Worker task failed (SyntaxError)');
 
-    const plain = await rejection(runTaskOn(api, 'plain' as TaskName, { steps: 0 }));
+    const plain = await rejection(runTaskOn(api, 'plain', { steps: 0 }));
     expect(plain.message).toBe('Worker task failed');
 
     // Name not on the allowlist: not even the name passes.
-    const dom = await rejection(runTaskOn(api, 'dom' as TaskName, { steps: 0 }));
+    const dom = await rejection(runTaskOn(api, 'dom', { steps: 0 }));
     expect(dom.message).toBe('Worker task failed');
 
     expect(serializeTaskError(new DOMException('x SECRET', 'QuotaExceededError'))).toEqual({
@@ -276,13 +298,13 @@ describe('data worker — errors (AC2)', () => {
         },
       },
     });
-    const err = await rejection(runTaskOn(api, 'weird' as TaskName, { steps: 0 }));
+    const err = await rejection(runTaskOn(api, 'weird', { steps: 0 }));
     expect(err.kind).toBe('failed');
     expect(err.message).toBe('Worker task failed');
   });
 
   it('unknown task fails with kind "failed"', async () => {
-    const err = await rejection(runTaskOn(connect(), 'doesNotExist' as TaskName, { steps: 0 }));
+    const err = await rejection(runTaskOn(connect(), 'doesNotExist', { steps: 0 }));
     expect(err.kind).toBe('failed');
     expect(err.message).toBe('Unknown task: doesNotExist');
   });
@@ -347,7 +369,7 @@ describe('data worker — cancellation in the worker (review #7)', () => {
 
 describe('data worker — time-bounded final progress (review #6)', () => {
   it('run responds even if the client never acknowledges the final progress', async () => {
-    const api = createDataWorkerApi({ throttleMs: 1000, flushTimeoutMs: 30 });
+    const api = createDataWorkerApi({ tasks: testTasks, throttleMs: 1000, flushTimeoutMs: 30 });
     const { port1, port2 } = new MessageChannel();
     ports.push(port1, port2);
     // Nobody listens on port1: the callback acknowledgement never arrives.
@@ -377,7 +399,7 @@ describe('client — immediate abort (review #3 and #4)', () => {
     const seen: TaskProgress[] = [];
     const run = runTaskOn(
       api,
-      'deaf' as TaskName,
+      'deaf',
       { steps: 0 },
       { signal: ctrl.signal, onProgress: (p) => seen.push(p) },
     );
@@ -489,7 +511,8 @@ describe('data worker client', () => {
     const b = getDataWorker();
     expect(a).toBe(b);
     expect(created).toHaveLength(1);
-    expect(created[0]?.url).toMatch(/data\.worker\.ts$/);
+    expect(created[0]?.url).toMatch(/fake\.worker\.ts$/);
+    expect(created[0]?.options?.name).toBe('data');
     expect(created[0]?.options?.type).toBe('module');
 
     terminateDataWorker();

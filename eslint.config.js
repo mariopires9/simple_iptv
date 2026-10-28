@@ -4,7 +4,8 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 
-// Module boundaries (docs/ARCHITECTURE.md §2): features → player/providers/core/ui; core imports nothing above it.
+// Module boundaries (docs/ARCHITECTURE.md §2): features → worker/player/providers/core/ui;
+// worker → providers/core; core imports nothing above it.
 const forbid = (...groups) => ({
   'no-restricted-imports': [
     'error',
@@ -89,8 +90,13 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
-  { files: ['src/core/**'], rules: forbid('app', 'ui', 'features', 'player', 'providers') },
-  { files: ['src/providers/**'], rules: forbid('app', 'ui', 'features', 'player') },
+  {
+    files: ['src/core/**'],
+    rules: forbid('app', 'ui', 'features', 'player', 'providers', 'worker'),
+  },
+  { files: ['src/providers/**'], rules: forbid('app', 'ui', 'features', 'player', 'worker') },
+  // Data worker composition root (task registry + entry point): may use core and providers.
+  { files: ['src/worker/**'], rules: forbid('app', 'ui', 'features', 'player') },
   { files: ['src/player/**'], rules: forbid('app', 'features', 'providers') },
   { files: ['src/ui/**'], rules: forbid('app', 'features') },
   { files: ['src/features/**'], rules: forbid('app', 'features') },
