@@ -3,8 +3,9 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { createHashRouter } from 'react-router';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { wipeAll } from '@/core/db';
+import { invalidateSourcesPresence, setSourcesPresent } from '@/features/sources';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { App } from './App';
 import { resetAppRouter } from './router';
@@ -14,6 +15,11 @@ vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router')>();
   return { ...actual, createHashRouter: vi.fn(actual.createHashRouter) };
 });
+
+// These suites cover routing with a source configured; the onboarding guard (UX-01) has its own
+// tests (routes/onboardingGuard.test.tsx).
+beforeEach(() => setSourcesPresent(true));
+afterEach(() => invalidateSourcesPresence());
 
 let media: ReturnType<typeof installMatchMedia> | undefined;
 

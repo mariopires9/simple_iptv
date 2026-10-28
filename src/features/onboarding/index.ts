@@ -1,2 +1,2 @@
-// Module features/onboarding — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
-export { onboardingRoutes } from './routes';
+// Module features/onboarding — see docs/ARCHITECTURE.md §3 (UX-01).
+export { onboardingRoutes, onboardingShellRoutes } from './routes';

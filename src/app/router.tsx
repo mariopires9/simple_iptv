@@ -7,11 +7,11 @@ import { log } from '@/core/log';
 import { favoritesRoutes } from '@/features/favorites';
 import { liveRoutes } from '@/features/live';
 import { moviesRoutes } from '@/features/movies';
-import { onboardingRoutes } from '@/features/onboarding';
+import { onboardingRoutes, onboardingShellRoutes } from '@/features/onboarding';
 import { searchRoutes } from '@/features/search';
 import { seriesRoutes } from '@/features/series';
 import { settingsRoutes } from '@/features/settings';
-import { sourcesRoutes } from '@/features/sources';
+import { sourcesOnboardingRoutes, sourcesRoutes } from '@/features/sources';
 import { lazyScreen } from '@/ui/lazyScreen';
 import { FullScreenLayout, RouteFallback, ShellLayout } from './routes/layouts';
 import { NotFoundScreen } from './routes/NotFoundScreen';
@@ -45,6 +45,7 @@ export const appRoutes: RouteObject[] = [
       ...searchRoutes,
       ...settingsRoutes,
       ...sourcesRoutes,
+      ...onboardingShellRoutes,
       { path: '*', Component: NotFoundScreen },
     ].map(screen),
   },
@@ -52,7 +53,7 @@ export const appRoutes: RouteObject[] = [
     Component: FullScreenLayout,
     ErrorBoundary: RootErrorBoundary,
     HydrateFallback: RouteFallback,
-    children: onboardingRoutes.map(screen),
+    children: [...onboardingRoutes, ...sourcesOnboardingRoutes].map(screen),
   },
 ];
 

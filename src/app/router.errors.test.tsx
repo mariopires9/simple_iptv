@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { wipeAll } from '@/core/db';
+import { invalidateSourcesPresence, setSourcesPresent } from '@/features/sources';
 import { clearLogBuffer, getLogEntries } from '@/core/log';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
@@ -37,6 +38,11 @@ vi.mock('@/features/search/SearchScreen', () => ({
     return () => <h1>Search OK</h1>;
   },
 }));
+
+// These suites cover routing with a source configured; the onboarding guard (UX-01) has its own
+// tests (routes/onboardingGuard.test.tsx).
+beforeEach(() => setSourcesPresent(true));
+afterEach(() => invalidateSourcesPresence());
 
 let media: ReturnType<typeof installMatchMedia> | undefined;
 
