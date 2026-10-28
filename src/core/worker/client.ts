@@ -1,18 +1,19 @@
-// Data worker client (main thread) — FND-07 (ADR-009).
-// A single worker, created on first use; tasks share it and run interleaved.
+// Generic data worker client (main thread) — FND-07 (ADR-009).
+// The app-level client (worker factory + task registry) lives in src/worker, the worker's
+// composition root: the registry imports providers, which core must not.
 //
 // Cancellation: `AbortSignal` is not transferable, so each call gets a `taskId` and, on `abort`,
 // the client calls `api.cancel(taskId)`; the task ends at its next `throwIfCancelled()`.
 // The promise rejects immediately with kind 'cancelled' (same semantics as `fetch` with `signal`)
 // and progress is no longer delivered, even if the worker still takes a while to stop.
 //
-// Worker failure: an `error`/`messageerror` event (or `terminateDataWorker()`) rejects every
-// in-flight call with kind 'failed' and discards the singleton; the next call creates a new one.
+// Worker failure: an `error`/`messageerror` event (or `terminate()`) rejects every in-flight call
+// with kind 'failed' and discards the instance; the next call creates a new one.
 
 import { expose, transfer, wrap, type Remote } from 'comlink';
 import type { DataWorkerApi, TaskResult } from './api';
 import { WorkerTaskError, deserializeTaskError } from './errors';
-import type { TaskInput, TaskName, TaskOutput, TaskProgress } from './tasks';
+import type { TaskProgress, TaskRegistry } from './tasks';
 
 export interface RunTaskOptions {
   onProgress?: (p: TaskProgress) => void;
@@ -28,63 +29,92 @@ interface Instance {
   lifetime: AbortController;
 }
 
-let instance: Instance | undefined;
-let nextTaskId = 1;
+/**
+ * Creates the Worker. Write it at the call site as
+ * `() => new Worker(new URL('./data.worker.ts', import.meta.url), { type: 'module', name: 'data' })`:
+ * that literal pattern is what Vite recognises to emit the worker as a separate chunk (FND-07 AC3).
+ */
+export type WorkerFactory = () => Worker;
 
-function ensureInstance(): Instance {
-  if (instance) return instance;
-  // The `new Worker(new URL(...), { type: 'module' })` pattern is what Vite recognises to
-  // emit the worker as a separate chunk (FND-07 AC3).
-  const worker = new Worker(new URL('./data.worker.ts', import.meta.url), {
-    type: 'module',
-    name: 'data',
-  });
-  const current: Instance = {
-    worker,
-    api: wrap<DataWorkerApi>(worker),
-    lifetime: new AbortController(),
+/** Name of a task in registry `R`. */
+export type TaskNameOf<R extends TaskRegistry> = keyof R & string;
+export type TaskInputOf<R extends TaskRegistry, N extends TaskNameOf<R>> = Parameters<R[N]>[0];
+export type TaskOutputOf<R extends TaskRegistry, N extends TaskNameOf<R>> = Awaited<
+  ReturnType<R[N]>
+>;
+
+/** Client of one data worker, typed by its task registry `R`. */
+export interface WorkerClient<R extends TaskRegistry> {
+  /** Returns the worker's Comlink proxy, creating the worker on the first call. */
+  getDataWorker(): DataWorkerRemote;
+  /** Runs a task registered in `R` on the worker. */
+  runTask<N extends TaskNameOf<R>>(
+    name: N,
+    input: TaskInputOf<R, N>,
+    options?: RunTaskOptions,
+  ): Promise<TaskOutputOf<R, N>>;
+  /** Terminates the worker (tests, cleanup). In-flight calls reject with kind 'failed'. */
+  terminate(): void;
+}
+
+/**
+ * Generic client: one worker per client, created on first use; tasks share it and run
+ * interleaved. `R` is only used for typing — import the registry with `import type` so task code
+ * is never bundled into the main thread.
+ */
+export function createWorkerClient<R extends TaskRegistry>(
+  factory: WorkerFactory,
+): WorkerClient<R> {
+  let instance: Instance | undefined;
+
+  function endInstance(target: Instance, message: string): void {
+    target.lifetime.abort(new WorkerTaskError('failed', message));
+    target.worker.terminate();
+    if (instance === target) instance = undefined;
+  }
+
+  function ensureInstance(): Instance {
+    if (instance) return instance;
+    const worker = factory();
+    const current: Instance = {
+      worker,
+      api: wrap<DataWorkerApi>(worker),
+      lifetime: new AbortController(),
+    };
+    const onFailure = () => endInstance(current, 'The data worker failed');
+    worker.addEventListener('error', onFailure);
+    worker.addEventListener('messageerror', onFailure);
+    instance = current;
+    return current;
+  }
+
+  return {
+    getDataWorker: () => ensureInstance().api,
+    runTask<N extends TaskNameOf<R>>(
+      name: N,
+      input: TaskInputOf<R, N>,
+      options: RunTaskOptions = {},
+    ): Promise<TaskOutputOf<R, N>> {
+      const { api, lifetime } = ensureInstance();
+      return execute(api, name, input, options, lifetime.signal) as Promise<TaskOutputOf<R, N>>;
+    },
+    terminate() {
+      if (instance) endInstance(instance, 'The data worker was terminated');
+    },
   };
-  const onFailure = () => endInstance(current, 'The data worker failed');
-  worker.addEventListener('error', onFailure);
-  worker.addEventListener('messageerror', onFailure);
-  instance = current;
-  return current;
 }
 
-function endInstance(target: Instance, message: string): void {
-  target.lifetime.abort(new WorkerTaskError('failed', message));
-  target.worker.terminate();
-  if (instance === target) instance = undefined;
-}
-
-/** Returns the data worker's Comlink proxy, creating it on the first call. */
-export function getDataWorker(): DataWorkerRemote {
-  return ensureInstance().api;
-}
-
-/** Terminates the worker (tests, cleanup). In-flight calls reject with kind 'failed'. */
-export function terminateDataWorker(): void {
-  if (instance) endInstance(instance, 'The data worker was terminated');
-}
-
-/** Runs a task registered in tasks.ts on the data worker. */
-export function runTask<N extends TaskName>(
-  name: N,
-  input: TaskInput<N>,
-  options: RunTaskOptions = {},
-): Promise<TaskOutput<N>> {
-  const { api, lifetime } = ensureInstance();
-  return execute(api, name, input, options, lifetime.signal);
-}
-
-/** Variant with an explicit proxy — allows testing with a MessageChannel instead of a Worker. */
-export function runTaskOn<N extends TaskName>(
+/**
+ * Runs a task on an explicit proxy — allows testing with a MessageChannel instead of a Worker.
+ * Untyped: the caller states the expected output type.
+ */
+export function runTaskOn<O = unknown>(
   api: DataWorkerRemote,
-  name: N,
-  input: TaskInput<N>,
+  name: string,
+  input: unknown,
   options: RunTaskOptions = {},
-): Promise<TaskOutput<N>> {
-  return execute(api, name, input, options);
+): Promise<O> {
+  return execute(api, name, input, options) as Promise<O>;
 }
 
 function transportError(err: unknown): WorkerTaskError {
@@ -97,13 +127,15 @@ function transportError(err: unknown): WorkerTaskError {
   );
 }
 
-async function execute<N extends TaskName>(
+let nextTaskId = 1;
+
+async function execute(
   api: DataWorkerRemote,
-  name: N,
-  input: TaskInput<N>,
+  name: string,
+  input: unknown,
   { onProgress, signal }: RunTaskOptions,
   lifetime?: AbortSignal,
-): Promise<TaskOutput<N>> {
+): Promise<unknown> {
   if (signal?.aborted) throw new WorkerTaskError('cancelled');
   if (lifetime?.aborted) throw lifetimeError(lifetime);
 
@@ -154,7 +186,7 @@ async function execute<N extends TaskName>(
     // If the user aborted, 'cancelled' wins even if the task failed in the meantime.
     if (signal?.aborted) throw new WorkerTaskError('cancelled');
     if (!result.ok) throw deserializeTaskError(result.error);
-    return result.value as TaskOutput<N>;
+    return result.value;
   } finally {
     settled = true;
     removeListeners();

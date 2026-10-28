@@ -38,7 +38,28 @@ export interface Source {
   lastSyncStatus: SyncStatus;
   /** Error code of the last sync (never sensitive data). */
   lastSyncError?: string;
+  /** Outcome of the last sync attempt per content type (SRC-07). Not indexed. */
+  lastSyncByType?: Partial<Record<ContentType, TypeSyncStatus>>;
   stats: SourceStats;
+}
+
+/** Outcome of syncing one content type of a source (SRC-07). Never contains sensitive data. */
+export interface TypeSyncStatus {
+  status: 'ok' | 'error';
+  /** When this type was last attempted (epoch ms). */
+  at: number;
+  /** Stable error code when `status` is `error` (e.g. a `NetErrorKind` such as `http`). */
+  error?: string;
+  /** HTTP status for `error: 'http'`. */
+  httpStatus?: number;
+  /** Items written (after deduplication) on success. */
+  items?: number;
+  /** Categories written on success. */
+  categories?: number;
+  /** Invalid items/categories skipped on success. */
+  skipped?: number;
+  /** When this type was last written successfully (epoch ms); kept across failed attempts. */
+  lastOkAt?: number;
 }
 
 // ---------------------------------------------------------------------------

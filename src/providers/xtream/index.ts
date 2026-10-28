@@ -1,4 +1,24 @@
-// Module providers/xtream — see docs/ARCHITECTURE.md §3. Client and connection test (SRC-02).
+// Module providers/xtream — see docs/ARCHITECTURE.md §3. Client and connection test (SRC-02),
+// catalogue mapping and sync (SRC-07).
+export {
+  XTREAM_CATALOG_ACTIONS,
+  mapCategories,
+  mapLiveStreams,
+  mapSeries,
+  mapVodStreams,
+  toExternalId,
+  toNumber,
+  toYear,
+} from './catalog';
+export type { MapOptions, Mapped } from './catalog';
+export { SYNC_REQUEST_TIMEOUT_MS, credentialFreeUrl, syncXtreamSource } from './sync';
+export type {
+  SyncXtreamDeps,
+  SyncXtreamInput,
+  SyncXtreamResult,
+  XtreamSyncErrorCode,
+  XtreamSyncPhase,
+} from './sync';
 export { createXtreamClient } from './client';
 export type { XtreamClient, XtreamClientOptions, XtreamParams } from './client';
 export { InvalidServerUrlError, assertServerUrl, normalizeServerUrl } from './normalizeServerUrl';

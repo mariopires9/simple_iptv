@@ -12,7 +12,7 @@
 
 import { releaseProxy, wrap } from 'comlink';
 import { WorkerTaskError, serializeTaskError, type SerializedTaskError } from './errors';
-import { tasks as defaultTasks, type TaskContext, type TaskFn, type TaskProgress } from './tasks';
+import type { TaskContext, TaskFn, TaskProgress, TaskRegistry } from './tasks';
 
 export type TaskResult<O = unknown> =
   { ok: true; value: O } | { ok: false; error: SerializedTaskError };
@@ -31,8 +31,8 @@ export interface DataWorkerApi {
 }
 
 export interface DataWorkerApiOptions {
-  /** Task registry; defaults to the one in tasks.ts (tests may inject another). */
-  tasks?: Record<string, TaskFn>;
+  /** Task registry (the app's lives in src/worker/tasks.ts; tests inject their own). */
+  tasks: TaskRegistry;
   /** Minimum interval between progress messages (ms). */
   throttleMs?: number;
   /** Maximum time to wait for the client to acknowledge the final progress (ms). */
@@ -117,8 +117,8 @@ function isAbortError(err: unknown): boolean {
   );
 }
 
-export function createDataWorkerApi(options: DataWorkerApiOptions = {}): DataWorkerApi {
-  const registry: Record<string, TaskFn> = options.tasks ?? defaultTasks;
+export function createDataWorkerApi(options: DataWorkerApiOptions): DataWorkerApi {
+  const registry: Record<string, TaskFn> = options.tasks;
   const throttleMs = options.throttleMs ?? PROGRESS_THROTTLE_MS;
   const flushTimeoutMs = options.flushTimeoutMs ?? PROGRESS_FLUSH_TIMEOUT_MS;
   const running = new Set<number>();
