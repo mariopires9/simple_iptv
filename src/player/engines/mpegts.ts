@@ -2,7 +2,7 @@
 // mpegts.js is only downloaded on the first load() (ADR-005).
 import type Mpegts from 'mpegts.js';
 import { log } from '@/core/log';
-import { mapMpegtsError, toPlaybackError } from '../errors';
+import { errorName, mapMpegtsError, toPlaybackError } from '../errors';
 import type { MpegtsErrorInfo } from '../errors';
 import { PlaybackError } from '../types';
 import type { EngineDeps, PlayerEngine, StreamDescriptor } from '../types';
@@ -139,7 +139,7 @@ export function createMpegtsEngine({ rewriter, pageProtocol }: EngineDeps): Play
         try {
           instance.destroy();
         } catch (e) {
-          log.warn('mpegts: destroy failed', { error: e instanceof Error ? e.name : 'unknown' });
+          log.warn('mpegts: destroy failed', { error: errorName(e) });
         }
       }
       if (video) resetMediaElement(video);

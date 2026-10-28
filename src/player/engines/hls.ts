@@ -3,7 +3,7 @@ import type Hls from 'hls.js';
 import type { ErrorData, HlsConfig } from 'hls.js';
 import { log } from '@/core/log';
 import { shortenUrl } from '@/core/net';
-import { isRecoverableHlsMediaError, mapHlsError, toPlaybackError } from '../errors';
+import { errorName, isRecoverableHlsMediaError, mapHlsError, toPlaybackError } from '../errors';
 import { PlaybackError } from '../types';
 import type { EngineDeps, PlayerEngine, StreamDescriptor } from '../types';
 import { createRewritingLoader } from './hlsLoader';
@@ -146,7 +146,7 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
         // Detaches the media (removes the MediaSource, revokes its object URL) and stops loading.
         hls?.destroy();
       } catch (e) {
-        log.warn('hls: destroy failed', { error: e instanceof Error ? e.name : 'unknown' });
+        log.warn('hls: destroy failed', { error: errorName(e) });
       }
       hls = undefined;
       if (video) resetMediaElement(video);

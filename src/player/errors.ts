@@ -173,6 +173,11 @@ export function mapMpegtsError(
   return make(ctx, 'unknown', detail);
 }
 
+/** Name of a thrown value for logs (`TypeError`, `AbortError`…), or its `typeof`. Never the message. */
+export function errorName(e: unknown): string {
+  return e instanceof Error ? e.name : typeof e;
+}
+
 /** Anything thrown by an engine → PlaybackError (non-PlaybackErrors become `unknown`). */
 export function toPlaybackError(e: unknown, ctx: ErrorContext): PlaybackError {
   if (e instanceof PlaybackError) return e;
