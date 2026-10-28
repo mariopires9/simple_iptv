@@ -9,7 +9,9 @@ async function boundaryErrors(filePath: string, source: string) {
   return (result?.messages ?? []).filter((m) => m.ruleId === 'no-restricted-imports');
 }
 
-describe('module boundaries (FND-01 AC5)', () => {
+// Linting through the ESLint API is slow (typescript-eslint parser): allow more than the
+// default 5 s on a loaded machine or under coverage.
+describe('module boundaries (FND-01 AC5)', { timeout: 30_000 }, () => {
   it.each([
     ['src/core/db/x.ts', "import { a } from '@/features/live';"],
     ['src/core/net/x.ts', "import { a } from '@/providers/xtream';"],

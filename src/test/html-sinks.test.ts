@@ -13,7 +13,9 @@ async function sinkErrors(filePath: string, source: string) {
   return (result?.messages ?? []).filter((m) => m.ruleId !== null && SINK_RULES.has(m.ruleId));
 }
 
-describe('HTML sink lint rules (SEC-01 AC3)', () => {
+// Linting through the ESLint API is slow (typescript-eslint parser): allow more than the
+// default 5 s on a loaded machine or under coverage.
+describe('HTML sink lint rules (SEC-01 AC3)', { timeout: 30_000 }, () => {
   it.each([
     [
       'src/features/live/x.tsx',
