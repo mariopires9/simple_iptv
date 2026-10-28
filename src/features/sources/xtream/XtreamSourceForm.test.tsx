@@ -2,7 +2,7 @@
 // fake-indexeddb: validation, test steps, saving (vault + source row), failures, mixed content,
 // cancellation and the password field's accessibility.
 import 'fake-indexeddb/auto';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider, useLocation } from 'react-router';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -37,14 +37,16 @@ function HomeProbe() {
   return <h1>Home probe {useLocation().pathname}</h1>;
 }
 
-function renderForm(deps: Partial<XtreamSourceFormDeps> = {}) {
-  const startInitialSync = vi.fn<XtreamSourceFormDeps['startInitialSync']>(() => Promise.resolve());
+function renderForm(deps: Partial<XtreamSourceFormDeps> = {}, doneTo = '/') {
+  const startInitialSync = vi.fn<XtreamSourceFormDeps['startInitialSync']>(() =>
+    Promise.resolve('started'),
+  );
   const router = createMemoryRouter(
     [
-      { path: '/', Component: HomeProbe },
+      { path: '*', Component: HomeProbe },
       {
         path: '/onboarding/xtream',
-        element: <XtreamSourceForm deps={{ startInitialSync, ...deps }} />,
+        element: <XtreamSourceForm doneTo={doneTo} deps={{ startInitialSync, ...deps }} />,
       },
     ],
     { initialEntries: ['/onboarding/xtream'] },
@@ -354,5 +356,74 @@ describe('SRC-03 AC4 — field attributes and the password toggle', () => {
     await user.keyboard('{Enter}');
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await waitFor(() => expect(passwordInput()).toHaveAttribute('type', 'password'));
+  });
+});
+
+// Review findings: destination after saving, unmount during save, honest syncing toast.
+describe('SRC-03 — after saving', () => {
+  const MY_LISTS = '/settings/sources';
+  const politeToast = () => screen.getByTestId('toast-polite');
+
+  it('Continue goes to the caller destination (My lists)', async () => {
+    const { user, router } = renderForm({}, MY_LISTS);
+    await fill(user, { server: 'panel.example.test:8080', username: USER, password: PASS });
+    await user.click(submit());
+    await user.click(await screen.findByRole('button', { name: text.result.continue }));
+    expect(await screen.findByRole('heading', { name: `Home probe ${MY_LISTS}` })).toBeVisible();
+    expect(router.state.location.pathname).toBe(MY_LISTS);
+  });
+
+  it('"Save anyway" goes to the caller destination (My lists)', async () => {
+    vi.stubGlobal('location', { ...window.location, protocol: 'https:' });
+    server.use(...xtreamHandlers({ baseUrl: '*', error: 'network' }));
+    const { user, router } = renderForm({}, MY_LISTS);
+    await fill(user, { server: 'panel.example.test:8080', username: USER, password: PASS });
+    await user.click(submit());
+    await user.click(await screen.findByRole('button', { name: text.saveAnyway }));
+    await screen.findByRole('heading', { name: `Home probe ${MY_LISTS}` });
+    expect(router.state.location.pathname).toBe(MY_LISTS);
+  });
+
+  it('the sync could not be started → neutral "List saved" toast, not "Loading…"', async () => {
+    const { user } = renderForm({ startInitialSync: () => Promise.resolve('unavailable') });
+    await fill(user, { server: 'panel.example.test:8080', username: USER, password: PASS });
+    await user.click(submit());
+    await user.click(await screen.findByRole('button', { name: text.result.continue }));
+    await screen.findByRole('heading', { name: 'Home probe /' });
+    await waitFor(() => expect(politeToast()).toHaveTextContent(text.toasts.saved));
+    expect(politeToast()).not.toHaveTextContent(text.toasts.syncing);
+  });
+
+  it('leaving the screen during "Save anyway": the save completes, no toast, no navigation', async () => {
+    vi.stubGlobal('location', { ...window.location, protocol: 'https:' });
+    server.use(...xtreamHandlers({ baseUrl: '*', error: 'network' }));
+    let finishSave: (() => void) | undefined;
+    const saveSource = vi.fn<XtreamSourceFormDeps['saveSource']>(
+      (input) =>
+        new Promise((resolve) => {
+          finishSave = () =>
+            resolve({
+              id: 's1',
+              kind: 'xtream',
+              name: input.host,
+              prefs: { liveFormat: 'auto' },
+              createdAt: 1,
+              lastSyncStatus: 'error',
+              stats: { live: 0, movies: 0, series: 0 },
+            });
+        }),
+    );
+    const { user, router } = renderForm({ saveSource });
+    await fill(user, { server: 'panel.example.test:8080', username: USER, password: PASS });
+    await user.click(submit());
+    await user.click(await screen.findByRole('button', { name: text.saveAnyway }));
+    await waitFor(() => expect(saveSource).toHaveBeenCalledTimes(1));
+
+    await act(() => router.navigate('/elsewhere'));
+    await screen.findByRole('heading', { name: 'Home probe /elsewhere' });
+    await act(async () => finishSave?.());
+
+    expect(router.state.location.pathname).toBe('/elsewhere');
+    expect(politeToast()).toBeEmptyDOMElement();
   });
 });

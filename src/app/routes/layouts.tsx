@@ -10,12 +10,13 @@ import { OnboardingGuard } from './onboardingGuard';
 /** Screens inside the AppShell (top bar + main navigation); without sources → onboarding. */
 export function ShellLayout() {
   return (
-    <OnboardingGuard>
-      <AppShell>
-        <ScrollRestoration />
+    <AppShell>
+      <ScrollRestoration />
+      {/* Inside the shell: the chrome stays visible while the first check runs. */}
+      <OnboardingGuard>
         <Outlet />
-      </AppShell>
-    </OnboardingGuard>
+      </OnboardingGuard>
+    </AppShell>
   );
 }
 

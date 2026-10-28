@@ -3,17 +3,28 @@
 // Comlink and the worker client stay out of the initial bundle.
 import { log } from '@/core/log';
 
-export type StartInitialSync = (sourceId: string) => Promise<void>;
+/** `started`: the worker task was dispatched; `unavailable`: it could not be started. */
+export type InitialSyncDispatch = 'started' | 'unavailable';
+
+export type StartInitialSync = (sourceId: string) => Promise<InitialSyncDispatch>;
 
 /**
- * Starts the first sync of a newly added source in the data worker. Never rejects: a failed sync
- * is logged (the source records the outcome in `lastSyncStatus` and My lists offers a refresh).
+ * Dispatches the first sync of a newly added source to the data worker and resolves as soon as
+ * the task has been started (not when it finishes), so the UI only claims "loading" when it is.
+ * Never rejects: a failure to start or a failed sync is logged (the source records the outcome in
+ * `lastSyncStatus` and My lists offers a refresh).
  */
 export const startInitialSync: StartInitialSync = async (sourceId) => {
+  let task: Promise<unknown>;
   try {
     const { runTask } = await import('@/worker');
-    await runTask('syncXtream', { sourceId });
+    task = runTask('syncXtream', { sourceId });
   } catch (error) {
-    log.warn('Initial sync failed', { sourceId, error });
+    log.warn('Initial sync could not be started', { sourceId, error });
+    return 'unavailable';
   }
+  task.catch((error: unknown) => {
+    log.warn('Initial sync failed', { sourceId, error });
+  });
+  return 'started';
 };

@@ -50,6 +50,7 @@ export const sources = {
   saveAnywayHint:
     'Pode guardar a lista agora, mas os canais não carregam a partir desta página até o problema ser resolvido.',
   toasts: {
+    saved: 'Lista guardada.',
     syncing: 'A carregar os seus canais…',
     savedWithError:
       'Lista guardada. Os canais carregam quando o problema de ligação for resolvido.',

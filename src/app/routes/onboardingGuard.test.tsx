@@ -1,7 +1,7 @@
 // UX-01: onboarding guard (AC1), the onboarding screen (AC2) and the first-run flow up to Home
 // (AC3) on the real route tree, with fake-indexeddb and the synthetic MSW panel.
 import 'fake-indexeddb/auto';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -15,9 +15,9 @@ import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { AppRouter, appRoutes } from '../router';
-import { isOnboardingExempt } from './onboardingGuard';
+import { GUARD_RETRY_MS, isOnboardingExempt } from './onboardingGuard';
 
-const sync = vi.hoisted(() => ({ start: vi.fn(() => Promise.resolve()) }));
+const sync = vi.hoisted(() => ({ start: vi.fn(() => Promise.resolve('started' as const)) }));
 vi.mock('@/features/sources/sync', () => ({ startInitialSync: sync.start }));
 
 const server = createMswServer(...xtreamHandlers());
@@ -33,6 +33,8 @@ afterEach(async () => {
   invalidateSourcesPresence();
   clearSecrets();
   sync.start.mockClear();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   await wipeAll();
 });
 
@@ -176,5 +178,69 @@ describe('UX-01 AC3 — first source saved → onboardingDone and Home', () => {
     await user.click(screen.getByRole('link', { name: t.nav.live }));
     await heading(t.routes.screens.live.title);
     expect(router.state.location.pathname).toBe('/live');
+  });
+});
+
+// Review findings 1, 2 and 7: the first check keeps the shell visible, a failed check is not
+// latched, and an invalidation while the check is in flight never leaves the guard stuck.
+describe('UX-01 — guard edge cases', () => {
+  const nav = () => screen.queryByRole('navigation', { name: 'Main navigation' });
+
+  function deferredList() {
+    let resolve: (sources: []) => void = () => undefined;
+    const promise = new Promise<[]>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve: (v: []) => resolve(v) };
+  }
+
+  it('while the first check runs: shell chrome visible, no screen; then the redirect', async () => {
+    const pending = deferredList();
+    vi.spyOn(sourcesRepo, 'list').mockReturnValueOnce(pending.promise);
+    const router = renderRoute('/live');
+    expect(nav()).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    expect(router.state.location.pathname).toBe('/live');
+
+    await act(async () => pending.resolve([]));
+    await heading(ONBOARDING);
+    expect(router.state.location.pathname).toBe('/onboarding');
+  });
+
+  it('a failed check lets the user through, and the next navigation checks again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(sourcesRepo, 'list').mockRejectedValueOnce(new Error('db down'));
+    const user = userEvent.setup();
+    const router = renderRoute('/');
+    await heading(t.routes.screens.home.title);
+
+    await user.click(screen.getByRole('link', { name: t.nav.live }));
+    await heading(ONBOARDING);
+    expect(router.state.location.pathname).toBe('/onboarding');
+  });
+
+  it('after a failed check, a background retry honours the answer', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(sourcesRepo, 'list').mockRejectedValueOnce(new Error('db down'));
+    const router = renderRoute('/');
+    await heading(t.routes.screens.home.title);
+
+    await act(async () => {
+      vi.advanceTimersByTime(GUARD_RETRY_MS);
+    });
+    await heading(ONBOARDING);
+    expect(router.state.location.pathname).toBe('/onboarding');
+  });
+
+  it('an invalidation while the first check is in flight re-checks instead of hanging', async () => {
+    const stale = deferredList();
+    vi.spyOn(sourcesRepo, 'list').mockReturnValueOnce(stale.promise);
+    const router = renderRoute('/');
+    await act(async () => invalidateSourcesPresence());
+    // The guard re-checked with a fresh read (no sources) and redirects, stale read still pending.
+    await heading(ONBOARDING);
+    expect(router.state.location.pathname).toBe('/onboarding');
+    await act(async () => stale.resolve([]));
   });
 });

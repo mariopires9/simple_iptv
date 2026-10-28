@@ -25,7 +25,7 @@ import {
   type XtreamConnectionReport,
 } from '@/providers/xtream';
 import { describeError, ProgressPanel, StateView, useToast } from '@/ui/state';
-import { startInitialSync, type StartInitialSync } from '../sync';
+import { startInitialSync, type InitialSyncDispatch, type StartInitialSync } from '../sync';
 import { MAX_SOURCE_NAME_LENGTH, saveXtreamSource } from './saveXtreamSource';
 import { TextInput } from './TextInput';
 import {
@@ -49,6 +49,8 @@ const defaultDeps: XtreamSourceFormDeps = {
 };
 
 export interface XtreamSourceFormProps {
+  /** Where to go once the source is saved (Home from onboarding, My lists from Settings). */
+  doneTo: string;
   /** Overrides for tests. */
   deps?: Partial<XtreamSourceFormDeps>;
 }
@@ -115,7 +117,7 @@ function errorFailure(error: unknown): Failure {
   };
 }
 
-export function XtreamSourceForm({ deps: depsOverride }: XtreamSourceFormProps) {
+export function XtreamSourceForm({ doneTo, deps: depsOverride }: XtreamSourceFormProps) {
   const deps = { ...defaultDeps, ...depsOverride };
   const navigate = useNavigate();
   const toast = useToast();
@@ -134,8 +136,19 @@ export function XtreamSourceForm({ deps: depsOverride }: XtreamSourceFormProps) 
   const failureRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLHeadingElement>(null);
 
-  // Leaving the screen cancels a test in flight.
-  useEffect(() => () => controller.current?.abort(), []);
+  /** Resolves once the initial sync was dispatched (or could not be). */
+  const syncDispatch = useRef<Promise<InitialSyncDispatch> | undefined>(undefined);
+  const mounted = useRef(true);
+
+  // Leaving the screen cancels a test in flight; a save in flight completes, but without any
+  // toast or navigation afterwards.
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      controller.current?.abort();
+    };
+  }, []);
   useEffect(() => {
     if (failure) failureRef.current?.focus();
   }, [failure]);
@@ -164,14 +177,20 @@ export function XtreamSourceForm({ deps: depsOverride }: XtreamSourceFormProps) 
         lastSyncStatus: failed ? 'error' : 'never',
         ...(failed ? { lastSyncError: outcome.problem } : {}),
       });
+      if (!failed) {
+        // Not awaited here: saving does not depend on the sync (SRC-07 reports its own state).
+        // Started even if the screen was left meanwhile: the source is saved.
+        syncDispatch.current = deps
+          .startInitialSync(source.id)
+          .catch((): InitialSyncDispatch => 'unavailable');
+      }
+      if (!mounted.current) return;
       setStep(undefined);
       if (failed) {
         toast.show({ message: text.toasts.savedWithError });
-        void navigate('/');
+        void navigate(doneTo);
         return;
       }
-      // Never awaited: saving does not depend on the sync (SRC-07 reports its own state).
-      void deps.startInitialSync(source.id);
       setSuccess({
         source,
         account: outcome.report.account,
@@ -179,6 +198,7 @@ export function XtreamSourceForm({ deps: depsOverride }: XtreamSourceFormProps) 
       });
     } catch (error) {
       log.warn('Saving the Xtream source failed', { error });
+      if (!mounted.current) return;
       setStep(undefined);
       setFailure(errorFailure(error));
     }
@@ -253,12 +273,17 @@ export function XtreamSourceForm({ deps: depsOverride }: XtreamSourceFormProps) 
     void save(target, { problem: target.problem });
   }
 
-  function goHome() {
-    toast.show({ message: text.toasts.syncing });
-    void navigate('/');
+  async function finish() {
+    // Only claim "loading" when the sync task was actually dispatched.
+    const dispatch = await syncDispatch.current;
+    if (!mounted.current) return;
+    toast.show({ message: dispatch === 'started' ? text.toasts.syncing : text.toasts.saved });
+    void navigate(doneTo);
   }
 
-  if (success) return <SuccessPanel success={success} headingRef={successRef} onDone={goHome} />;
+  if (success) {
+    return <SuccessPanel success={success} headingRef={successRef} onDone={() => void finish()} />;
+  }
 
   return (
     <Box component="form" noValidate onSubmit={onSubmit}>

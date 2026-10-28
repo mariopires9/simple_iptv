@@ -11,19 +11,29 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const warnings = () => getLogEntries().filter((e) => e.level === 'warn');
+
 describe('startInitialSync', () => {
-  it('starts the syncXtream worker task for the new source', async () => {
-    runTask.mockResolvedValue({ status: 'ok' });
-    await startInitialSync('source-1');
+  it('dispatches the syncXtream worker task and resolves "started" without waiting for it', async () => {
+    runTask.mockReturnValue(new Promise(() => undefined)); // a long sync
+    await expect(startInitialSync('source-1')).resolves.toBe('started');
     expect(runTask).toHaveBeenCalledWith('syncXtream', { sourceId: 'source-1' });
   });
 
-  it('never rejects and logs a warning when the sync fails', async () => {
+  it('a sync that fails later is logged, never rejected', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     runTask.mockRejectedValue(new Error('Worker task failed'));
-    await expect(startInitialSync('source-1')).resolves.toBeUndefined();
-    const warning = getLogEntries().find((e) => e.level === 'warn');
-    expect(warning?.message).toBe('Initial sync failed');
-    expect(warning?.context).toContain('source-1');
+    await expect(startInitialSync('source-1')).resolves.toBe('started');
+    await vi.waitFor(() => expect(warnings()[0]?.message).toBe('Initial sync failed'));
+    expect(warnings()[0]?.context).toContain('source-1');
+  });
+
+  it('a task that cannot be started → "unavailable" (no false "loading" claim)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    runTask.mockImplementation(() => {
+      throw new Error('Unknown task');
+    });
+    await expect(startInitialSync('source-1')).resolves.toBe('unavailable');
+    expect(warnings()[0]?.message).toBe('Initial sync could not be started');
   });
 });

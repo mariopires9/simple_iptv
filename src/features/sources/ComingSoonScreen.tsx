@@ -1,23 +1,19 @@
-// Placeholders for the M3U source types offered by onboarding (SRC-05 URL, SRC-06 local file).
+// Placeholders for the M3U source types offered by onboarding (SRC-05 URL, SRC-06 local file),
+// on the shared placeholder pattern (`PlaceholderScreen`) plus a way back.
 import Button from '@mui/material/Button';
 import { Link } from 'react-router';
 import { t } from '@/i18n';
-import { StateView } from '@/ui/state';
+import { PlaceholderScreen } from '@/ui/PlaceholderScreen';
 
 function ComingSoon({ kind }: { kind: 'm3uUrl' | 'm3uFile' }) {
   const text = t.sources.comingSoon;
   return (
-    <StateView
-      variant="empty"
-      headingLevel={1}
-      title={text[kind].title}
-      message={text[kind].message}
-      actions={
-        <Button variant="contained" component={Link} to="/onboarding">
-          {text.back}
-        </Button>
-      }
-    />
+    <>
+      <PlaceholderScreen title={text[kind].title} message={text[kind].message} />
+      <Button variant="contained" component={Link} to="/onboarding" sx={{ mt: 3 }}>
+        {text.back}
+      </Button>
+    </>
   );
 }
 

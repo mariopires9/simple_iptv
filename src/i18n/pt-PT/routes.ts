@@ -22,7 +22,6 @@ export const routes = {
     search: { title: 'Pesquisar', empty: 'Pesquise canais, filmes e séries.' },
     settings: { title: 'Definições', empty: 'As definições vão aparecer aqui.' },
     sources: { title: 'As minhas listas', empty: 'As suas listas IPTV vão aparecer aqui.' },
-    onboarding: { title: 'Bem-vindo', empty: 'Adicione a sua primeira lista IPTV para começar.' },
   },
   categoryLabel: (id: string) => `Categoria: ${id}`,
   itemLabel: (id: string) => `Item: ${id}`,
