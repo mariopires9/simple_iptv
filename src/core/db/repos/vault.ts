@@ -29,6 +29,21 @@ export const vaultStore = {
     await db.keys.put(record);
   },
 
+  /**
+   * Stores `record` only if no key with the same id exists yet, atomically (single rw
+   * transaction). Returns the key that ends up stored: the existing one or `record`.
+   * Prevents two tabs/calls racing on first use from overwriting each other's key.
+   */
+  async putKeyIfAbsent(record: KeyRecord): Promise<KeyRecord> {
+    const db = await getDb();
+    return db.transaction('rw', db.keys, async () => {
+      const existing = await db.keys.get(record.id);
+      if (existing) return existing;
+      await db.keys.add(record);
+      return record;
+    });
+  },
+
   /** Deletes all secrets and keys (CredentialVault.wipe). */
   async clear(): Promise<void> {
     const db = await getDb();
