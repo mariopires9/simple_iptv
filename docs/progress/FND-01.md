@@ -1,26 +1,26 @@
-# FND-01 — Scaffold do projeto
+# FND-01 — Project scaffold
 
-**Estado:** Done (2026-10-28)
+**Status:** Done (2026-10-28)
 
-## Âmbito
-Vite 8 + React 19 + TypeScript 6 (strict), ESLint 9 (typescript-eslint, react-hooks, jsx-a11y, fronteiras de módulos), Prettier, Vitest 5 + jsdom + Testing Library, estrutura de pastas de `ARCHITECTURE.md §2`, agentes de projeto, CLAUDE.md com comandos reais.
+## Scope
+Vite 8 + React 19 + TypeScript 6 (strict), ESLint 9 (typescript-eslint, react-hooks, jsx-a11y, module boundaries), Prettier, Vitest 5 + jsdom + Testing Library, folder structure from `ARCHITECTURE.md §2`, project agents, CLAUDE.md with real commands.
 
-## Decisões técnicas
-- **TypeScript 6.0.3 em vez de 7.0.2:** o typescript-eslint 8.72 exige TypeScript < 6.1.
-- **ESLint 9.39 em vez de 10:** o eslint-plugin-jsx-a11y 6.10 só declara suporte até ao ESLint 9.
-- Fronteiras de módulos com `no-restricted-imports` por pasta (alias `@/`); dentro da mesma feature usam-se imports relativos.
-- Um único `tsconfig.json` (sem project references) — mais simples; `typecheck` = `tsc --noEmit`.
-- Prettier não formata Markdown (tabelas dos docs escritas à mão).
+## Technical decisions
+- **TypeScript 6.0.3 instead of 7.0.2:** typescript-eslint 8.72 requires TypeScript < 6.1.
+- **ESLint 9.39 instead of 10:** eslint-plugin-jsx-a11y 6.10 only declares support up to ESLint 9.
+- Module boundaries with `no-restricted-imports` per folder (alias `@/`); within the same feature, relative imports are used.
+- A single `tsconfig.json` (no project references) — simpler; `typecheck` = `tsc --noEmit`.
+- Prettier does not format Markdown (doc tables are hand-written).
 
-## Verificação dos CA
-| CA | Resultado | Evidência |
+## AC verification
+| AC | Result | Evidence |
 |---|---|---|
-| 1. `npm ci && npm run dev` abre a app | Cumprido | Servidor Vite serviu `index.html` com `<title>Simple IPTV</title>` e o módulo `App.tsx` |
-| 2. lint, typecheck, test, build passam | Cumprido | lint 0 problemas; tsc sem erros; 11 testes passam; build 68,7 KB gz |
-| 3. `strict` + `noUncheckedIndexedAccess` | Cumprido | `tsconfig.json` |
-| 4. Estrutura de pastas com `index.ts` | Cumprido | `src/**/index.ts` |
-| 5. `core` → `features` falha no lint | Cumprido | `src/test/boundaries.test.ts` (6 casos proibidos, 4 permitidos) |
+| 1. `npm ci && npm run dev` opens the app | Met | Vite server served `index.html` with `<title>Simple IPTV</title>` and the `App.tsx` module |
+| 2. lint, typecheck, test, build pass | Met | lint 0 problems; tsc no errors; 11 tests pass; build 68.7 KB gz |
+| 3. `strict` + `noUncheckedIndexedAccess` | Met | `tsconfig.json` |
+| 4. Folder structure with `index.ts` | Met | `src/**/index.ts` |
+| 5. `core` → `features` fails lint | Met | `src/test/boundaries.test.ts` (6 forbidden cases, 4 allowed) |
 
-## Pendências
-- Hooks propostos em `AGENT_WORKFLOW.md §7` não configurados (opcionais).
-- `npm audit`: 0 vulnerabilidades à data.
+## Open items
+- Hooks proposed in `AGENT_WORKFLOW.md §7` not configured (optional).
+- `npm audit`: 0 vulnerabilities at the time.

@@ -1,30 +1,32 @@
 # CLAUDE.md — Simple IPTV
 
-Leitor IPTV PWA, client-side, sem backend. **Fase atual: execução autorizada (2026-10-28), story a story, segundo `docs/AGENT_WORKFLOW.md`.** Publicar (DEP-01) continua a exigir confirmação explícita.
+Client-side IPTV PWA player, no backend. **Current phase: execution authorized (2026-10-28), story by story, following `docs/AGENT_WORKFLOW.md`.** Publishing (DEP-01) still requires explicit confirmation.
 
-## Ler antes de trabalhar
-- Estado e próxima story: `docs/BACKLOG.md` (fonte única de verdade de estado)
-- Story: `docs/USER_STORIES.md` · Arquitetura: `docs/ARCHITECTURE.md` · Decisões: `docs/DECISIONS.md`
-- Processo multiagente e ficheiros serializados: `docs/AGENT_WORKFLOW.md`
+## Read before working
+- Status and next story: `docs/BACKLOG.md` (single source of truth for status)
+- Story: `docs/USER_STORIES.md` · Architecture: `docs/ARCHITECTURE.md` · Decisions: `docs/DECISIONS.md`
+- Multi-agent process and serialized files: `docs/AGENT_WORKFLOW.md`
 
-## Regras
-- Não implementar nada sem story ou justificação técnica; não alterar arquitetura sem ADR.
-- Nunca guardar credenciais reais em ficheiros, fixtures, logs, prompts ou commits.
-- Sem telemetria, analytics, publicidade ou recursos de CDNs de terceiros em runtime.
-- Não publicar (GitHub Pages), criar contas ou mudar visibilidade de repositórios sem aprovação.
-- Não contornar DRM, autenticação ou restrições de acesso; não incluir listas de terceiros.
-- UI em pt-PT; strings em `src/i18n/pt-PT/<feature>.ts`.
-- Não declarar compatibilidade/desempenho sem medição registada.
+## Rules
+- Do not implement anything without a story or technical justification; do not change the architecture without an ADR.
+- Never store real credentials in files, fixtures, logs, prompts or commits.
+- No telemetry, analytics, advertising or third-party CDN resources at runtime.
+- Do not publish (GitHub Pages), create accounts or change repository visibility without approval.
+- Do not bypass DRM, authentication or access restrictions; do not include third-party lists.
+- All repository content is English: code, comments, docs, configs, commit messages, agent briefs.
+- UI strings: `src/i18n/en/<feature>.ts` (base, defines the types) + `src/i18n/pt-PT/<feature>.ts` (ADR-015). Never hardcode user-facing text.
+- Commit messages: English, imperative mood, prefixed with the story ID (e.g. `SRC-02: normalize Xtream server URL`) or a conventional type (`docs:`, `chore:`, `ci:`).
+- Do not claim compatibility/performance without a recorded measurement.
 
-## Comandos
-- `npm run dev` — servidor de desenvolvimento (http://localhost:5173)
-- `npm run lint` · `npm run typecheck` · `npm test` · `npm run build` — gates obrigatórios de cada story
+## Commands
+- `npm run dev` — development server (http://localhost:5173)
+- `npm run lint` · `npm run typecheck` · `npm test` · `npm run build` — mandatory gates for every story
 - `npm run format` / `npm run format:check` — Prettier
-- `VITE_BASE=/<repo>/ npm run build` — build para GitHub Pages
+- `VITE_BASE=/<repo>/ npm run build` — build for GitHub Pages
 
-## Convenções de código
+## Code conventions
 - TypeScript `strict` + `noUncheckedIndexedAccess`; alias `@/` → `src/`.
-- Fronteiras entre módulos impostas pelo ESLint (`eslint.config.js`, testadas em `src/test/boundaries.test.ts`); dentro de uma feature usar imports relativos.
-- `console` proibido fora de `src/core/log`; `dangerouslySetInnerHTML` proibido.
-- Testes ao lado do código: `*.test.ts(x)`.
-- Agentes de projeto: `.claude/agents/` (implementer, media-engineer, qa-engineer).
+- Module boundaries enforced by ESLint (`eslint.config.js`, tested in `src/test/boundaries.test.ts`); within a feature use relative imports.
+- `console` forbidden outside `src/core/log`; `dangerouslySetInnerHTML` forbidden.
+- Tests next to the code: `*.test.ts(x)`.
+- Project agents: `.claude/agents/` (implementer, media-engineer, qa-engineer).

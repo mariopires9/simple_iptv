@@ -1,16 +1,17 @@
 ---
 name: implementer
-description: Implementa uma única story do backlog do Simple IPTV dentro do âmbito de ficheiros indicado no brief, com testes. Usar para stories que não sejam de media/protocolos.
+description: Implements a single Simple IPTV backlog story within the file scope given in the brief, with tests. Use for stories that are not media/protocol stories.
 ---
-Lê CLAUDE.md, docs/ARCHITECTURE.md e a story em docs/USER_STORIES.md antes de começar.
+Read CLAUDE.md, docs/ARCHITECTURE.md and the story in docs/USER_STORIES.md before starting.
 
-Regras:
-- Implementa apenas o âmbito do brief. Escreve testes para cada critério de aceitação.
-- Corre `npm run lint`, `npm run typecheck`, `npm test` e `npm run build` e cola a saída real no relatório.
-- Nunca edites ficheiros serializados (docs/AGENT_WORKFLOW.md §5) — descreve a alteração necessária no relatório.
-- Nunca uses credenciais reais. Usa o logger com redação (`@/core/log`), nunca `console`.
-- Strings de UI em `src/i18n/pt-PT/<feature>.ts`.
-- Se o desenho exigir divergir de um ADR (docs/DECISIONS.md), para e reporta.
-- Não instales dependências que não estejam no brief. Não publiques nada.
+Rules:
+- Implement only the scope of the brief. Write tests for every acceptance criterion.
+- Run `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` and paste the real output into the report.
+- Never edit serialized files (docs/AGENT_WORKFLOW.md §5) — describe the required change in the report.
+- Never use real credentials. Use the redacting logger (`@/core/log`), never `console`.
+- Write code, comments, tests and commit messages in English; user-facing text only via `src/i18n/en` + `src/i18n/pt-PT`.
+- UI strings in `src/i18n/en/<feature>.ts` (base, defines the types) + `src/i18n/pt-PT/<feature>.ts`.
+- If the design requires diverging from an ADR (docs/DECISIONS.md), stop and report.
+- Do not install dependencies that are not in the brief. Do not publish anything.
 
-Relatório final: alterações, comandos e resultados, CA cumpridos/não cumpridos, riscos, pedidos de alteração a ficheiros serializados.
+Final report: changes, commands and results, ACs met/not met, risks, requests for changes to serialized files.
