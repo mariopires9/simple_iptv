@@ -9,9 +9,9 @@ beforeEach(async () => {
   await openFreshDatabase();
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  closeDatabase();
+  await closeDatabase();
 });
 
 const cats = (n: number, prefix = 'Cat'): CategoryInput[] =>
@@ -48,7 +48,7 @@ describe('catalogRepo.replaceForSource (CA3)', () => {
         { externalId: '30', name: 'Sem categoria', streamPath: '30.ts' },
       ],
     });
-    expect(res).toEqual({ categories: 2, items: 3 });
+    expect(res).toEqual({ categories: 2, items: 3, duplicates: 0 });
 
     const list = await catalogRepo.listCategories('s1', 'live');
     expect(list.map((c) => [c.key, c.name, c.order])).toEqual([
@@ -95,6 +95,28 @@ describe('catalogRepo.replaceForSource (CA3)', () => {
     expect(await catalogRepo.listCategories('s1', 'movie')).toHaveLength(1);
     expect(await catalogRepo.count('s2', 'live')).toBe(40);
     expect(await catalogRepo.listCategories('s2', 'live')).toHaveLength(3);
+  });
+
+  it('chaves duplicadas: o último prevalece e as contagens refletem o que foi gravado', async () => {
+    const res = await catalogRepo.replaceForSource('s1', 'live', {
+      categories: [
+        { externalId: '1', name: 'A' },
+        { externalId: '1', name: 'A (repetida)' },
+      ],
+      items: [
+        { externalId: '1', categoryExternalId: '1', name: 'Primeiro', streamPath: 'a.ts' },
+        { externalId: '2', categoryExternalId: '1', name: 'Outro', streamPath: 'b.ts' },
+        { externalId: '1', categoryExternalId: '1', name: 'Último', streamPath: 'c.ts' },
+      ],
+    });
+    expect(res).toEqual({ categories: 1, items: 2, duplicates: 1 });
+    expect(await catalogRepo.count('s1', 'live')).toBe(res.items);
+    expect(await catalogRepo.get('live', 's1:live:1')).toMatchObject({ name: 'Último', order: 2 });
+    expect((await catalogRepo.listCategories('s1', 'live')).map((c) => c.name)).toEqual([
+      'A (repetida)',
+    ]);
+    const list = await catalogRepo.listByCategory('live', categoryKey('s1', 'live', 1));
+    expect(list.map((c) => c.name)).toEqual(['Outro', 'Último']);
   });
 
   it('uma falha a meio da transação deixa os dados antigos intactos', async () => {
@@ -155,7 +177,7 @@ describe('catalogRepo.replaceForSource (CA3)', () => {
     // Medição registada no relatório da story (fake-indexeddb em Node; não representa um browser).
     process.stdout.write(`[FND-05] replaceForSource 100k (fake-indexeddb): ${ms} ms\n`);
 
-    expect(res).toEqual({ categories: 50, items: N });
+    expect(res).toEqual({ categories: 50, items: N, duplicates: 0 });
     expect(txSpy).toHaveBeenCalledTimes(1);
     expect(await catalogRepo.count('s1', 'live')).toBe(N);
     expect((await catalogRepo.get('live', 's1:live:100000'))?.name).toBe('Canal v2-100000');
@@ -189,6 +211,16 @@ describe('catalogRepo — consultas', () => {
     const page = await catalogRepo.listByCategory('live', cat, { offset: 2, limit: 3 });
     expect(page.map((c) => c.externalId)).toEqual(['8', '11', '14']);
     expect(await catalogRepo.countByCategory('live', cat)).toBe(10);
+  });
+
+  it('a paginação usa o índice [categoryKey+order] e só lê a página pedida', async () => {
+    const db = await getDb();
+    const table = db.table('channels');
+    const where = vi.spyOn(table, 'where');
+    const cat = categoryKey('s1', 'live', 1);
+    const page = await catalogRepo.listByCategory('live', cat, { offset: 9, limit: 5 });
+    expect(page.map((c) => c.externalId)).toEqual(['28']); // 10 itens na categoria: só resta 1
+    expect(where).toHaveBeenCalledWith('[categoryKey+order]');
   });
 
   it('chave de categoria inválida ou de outro tipo devolve vazio', async () => {

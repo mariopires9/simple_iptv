@@ -13,8 +13,8 @@ beforeEach(async () => {
   await openFreshDatabase();
 });
 
-afterEach(() => {
-  closeDatabase();
+afterEach(async () => {
+  await closeDatabase();
 });
 
 function source(id: string, createdAt: number, extra: Partial<Source> = {}): Source {

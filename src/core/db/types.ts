@@ -192,12 +192,13 @@ export interface HistoryEntry {
   completed: boolean;
 }
 
+/** Campos omitidos mantêm o valor guardado; numa entrada nova `completed` é `false` por omissão. */
 export interface HistoryUpsert {
   itemKey: string;
   positionSec?: number;
   durationSec?: number;
   episodeKey?: string;
-  completed: boolean;
+  completed?: boolean;
   /** Por omissão `Date.now()`. */
   lastWatchedAt?: number;
 }

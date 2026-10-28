@@ -7,7 +7,7 @@ describe('chaves compostas', () => {
     ['src-1', 'live', '123'],
     ['src-1', 'movie', 42],
     ['0b3c-uuid', 'series', 'abc:def:ghi'],
-    ['s', 'live', 'cat:7'],
+    ['s', 'live', 'categoria:7'],
   ])('itemKey/parseItemKey fazem ida e volta (%s, %s, %s)', (sourceId, type, ext) => {
     const key = itemKey(sourceId, type, ext);
     expect(key).toBe(`${sourceId}:${type}:${ext}`);
@@ -25,6 +25,15 @@ describe('chaves compostas', () => {
 
   it('são estáveis entre chamadas (re-sincronização)', () => {
     expect(itemKey('s', 'live', 1)).toBe(itemKey('s', 'live', '1'));
+  });
+
+  it('parseItemKey rejeita chaves de categoria (…:cat:…)', () => {
+    expect(parseItemKey(categoryKey('s', 'live', 5))).toBeUndefined();
+    expect(parseItemKey('s:movie:cat:x:y')).toBeUndefined();
+  });
+
+  it('itemKey rejeita externalId começado por "cat:" (seria ambíguo)', () => {
+    expect(() => itemKey('s', 'live', 'cat:7')).toThrow(TypeError);
   });
 
   it('rejeita partes inválidas', () => {
@@ -49,5 +58,7 @@ describe('chaves compostas', () => {
   it('normalizeName remove acentos, maiúsculas e espaços extra', () => {
     expect(normalizeName('  RTP   Notícias ')).toBe('rtp noticias');
     expect(normalizeName('Ação & Ópera')).toBe('acao & opera');
+    // Só marcas combinatórias: símbolos "diacríticos" isolados (^, `, ¨) mantêm-se.
+    expect(normalizeName('C^3 `X` ¨')).toBe('c^3 `x` ¨');
   });
 });

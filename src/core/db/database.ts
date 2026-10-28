@@ -1,30 +1,32 @@
 // Abertura, fecho e eliminação da base de dados. Módulo interno de core/db:
 // as features usam apenas os repositórios exportados por `./index.ts`.
+//
+// Nota sobre downgrade: se a base instalada tiver uma versão superior (criada por uma versão mais
+// recente da app), o Dexie 4 não rejeita com VersionError — abre-a na versão existente e cria as
+// tabelas em falta (fazendo upgrade de versão se necessário). Por isso não existe um motivo
+// "version" em `DatabaseUnavailableReason`; um VersionError residual cai em 'open-failed'.
 import { SimpleIptvDb } from './schema';
 
-export type DatabaseUnavailableReason = 'unsupported' | 'open-failed' | 'version' | 'timeout';
+/** Motivo técnico; a UI converte-o em texto (src/i18n/pt-PT/db.ts, ADR-012). */
+export type DatabaseUnavailableReason = 'unsupported' | 'open-failed' | 'timeout';
 
-const USER_MESSAGES: Record<DatabaseUnavailableReason, string> = {
-  unsupported:
-    'Este browser não permite guardar dados no dispositivo. Se estiver em navegação privada, abra a app numa janela normal.',
-  'open-failed':
-    'Não foi possível aceder ao armazenamento do dispositivo. Se estiver em navegação privada, abra a app numa janela normal ou permita que este site guarde dados.',
-  version:
-    'Os dados guardados foram criados por uma versão mais recente da app. Atualize a página para obter a versão mais recente.',
-  timeout:
-    'O armazenamento do dispositivo não respondeu. Feche outros separadores com a app e tente novamente.',
-};
-
-/** IndexedDB indisponível ou inacessível. `userMessage` está pronta a mostrar (pt-PT). */
+/** IndexedDB indisponível ou inacessível. A mensagem é diagnóstica (inglês), não para a UI. */
 export class DatabaseUnavailableError extends Error {
   override readonly name = 'DatabaseUnavailableError';
   readonly reason: DatabaseUnavailableReason;
-  readonly userMessage: string;
 
   constructor(reason: DatabaseUnavailableReason, options?: { cause?: unknown }) {
-    super(`IndexedDB indisponível (${reason})`, options);
+    super(`IndexedDB unavailable (${reason})`, options);
     this.reason = reason;
-    this.userMessage = USER_MESSAGES[reason];
+  }
+}
+
+/** A abertura em curso foi cancelada por `closeDatabase()`/`wipeAll()`. */
+export class DatabaseClosedError extends Error {
+  override readonly name = 'DatabaseClosedError';
+
+  constructor() {
+    super('Database closed while opening');
   }
 }
 
@@ -41,16 +43,11 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 let current: SimpleIptvDb | undefined;
 let lastOptions: OpenDatabaseOptions = {};
 let opening: Promise<SimpleIptvDb> | undefined;
+/** Incrementada em cada fecho/wipe: uma abertura de uma geração anterior nunca fica em `current`. */
+let generation = 0;
 
 function classify(error: unknown): DatabaseUnavailableReason {
-  const name = error instanceof Error ? error.name : '';
-  const inner =
-    error instanceof Error && 'inner' in error && error.inner instanceof Error
-      ? error.inner.name
-      : '';
-  if (name === 'MissingAPIError') return 'unsupported';
-  if (name === 'VersionError' || inner === 'VersionError') return 'version';
-  return 'open-failed';
+  return error instanceof Error && error.name === 'MissingAPIError' ? 'unsupported' : 'open-failed';
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -77,24 +74,29 @@ function createDb(options: OpenDatabaseOptions): SimpleIptvDb {
   });
 }
 
-async function doOpen(options: OpenDatabaseOptions): Promise<SimpleIptvDb> {
+async function doOpen(options: OpenDatabaseOptions, gen: number): Promise<SimpleIptvDb> {
   let db: SimpleIptvDb | undefined;
   try {
     db = createDb(options);
     await withTimeout(db.open(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-    const opened = db;
-    // Fecho inesperado (ex.: outro separador apagou a base): a próxima chamada volta a abrir.
-    opened.on('close', () => {
-      if (current === opened) current = undefined;
-    });
-    current = opened;
-    lastOptions = options;
-    return opened;
   } catch (error) {
     db?.close();
+    if (gen !== generation) throw new DatabaseClosedError();
     if (error instanceof DatabaseUnavailableError) throw error;
     throw new DatabaseUnavailableError(classify(error), { cause: error });
   }
+  if (gen !== generation) {
+    // Entretanto houve closeDatabase()/wipeAll(): esta ligação não pode sobreviver.
+    db.close();
+    throw new DatabaseClosedError();
+  }
+  const opened = db;
+  // Fecho inesperado (ex.: outro separador apagou a base): a próxima chamada volta a abrir.
+  opened.on('close', () => {
+    if (current === opened) current = undefined;
+  });
+  current = opened;
+  return opened;
 }
 
 /**
@@ -105,24 +107,32 @@ async function doOpen(options: OpenDatabaseOptions): Promise<SimpleIptvDb> {
 export function openDatabase(options: OpenDatabaseOptions = {}): Promise<SimpleIptvDb> {
   if (current) return Promise.resolve(current);
   if (!opening) {
-    opening = doOpen(options).finally(() => {
-      opening = undefined;
+    lastOptions = options;
+    const promise: Promise<SimpleIptvDb> = doOpen(options, generation).finally(() => {
+      if (opening === promise) opening = undefined;
     });
+    opening = promise;
   }
   return opening;
 }
 
-/** Fecha a ligação atual (a próxima chamada a um repositório volta a abrir). */
-export function closeDatabase(): void {
+/**
+ * Fecha a ligação atual e cancela uma abertura em curso (essa ligação é fechada assim que
+ * concluir e a promessa rejeita com `DatabaseClosedError`). Devolve quando nada fica aberto.
+ */
+export async function closeDatabase(): Promise<void> {
+  generation += 1;
+  const pending = opening;
+  opening = undefined;
   current?.close();
   current = undefined;
+  if (pending) await pending.catch(() => undefined);
 }
 
 /** Apaga toda a base de dados (SRC-10 "Apagar todos os dados"). */
 export async function wipeAll(): Promise<void> {
-  const db = current ?? createDb(lastOptions);
-  current = undefined;
-  await db.delete();
+  await closeDatabase();
+  await createDb(lastOptions).delete();
 }
 
 /** Usado pelos repositórios: abre a base se ainda não estiver aberta. */

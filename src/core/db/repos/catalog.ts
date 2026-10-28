@@ -1,7 +1,7 @@
 // Repositório do catálogo: categorias, canais, filmes, séries, detalhes de séries e índice de pesquisa.
 import { getDb } from '../database';
 import { categoryKey, itemKey, normalizeName, parseCategoryKey, typePrefix } from '../keys';
-import type { Table } from 'dexie';
+import { Dexie, type Collection, type Table } from 'dexie';
 import type { SimpleIptvDb } from '../schema';
 import type {
   CatalogItemByType,
@@ -31,18 +31,42 @@ function itemTable<T extends ContentType>(
   return db.table<CatalogItemByType[T], string>(TABLE_BY_TYPE[type]);
 }
 
+/** Todos os itens de uma categoria, ordenados por `order` (índice `[categoryKey+order]`). */
+function categoryRange<T extends CatalogItemByType[ContentType]>(
+  table: Table<T, string>,
+  catKey: string,
+): Collection<T, string> {
+  return table
+    .where('[categoryKey+order]')
+    .between([catKey, Dexie.minKey], [catKey, Dexie.maxKey], true, true);
+}
+
 export interface PageOptions {
   offset?: number;
   limit?: number;
 }
 
 export interface ReplaceResult {
+  /** Categorias efetivamente gravadas (após remover chaves duplicadas). */
   categories: number;
+  /** Itens efetivamente gravados (após remover chaves duplicadas). */
   items: number;
+  /** Itens descartados por terem a mesma chave de um item posterior (o último prevalece). */
+  duplicates: number;
 }
 
 function byOrder(a: { order: number }, b: { order: number }): number {
   return a.order - b.order;
+}
+
+/** Remove chaves repetidas mantendo o último registo (a mesma semântica de `bulkPut` sucessivos). */
+function dedupeByKey<R extends { key: string }>(records: R[]): R[] {
+  const byKey = new Map<string, R>();
+  for (const r of records) {
+    byKey.delete(r.key);
+    byKey.set(r.key, r);
+  }
+  return byKey.size === records.length ? records : [...byKey.values()];
 }
 
 function buildItems<T extends ContentType>(
@@ -77,15 +101,18 @@ export const catalogRepo = {
     type: T,
     data: CatalogReplacement<T>,
   ): Promise<ReplaceResult> {
-    const categories: Category[] = data.categories.map((c, order) => ({
-      key: categoryKey(sourceId, type, c.externalId),
-      sourceId,
-      type,
-      externalId: c.externalId,
-      name: c.name,
-      order,
-    }));
-    const items = buildItems(sourceId, type, data);
+    const categories: Category[] = dedupeByKey(
+      data.categories.map((c, order) => ({
+        key: categoryKey(sourceId, type, c.externalId),
+        sourceId,
+        type,
+        externalId: c.externalId,
+        name: c.name,
+        order,
+      })),
+    );
+    const allItems = buildItems(sourceId, type, data);
+    const items = dedupeByKey(allItems);
 
     const db = await getDb();
     const table = itemTable(db, type);
@@ -100,7 +127,11 @@ export const catalogRepo = {
         await table.bulkPut(items.slice(i, i + BULK_CHUNK_SIZE));
       }
     });
-    return { categories: categories.length, items: items.length };
+    return {
+      categories: categories.length,
+      items: items.length,
+      duplicates: allItems.length - items.length,
+    };
   },
 
   /** Categorias de uma fonte+tipo pela ordem original da fonte. */
@@ -110,7 +141,10 @@ export const catalogRepo = {
     return list.sort(byOrder);
   },
 
-  /** Itens de uma categoria pela ordem original da fonte, com paginação opcional. */
+  /**
+   * Itens de uma categoria pela ordem original da fonte. Usa o índice `[categoryKey+order]`,
+   * por isso só a página pedida é lida do IndexedDB.
+   */
   async listByCategory<T extends ContentType>(
     type: T,
     catKey: string,
@@ -119,12 +153,9 @@ export const catalogRepo = {
     const parsed = parseCategoryKey(catKey);
     if (!parsed || parsed.type !== type) return [];
     const db = await getDb();
-    const list = await itemTable(db, type)
-      .where('[sourceId+categoryKey]')
-      .equals([parsed.sourceId, catKey])
-      .toArray();
-    list.sort(byOrder);
-    return list.slice(offset, limit === undefined ? undefined : offset + limit);
+    let query = categoryRange(itemTable(db, type), catKey).offset(offset);
+    if (limit !== undefined) query = query.limit(limit);
+    return query.toArray();
   },
 
   /** Número de itens numa categoria. */
@@ -132,10 +163,7 @@ export const catalogRepo = {
     const parsed = parseCategoryKey(catKey);
     if (!parsed || parsed.type !== type) return 0;
     const db = await getDb();
-    return itemTable(db, type)
-      .where('[sourceId+categoryKey]')
-      .equals([parsed.sourceId, catKey])
-      .count();
+    return categoryRange(itemTable(db, type), catKey).count();
   },
 
   /** Número de itens de uma fonte+tipo. */

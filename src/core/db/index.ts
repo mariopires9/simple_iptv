@@ -5,6 +5,7 @@ export {
   closeDatabase,
   wipeAll,
   DatabaseUnavailableError,
+  DatabaseClosedError,
   type DatabaseUnavailableReason,
   type OpenDatabaseOptions,
 } from './database';

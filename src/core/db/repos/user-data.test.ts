@@ -12,8 +12,8 @@ beforeEach(async () => {
   await openFreshDatabase();
 });
 
-afterEach(() => {
-  closeDatabase();
+afterEach(async () => {
+  await closeDatabase();
 });
 
 describe('favoritesRepo', () => {
@@ -39,8 +39,10 @@ describe('favoritesRepo', () => {
     expect(await favoritesRepo.has('s1:series:9')).toBe(false);
   });
 
-  it('rejeita chaves inválidas', async () => {
+  it('rejeita chaves inválidas e chaves de categoria', async () => {
     await expect(favoritesRepo.add('invalida')).rejects.toThrow(TypeError);
+    await expect(favoritesRepo.add('s1:live:cat:3')).rejects.toThrow(TypeError);
+    await expect(favoritesRepo.toggle('s1:live:cat:3')).rejects.toThrow(TypeError);
   });
 
   it('sobrevive a uma re-sincronização do catálogo (chaves estáveis)', async () => {
@@ -104,6 +106,44 @@ describe('historyRepo', () => {
       's1:movie:2',
       's1:movie:3',
     ]);
+  });
+
+  it('upsert parcial mantém os campos guardados e atualiza lastWatchedAt', async () => {
+    await historyRepo.upsert({
+      itemKey: 's1:series:5',
+      positionSec: 120,
+      durationSec: 2400,
+      episodeKey: 's1:series:5:ep:3',
+      completed: false,
+      lastWatchedAt: 1,
+    });
+    const merged = await historyRepo.upsert({
+      itemKey: 's1:series:5',
+      positionSec: 300,
+      lastWatchedAt: 2,
+    });
+    expect(merged).toEqual({
+      itemKey: 's1:series:5',
+      sourceId: 's1',
+      type: 'series',
+      positionSec: 300,
+      durationSec: 2400,
+      episodeKey: 's1:series:5:ep:3',
+      completed: false,
+      lastWatchedAt: 2,
+    });
+    const done = await historyRepo.upsert({ itemKey: 's1:series:5', completed: true });
+    expect(done).toMatchObject({ positionSec: 300, durationSec: 2400, completed: true });
+    expect(done.lastWatchedAt).toBeGreaterThan(2);
+    expect(await historyRepo.get('s1:series:5')).toEqual(done);
+  });
+
+  it('entrada nova sem completed fica completed=false', async () => {
+    expect((await historyRepo.upsert({ itemKey: 's1:movie:9' })).completed).toBe(false);
+  });
+
+  it('rejeita chaves de categoria', async () => {
+    await expect(historyRepo.upsert({ itemKey: 's1:movie:cat:1' })).rejects.toThrow(TypeError);
   });
 
   it('guarda episodeKey e usa Date.now() por omissão', async () => {

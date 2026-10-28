@@ -1,12 +1,62 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
-import { afterEach, describe, expect, it } from 'vitest';
-import { closeDatabase, DatabaseUnavailableError, openDatabase, wipeAll } from './database';
-import { SCHEMA_V1 } from './schema';
+import { Dexie } from 'dexie';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  closeDatabase,
+  DatabaseClosedError,
+  DatabaseUnavailableError,
+  openDatabase,
+  wipeAll,
+} from './database';
+import { SCHEMA_V1, type SimpleIptvDb } from './schema';
 import { settingsRepo } from './repos/settings';
 import { openFreshDatabase } from './test-utils';
 
-afterEach(() => {
-  closeDatabase();
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await closeDatabase();
+});
+
+/** Regista as instâncias Dexie criadas (para verificar que nenhuma ligação fica aberta). */
+function trackInstances(): Dexie[] {
+  const instances: Dexie[] = [];
+  const original = Dexie.prototype.open;
+  vi.spyOn(Dexie.prototype, 'open').mockImplementation(function (this: Dexie) {
+    instances.push(this);
+    return original.call(this);
+  });
+  return instances;
+}
+
+describe('fecho e wipe com abertura em curso', () => {
+  it('closeDatabase() durante a abertura: a ligação é fechada e nunca fica ativa', async () => {
+    const instances = trackInstances();
+    const factory = new IDBFactory();
+    const pending = openDatabase({ indexedDB: factory, IDBKeyRange });
+    await closeDatabase();
+    await expect(pending).rejects.toBeInstanceOf(DatabaseClosedError);
+    expect(instances).toHaveLength(1);
+    expect(instances[0]?.isOpen()).toBe(false);
+
+    // A próxima abertura cria uma ligação nova (não reutiliza a cancelada).
+    const db = await openDatabase({ indexedDB: factory, IDBKeyRange });
+    expect(db).not.toBe(instances[0]);
+    expect(db.isOpen()).toBe(true);
+  });
+
+  it('wipeAll() durante a abertura: espera, fecha e apaga; nada fica em cache', async () => {
+    const instances = trackInstances();
+    const factory = new IDBFactory();
+    const pending = openDatabase({ indexedDB: factory, IDBKeyRange });
+    await wipeAll();
+    await expect(pending).rejects.toBeInstanceOf(DatabaseClosedError);
+    expect(instances[0]?.isOpen()).toBe(false);
+    expect((await factory.databases()).map((d) => d.name)).not.toContain('simple-iptv');
+
+    const db: SimpleIptvDb = await openDatabase({ indexedDB: factory, IDBKeyRange });
+    expect(db).not.toBe(instances[0]);
+    await expect(settingsRepo.get('theme')).resolves.toBeUndefined();
+  });
 });
 
 /** Abre a base diretamente na fábrica (sem Dexie) para inspecionar o schema real. */
@@ -39,7 +89,7 @@ describe('openDatabase — schema v1 (CA1)', () => {
     const { db, factory } = await openFreshDatabase();
     expect(db.name).toBe('simple-iptv');
     expect(db.verno).toBe(1);
-    closeDatabase();
+    await closeDatabase();
 
     const raw = await rawOpen(factory, 'simple-iptv');
     const stores = [...raw.objectStoreNames].sort();
@@ -82,7 +132,7 @@ describe('openDatabase — schema v1 (CA1)', () => {
     expect(describeStore('channels')).toEqual({
       keyPath: 'key',
       indexes: {
-        '[sourceId+categoryKey]': ['sourceId', 'categoryKey'],
+        '[categoryKey+order]': ['categoryKey', 'order'],
         sourceId: 'sourceId',
         nameNorm: 'nameNorm',
       },
@@ -90,14 +140,14 @@ describe('openDatabase — schema v1 (CA1)', () => {
     expect(describeStore('movies')).toEqual({
       keyPath: 'key',
       indexes: {
-        '[sourceId+categoryKey]': ['sourceId', 'categoryKey'],
+        '[categoryKey+order]': ['categoryKey', 'order'],
         sourceId: 'sourceId',
         addedAt: 'addedAt',
       },
     });
     expect(describeStore('series')).toEqual({
       keyPath: 'key',
-      indexes: { '[sourceId+categoryKey]': ['sourceId', 'categoryKey'], sourceId: 'sourceId' },
+      indexes: { '[categoryKey+order]': ['categoryKey', 'order'], sourceId: 'sourceId' },
     });
     expect(describeStore('seriesDetails')).toEqual({
       keyPath: 'seriesKey',
@@ -136,7 +186,7 @@ describe('openDatabase — IndexedDB indisponível (CA5)', () => {
     const error = await openDatabase().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DatabaseUnavailableError);
     expect(error).toMatchObject({ reason: 'unsupported' });
-    expect((error as DatabaseUnavailableError).userMessage).toMatch(/navegação privada/);
+    expect((error as Error).message).toBe('IndexedDB unavailable (unsupported)');
   });
 
   it.each(['SecurityError', 'InvalidStateError', 'UnknownError'])(
@@ -148,7 +198,6 @@ describe('openDatabase — IndexedDB indisponível (CA5)', () => {
       );
       expect(error).toBeInstanceOf(DatabaseUnavailableError);
       expect(error).toMatchObject({ reason: 'open-failed', name: 'DatabaseUnavailableError' });
-      expect((error as DatabaseUnavailableError).userMessage).toMatch(/armazenamento/);
       expect((error as DatabaseUnavailableError).cause).toBeDefined();
     },
   );
