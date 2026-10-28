@@ -3,7 +3,12 @@
 // imports this module at runtime; the main thread imports it with `import type` (client.ts).
 // How to add a task: see the header of src/core/worker/tasks.ts.
 import { WorkerTaskError, type TaskContext, type TaskRegistry } from '@/core/worker';
-import { syncXtreamSource, type SyncXtreamInput, type SyncXtreamResult } from '@/providers/xtream';
+import {
+  syncXtreamSource,
+  waitForSourceIdle,
+  type SyncXtreamInput,
+  type SyncXtreamResult,
+} from '@/providers/xtream';
 
 export interface SelfTestInput {
   steps: number;
@@ -37,9 +42,18 @@ export function syncXtream(input: SyncXtreamInput, ctx: TaskContext): Promise<Sy
   return syncXtreamSource(input, ctx);
 }
 
+/**
+ * Resolves once no sync of the source is running or queued in this worker (used after a
+ * client-side abort, which rejects before the worker has actually stopped).
+ */
+export async function waitSyncIdle(input: { sourceId: string }, _ctx: TaskContext): Promise<void> {
+  await waitForSourceIdle(input.sourceId);
+}
+
 export const tasks = {
   selfTest,
   syncXtream,
+  waitSyncIdle,
 } satisfies TaskRegistry;
 
 export type Tasks = typeof tasks;

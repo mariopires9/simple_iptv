@@ -2,7 +2,7 @@
 // SRC-07: Xtream catalogue sync end to end — MSW panel (QA-01) + fake-indexeddb + real WebCrypto
 // vault. Node environment: real WebCrypto and structured clone of CryptoKey in fake-indexeddb.
 import { http, HttpResponse } from 'msw';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { credentialVault } from '@/core/crypto';
 import {
   catalogRepo,
@@ -26,7 +26,13 @@ import {
   type XtreamVariant,
 } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
-import { credentialFreeUrl, syncXtreamSource, type SyncXtreamDeps } from './sync';
+import {
+  credentialFreeUrl,
+  isSourceSyncing,
+  syncXtreamSource,
+  waitForSourceIdle,
+  type SyncXtreamDeps,
+} from './sync';
 
 const openFreshDatabase = () => openDatabase({ indexedDB: new IDBFactory(), IDBKeyRange });
 
@@ -308,16 +314,220 @@ describe('syncXtreamSource — invalid items (AC2)', () => {
     expect(await catalogRepo.count(SOURCE_ID, 'movie')).toBe(4);
   });
 
-  it('a non-array body is an invalid response; an empty array empties the type', async () => {
+  it('a non-array body is an invalid response (keeps old data)', async () => {
     await sync();
-    server.use(
-      onAction('get_series', () => HttpResponse.json({ error: 'nope' })),
-      onAction('get_vod_streams', () => HttpResponse.json([])),
-    );
+    server.use(onAction('get_series', () => HttpResponse.json({ error: 'nope' })));
     const result = await sync();
     expect(result.types.series).toMatchObject({ status: 'error', error: 'invalid-response' });
-    expect(result.types.movie).toMatchObject({ status: 'ok', items: 0 });
+    expect(result.stats).toEqual({ live: 6, movies: 4, series: 3 });
+  });
+});
+
+describe('syncXtreamSource — empty lists (review #2)', () => {
+  it('[] for a type that has stored items is suspicious: empty-response, old data kept', async () => {
+    await sync();
+    server.use(onAction('get_vod_streams', () => HttpResponse.json([])));
+    const result = await sync();
+    expect(result.status).toBe('partial');
+    expect(result.types.movie).toMatchObject({ status: 'error', error: 'empty-response' });
+    expect(result.stats).toEqual({ live: 6, movies: 4, series: 3 });
+    expect((await sourcesRepo.get(SOURCE_ID))?.lastSyncError).toBe('empty-response');
+  });
+
+  it('[] is accepted on a first sync (nothing stored before)', async () => {
+    server.use(onAction('get_vod_streams', () => HttpResponse.json([])));
+    const result = await sync();
+    expect(result.status).toBe('ok');
+    expect(result.types.movie).toMatchObject({ status: 'ok', items: 0, categories: 2 });
+  });
+
+  it('[] items with [] categories (both 200) empties the type: the section is gone', async () => {
+    await sync();
+    server.use(
+      onAction('get_vod_streams', () => HttpResponse.json([])),
+      onAction('get_vod_categories', () => HttpResponse.json([])),
+    );
+    const result = await sync();
+    expect(result.types.movie).toMatchObject({ status: 'ok', items: 0, categories: 0 });
     expect(result.stats).toEqual({ live: 6, movies: 0, series: 3 });
+    expect(await catalogRepo.listCategories(SOURCE_ID, 'movie')).toEqual([]);
+  });
+
+  it('[] categories with items still writes the items', async () => {
+    await sync();
+    server.use(onAction('get_vod_categories', () => HttpResponse.json([])));
+    const result = await sync();
+    expect(result.types.movie).toMatchObject({ status: 'ok', items: 4, categories: 0 });
+  });
+});
+
+describe('syncXtreamSource — source removed during the sync (review #1)', () => {
+  it.each(['get_live_streams', 'get_vod_streams'])(
+    'removing the source while %s is downloading leaves no orphan rows',
+    async (action) => {
+      await sync();
+      server.use(
+        onAction(action, async () => {
+          await sourcesRepo.remove(SOURCE_ID);
+          return HttpResponse.json([{ stream_id: 1, name: 'Late' }]);
+        }),
+      );
+      const err = await rejection(sync());
+      expect(err.kind).toBe('cancelled');
+      expect(err.message).toBe('Xtream sync stopped (source-removed)');
+      expect(await sourcesRepo.get(SOURCE_ID)).toBeUndefined();
+      for (const t of ['live', 'movie', 'series'] as const) {
+        expect(await catalogRepo.count(SOURCE_ID, t)).toBe(0);
+        expect(await catalogRepo.listCategories(SOURCE_ID, t)).toEqual([]);
+      }
+      expect(await db.channels.count()).toBe(0);
+      expect(await db.movies.count()).toBe(0);
+      expect(await db.categories.count()).toBe(0);
+    },
+  );
+
+  it('removing the source after the last write does not resurrect the source row', async () => {
+    const { ctx } = fakeCtx((p) => {
+      if (p.phase === 'series' && p.total !== undefined) void sourcesRepo.remove(SOURCE_ID);
+    });
+    const err = await rejection(sync(ctx));
+    expect(err.message).toBe('Xtream sync stopped (source-removed)');
+    expect(await sourcesRepo.get(SOURCE_ID)).toBeUndefined();
+    expect(await db.series.count()).toBe(0);
+    expect(await db.channels.count()).toBe(0);
+  });
+});
+
+describe('syncXtreamSource — concurrent syncs of one source (review #3)', () => {
+  const slowLiveStreams = () =>
+    onAction('get_live_streams', async () => {
+      await new Promise((r) => setTimeout(r, 80));
+      return HttpResponse.json([{ stream_id: 1, name: 'Slow' }]);
+    });
+
+  it('the second sync waits for the first; per-type statuses merge', async () => {
+    const order: string[] = [];
+    server.events.on('request:start', ({ request }) => {
+      order.push(new URL(request.url).searchParams.get('action') ?? 'auth');
+    });
+    server.use(slowLiveStreams());
+    const [a, b] = await Promise.all([sync(undefined, ['live']), sync(undefined, ['movie'])]);
+    server.events.removeAllListeners();
+    expect(Object.keys(a.types)).toEqual(['live']);
+    expect(Object.keys(b.types)).toEqual(['movie']);
+    // No interleaving: the second run authenticates only after the first fetched its items.
+    expect(order).toEqual([
+      'auth',
+      'get_live_categories',
+      'get_live_streams',
+      'auth',
+      'get_vod_categories',
+      'get_vod_streams',
+    ]);
+    const byType = (await sourcesRepo.get(SOURCE_ID))?.lastSyncByType;
+    expect(byType?.live).toMatchObject({ status: 'ok', items: 1 });
+    expect(byType?.movie).toMatchObject({ status: 'ok', items: 4 });
+    expect(isSourceSyncing(SOURCE_ID)).toBe(false);
+  });
+
+  it('only types attempted by a run are overwritten in lastSyncByType', async () => {
+    await sync();
+    server.use(...xtreamHandlers({ error: 'http-500', errorOn: ['get_series'] }));
+    await sync(undefined, ['series']);
+    const byType = (await sourcesRepo.get(SOURCE_ID))?.lastSyncByType;
+    expect(byType?.live).toMatchObject({ status: 'ok' });
+    expect(byType?.movie).toMatchObject({ status: 'ok' });
+    expect(byType?.series).toMatchObject({ status: 'error', error: 'http' });
+  });
+
+  it('a queued sync can be cancelled while waiting and does not block the queue', async () => {
+    server.use(slowLiveStreams());
+    const first = sync(undefined, ['live']);
+    const waiting = fakeCtx();
+    const second = sync(waiting.ctx, ['movie']);
+    const third = sync(undefined, ['series']);
+    setTimeout(() => waiting.cancel(), 10);
+    expect((await rejection(second)).kind).toBe('cancelled');
+    expect(isSourceSyncing(SOURCE_ID)).toBe(true);
+    expect((await first).status).toBe('ok');
+    expect((await third).status).toBe('ok');
+    await waitForSourceIdle(SOURCE_ID);
+    expect(isSourceSyncing(SOURCE_ID)).toBe(false);
+  });
+});
+
+describe('syncXtreamSource — unreachable server after auth (review #6)', () => {
+  // Only setTimeout is faked (the request timeouts); IndexedDB (setImmediate), WebCrypto and the
+  // cancellation poll (setInterval) keep running in real time.
+  const realTick = () => new Promise<void>((resolve) => setImmediate(resolve));
+  /** Lets real async work progress (and fake time creep by 1 ms per step) until `cond` holds. */
+  async function until(cond: () => boolean): Promise<void> {
+    for (let i = 0; i < 2_000 && !cond(); i++) {
+      await realTick();
+      await vi.advanceTimersByTimeAsync(1);
+    }
+    expect(cond()).toBe(true);
+  }
+  async function advance(ms: number): Promise<void> {
+    await vi.advanceTimersByTimeAsync(ms);
+    for (let i = 0; i < 50; i++) await realTick();
+  }
+
+  let requested: string[] = [];
+  beforeEach(() => {
+    requested = [];
+    server.events.on('request:start', ({ request }) => {
+      requested.push(new URL(request.url).searchParams.get('action') ?? 'auth');
+    });
+  });
+  afterEach(() => {
+    server.events.removeAllListeners();
+    vi.useRealTimers();
+  });
+
+  it('a categories call times out after 30 s; the remaining types are not attempted', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    server.use(...xtreamHandlers({ error: 'timeout', errorOn: ['get_live_categories'] }));
+    let settled = false;
+    const run = sync().finally(() => (settled = true));
+    await until(() => requested.includes('get_live_categories'));
+    await advance(29_000);
+    expect(settled).toBe(false);
+    await advance(1_500);
+    await until(() => settled);
+    const result = await run;
+
+    expect(result.status).toBe('error');
+    expect(result.types.live).toMatchObject({ status: 'error', error: 'timeout' });
+    expect(result.types.movie).toMatchObject({ status: 'error', error: 'server-unreachable' });
+    expect(result.types.series).toMatchObject({ status: 'error', error: 'server-unreachable' });
+    expect(requested).toEqual(['auth', 'get_live_categories']);
+  });
+
+  it('an items call gets 120 s; once it times out, later types are skipped', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    server.use(...xtreamHandlers({ error: 'timeout', errorOn: ['get_vod_streams'] }));
+    let settled = false;
+    const run = sync().finally(() => (settled = true));
+    await until(() => requested.includes('get_vod_streams'));
+    await advance(60_000);
+    expect(settled).toBe(false);
+    await advance(61_000);
+    await until(() => settled);
+    const result = await run;
+    expect(result.status).toBe('partial');
+    expect(result.types.live).toMatchObject({ status: 'ok' });
+    expect(result.types.movie).toMatchObject({ status: 'error', error: 'timeout' });
+    expect(result.types.series).toMatchObject({ status: 'error', error: 'server-unreachable' });
+    expect(requested).not.toContain('get_series_categories');
+  });
+
+  it('a network block mid-sync stops the remaining types too', async () => {
+    server.use(...xtreamHandlers({ error: 'network', errorOn: ['get_live_streams'] }));
+    const result = await sync();
+    expect(result.types.live).toMatchObject({ status: 'error', error: 'blocked' });
+    expect(result.types.movie).toMatchObject({ error: 'server-unreachable' });
+    expect(requested).not.toContain('get_vod_categories');
   });
 });
 
@@ -489,17 +699,29 @@ describe('syncXtreamSource — auth failures abort the whole sync', () => {
     }
   });
 
-  it('a 401 in the middle of the sync stops the remaining types', async () => {
+  it('a 401 after live was written: rejects, status error, lastSyncAt not advanced (review #4)', async () => {
+    await seedSource({ lastSyncAt: 123, lastSyncStatus: 'ok' });
     server.use(...xtreamHandlers({ error: 'http-401', errorOn: ['get_vod_categories'] }));
     const requested: string[] = [];
     server.events.on('request:start', ({ request }) => {
       requested.push(new URL(request.url).searchParams.get('action') ?? 'auth');
     });
-    expect((await rejection(sync())).message).toBe('Xtream sync failed (auth)');
+    const err = await rejection(sync());
     server.events.removeAllListeners();
+    expect(err.kind).toBe('failed');
+    expect(err.message).toBe('Xtream sync failed (auth)');
     expect(requested).not.toContain('get_series_categories');
     expect(await catalogRepo.count(SOURCE_ID, 'live')).toBe(6);
-    expect((await sourcesRepo.get(SOURCE_ID))?.lastSyncByType?.live?.status).toBe('ok');
+    const source = await sourcesRepo.get(SOURCE_ID);
+    expect(source).toMatchObject({
+      lastSyncStatus: 'error',
+      lastSyncError: 'auth',
+      lastSyncAt: 123,
+      stats: { live: 6, movies: 0, series: 0 },
+    });
+    expect(source?.lastSyncByType?.live).toMatchObject({ status: 'ok', items: 6 });
+    expect(source?.lastSyncByType?.movie).toMatchObject({ status: 'error', error: 'auth' });
+    expect(source?.lastSyncByType?.series).toMatchObject({ status: 'error', error: 'auth' });
   });
 
   it('network failure during auth → blocked', async () => {

@@ -44,6 +44,12 @@ export interface BackgroundSyncOptions {
   onProgress?: RunTaskOptions['onProgress'];
   /** Cancels the remaining background syncs. */
   signal?: AbortSignal;
+  /**
+   * Resolves when the worker has really finished with a source. A client-side abort rejects at
+   * once while the worker may still be stopping, so a cancelled source stays "in flight" until
+   * this settles. Default: the `waitSyncIdle` worker task.
+   */
+  waitIdle?: (sourceId: string) => Promise<unknown>;
 }
 
 export interface BackgroundSyncOutcome {
@@ -69,6 +75,9 @@ function defaultIsOnline(): boolean {
 const defaultRun: NonNullable<BackgroundSyncOptions['run']> = (sourceId, options) =>
   runTask('syncXtream', { sourceId }, options);
 
+const defaultWaitIdle: NonNullable<BackgroundSyncOptions['waitIdle']> = (sourceId) =>
+  runTask('waitSyncIdle', { sourceId });
+
 /**
  * Starts a background sync for every due Xtream source (active source first), one at a time so
  * only one large catalogue is in memory. Returns immediately after deciding what to start.
@@ -76,7 +85,14 @@ const defaultRun: NonNullable<BackgroundSyncOptions['run']> = (sourceId, options
 export async function startBackgroundSyncIfDue(
   options: BackgroundSyncOptions = {},
 ): Promise<BackgroundSyncResult> {
-  const { maxAgeMs, isOnline = defaultIsOnline, run = defaultRun, onProgress, signal } = options;
+  const {
+    maxAgeMs,
+    isOnline = defaultIsOnline,
+    run = defaultRun,
+    waitIdle = defaultWaitIdle,
+    onProgress,
+    signal,
+  } = options;
   const now = options.now ?? Date.now();
   if (!isOnline() || signal?.aborted) return { started: [], done: Promise.resolve([]) };
 
@@ -108,6 +124,13 @@ export async function startBackgroundSyncIfDue(
         const cancelled = (err as { kind?: unknown } | null)?.kind === 'cancelled';
         outcomes.push({ sourceId, status: cancelled ? 'cancelled' : 'failed' });
         if (!cancelled) log.warn('background sync failed', { sourceId, error: err });
+        // Stay in flight until the worker-side task has settled (the per-source queue in the
+        // worker also serialises a restart, this just avoids queuing a duplicate).
+        if (cancelled) {
+          await Promise.resolve()
+            .then(() => waitIdle(sourceId))
+            .catch(() => undefined);
+        }
       } finally {
         inFlight.delete(sourceId);
       }

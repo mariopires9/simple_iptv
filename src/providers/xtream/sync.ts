@@ -1,22 +1,35 @@
 // Xtream catalogue sync (SRC-07, ARCHITECTURE.md §6.1, ADR-009). Runs inside the data worker.
 //
 // Flow: source → vault (password) → auth → for each type: categories, items (JSON.parse happens
-// here, in the worker) → tolerant validation → `catalogRepo.replaceForSource` (one transaction per
-// type) → source status/stats.
+// here, in the worker) → tolerant validation → one catalogue transaction per type → source
+// status/stats.
 //
 // Credentials: the password is read from the vault *inside the worker* (IndexedDB and WebCrypto
 // are available in dedicated workers), so it never crosses postMessage. The task input/output and
 // every progress message carry only ids, counts and phase names.
 //
+// Concurrency: syncs of the same source are serialised (per-source queue in this module, i.e. per
+// worker); a waiting sync can still be cancelled. Syncs of different sources run interleaved.
+//
 // Failures:
-// - Anything that prevents authenticating (auth rejected, inactive account, network, timeout…)
-//   or a 401/403 in a later call aborts the whole sync: every requested type is marked with the
-//   error code and the task fails with `WorkerTaskError('failed', 'Xtream sync failed (<code>)')`.
+// - Fatal (`auth`, `account-inactive`, `credentials-lost`, or any failure before/at the auth step,
+//   or a 401/403 in a later call): stops the sync, marks every type not yet written with the code,
+//   sets `lastSyncStatus: 'error'` without advancing `lastSyncAt` (so `isSyncDue` retries), and
+//   the task rejects with `WorkerTaskError('failed', 'Xtream sync failed (<code>)')`. Types
+//   committed before the failure keep their per-type `ok` entry and their new data.
+// - Server unreachable after auth (`offline`, `timeout`, `blocked` on any call): that type gets its
+//   code, the remaining types are not attempted and get `server-unreachable`; the sync returns.
 // - Any other failure is per type: that type keeps its previous data (its transaction never ran),
 //   the others are written, and the result/source record the error per type (status `partial`).
+// - Empty list rule: an items response of `[]` replaces stored data only when (a) the type had no
+//   stored items before, or (b) the categories response for that type is also `[]` (both calls
+//   answered 200 — an empty panel section). Otherwise it is treated as suspicious (`empty-response`)
+//   and the previous data is kept.
+// - Source removed during the sync: the existence check runs inside each write transaction; the
+//   sync stops without writing anything (`WorkerTaskError('cancelled', '… (source-removed)')`).
 // - Cancellation is checked between phases and before each write; an in-flight request is
 //   aborted. Types already written stay written (each is complete and consistent); the others keep
-//   their previous data.
+//   their previous data; the overall status and `lastSyncAt` are left untouched.
 import {
   CONTENT_TYPES,
   catalogRepo,
@@ -41,7 +54,7 @@ import {
   type MapOptions,
   type Mapped,
 } from './catalog';
-import { createXtreamClient, type XtreamClient } from './client';
+import { createXtreamClient, type XtreamClientOptions } from './client';
 
 /** Progress phases, in order. Progress messages contain only these names and counts. */
 export type XtreamSyncPhase =
@@ -65,6 +78,8 @@ export interface SyncXtreamInput {
  * `blocked`, `http`, `auth`, `parse`, `aborted`) plus:
  * - `account-inactive`: authenticated but the account is not `Active` (expired, banned…)
  * - `invalid-response`: the list is not an array, or none of its entries is valid
+ * - `empty-response`: `[]` for a type that has stored items (see the empty list rule)
+ * - `server-unreachable`: not attempted because an earlier call could not reach the server
  * - `storage`: writing to IndexedDB failed (e.g. quota)
  * - `credentials-lost`: the vault cannot decrypt the password (user must re-enter it)
  * - `unknown`
@@ -73,6 +88,8 @@ export type XtreamSyncErrorCode =
   | NetError['kind']
   | 'account-inactive'
   | 'invalid-response'
+  | 'empty-response'
+  | 'server-unreachable'
   | 'storage'
   | 'credentials-lost'
   | 'unknown';
@@ -91,22 +108,40 @@ export interface SyncXtreamDeps {
   vault?: CredentialVault;
   fetchImpl?: FetchImpl;
   now?: () => number;
-  /** Per-request timeout; catalogue lists can be tens of MB. Default 120 s. */
-  timeoutMs?: number;
-  /** How often an in-flight request checks for cancellation (ms). Default 50. */
+  /** Timeout of the auth and categories requests. Default {@link CATEGORIES_TIMEOUT_MS}. */
+  categoriesTimeoutMs?: number;
+  /** Timeout of the item lists (can be tens of MB). Default {@link ITEMS_TIMEOUT_MS}. */
+  itemsTimeoutMs?: number;
+  /** How often an in-flight request / a queued sync checks for cancellation (ms). Default 50. */
   cancelPollMs?: number;
 }
 
-export const SYNC_REQUEST_TIMEOUT_MS = 120_000;
+export const CATEGORIES_TIMEOUT_MS = 30_000;
+export const ITEMS_TIMEOUT_MS = 120_000;
 
-/** Codes that make the rest of the sync pointless: stop everything. */
-const FATAL_CODES: ReadonlySet<XtreamSyncErrorCode> = new Set(['auth', 'account-inactive']);
+/** Codes that make the rest of the sync pointless: stop everything and reject. */
+const FATAL_CODES: ReadonlySet<XtreamSyncErrorCode> = new Set([
+  'auth',
+  'account-inactive',
+  'credentials-lost',
+]);
+
+/** The server stopped answering: do not wait for a timeout on every remaining call. */
+const UNREACHABLE_CODES: ReadonlySet<XtreamSyncErrorCode> = new Set([
+  'offline',
+  'timeout',
+  'blocked',
+]);
 
 class SyncTypeError extends Error {
   override readonly name = 'SyncTypeError';
   constructor(readonly code: XtreamSyncErrorCode) {
     super(`Xtream sync step failed (${code})`);
   }
+}
+
+class SourceRemovedError extends Error {
+  override readonly name = 'SourceRemovedError';
 }
 
 function errorCode(err: unknown): { code: XtreamSyncErrorCode; httpStatus?: number } {
@@ -126,7 +161,11 @@ function asList(body: unknown): readonly unknown[] {
   throw new SyncTypeError('invalid-response');
 }
 
-/** Rejects stored image URLs that embed the account credentials (ARCHITECTURE.md §5). */
+/**
+ * Rejects stored image URLs that embed the account credentials (ARCHITECTURE.md §5): credential
+ * query parameters, the password anywhere (when it is long enough to match reliably), or else the
+ * `/user/pass/` path form.
+ */
 export function credentialFreeUrl(username: string, password: string): (href: string) => boolean {
   return (href) => {
     let text = href;
@@ -136,9 +175,9 @@ export function credentialFreeUrl(username: string, password: string): (href: st
       // Keep the raw form.
     }
     if (/[?&](username|password|token)=/i.test(text)) return false;
-    if (password.length >= 4 && text.includes(password)) return false;
-    if (text.includes(`/${username}/${password}/`)) return false;
-    return true;
+    return password.length >= 4
+      ? !text.includes(password)
+      : !text.includes(`/${username}/${password}/`);
   };
 }
 
@@ -172,6 +211,60 @@ async function storedStats(sourceId: string): Promise<SourceStats> {
   return { live, movies, series };
 }
 
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// ---------------------------------------------------------------------------------------------
+// Per-source queue
+// ---------------------------------------------------------------------------------------------
+
+/** Tail of each source's queue; resolves when every queued sync of that source has finished. */
+const queues = new Map<string, Promise<void>>();
+
+/**
+ * Waits for the previous syncs of `sourceId` to finish, then holds the source until `release()`.
+ * A cancellation while waiting gives up the place in the queue and throws.
+ */
+async function acquireSource(
+  sourceId: string,
+  ctx: TaskContext,
+  pollMs: number,
+): Promise<() => void> {
+  const previous = queues.get(sourceId) ?? Promise.resolve();
+  let unlock = () => {};
+  const mine = new Promise<void>((resolve) => (unlock = resolve));
+  const tail = previous.then(() => mine);
+  queues.set(sourceId, tail);
+  const release = () => {
+    unlock();
+    if (queues.get(sourceId) === tail) queues.delete(sourceId);
+  };
+  let ready = false;
+  void previous.then(() => (ready = true));
+  await Promise.resolve();
+  while (!ready) {
+    if (ctx.cancelled) {
+      release();
+      ctx.throwIfCancelled();
+    }
+    await Promise.race([previous, pause(pollMs)]);
+  }
+  return release;
+}
+
+/** Whether a sync of `sourceId` is running or queued in this worker. */
+export function isSourceSyncing(sourceId: string): boolean {
+  return queues.has(sourceId);
+}
+
+/** Resolves when no sync of `sourceId` is running or queued in this worker. */
+export async function waitForSourceIdle(sourceId: string): Promise<void> {
+  for (let tail = queues.get(sourceId); tail; tail = queues.get(sourceId)) await tail;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sync
+// ---------------------------------------------------------------------------------------------
+
 /**
  * Syncs the catalogue of an Xtream source into IndexedDB. Must run in the data worker
  * (registered as task `syncXtream` in src/worker/tasks.ts); also callable directly in tests.
@@ -181,38 +274,71 @@ export async function syncXtreamSource(
   ctx: TaskContext,
   deps: SyncXtreamDeps = {},
 ): Promise<SyncXtreamResult> {
-  const vault = deps.vault ?? credentialVault;
-  const now = deps.now ?? Date.now;
   const types = requestedTypes(input.types);
   const { sourceId } = input;
+  const pollMs = deps.cancelPollMs ?? 50;
 
   ctx.throwIfCancelled();
+  if (typeof sourceId !== 'string' || sourceId === '') {
+    throw new WorkerTaskError('failed', 'Xtream sync: source not found');
+  }
   if (types.length === 0) throw new WorkerTaskError('failed', 'Xtream sync: no content types');
+
+  const release = await acquireSource(sourceId, ctx, pollMs);
+  try {
+    return await runSync(sourceId, types, ctx, deps, pollMs);
+  } catch (err) {
+    if (err instanceof SourceRemovedError) {
+      log.info('xtream sync: source removed during sync', { sourceId });
+      throw new WorkerTaskError('cancelled', 'Xtream sync stopped (source-removed)');
+    }
+    throw err;
+  } finally {
+    release();
+  }
+}
+
+async function runSync(
+  sourceId: string,
+  types: ContentType[],
+  ctx: TaskContext,
+  deps: SyncXtreamDeps,
+  pollMs: number,
+): Promise<SyncXtreamResult> {
+  const vault = deps.vault ?? credentialVault;
+  const now = deps.now ?? Date.now;
+
+  ctx.throwIfCancelled();
   ctx.progress({ phase: 'auth', done: 0 });
 
-  const found = typeof sourceId === 'string' ? await sourcesRepo.get(sourceId) : undefined;
-  if (!found) throw new WorkerTaskError('failed', 'Xtream sync: source not found');
-  const source: Source = found;
+  const source = await sourcesRepo.get(sourceId);
+  if (!source) throw new WorkerTaskError('failed', 'Xtream sync: source not found');
   if (source.kind !== 'xtream') {
     throw new WorkerTaskError('failed', 'Xtream sync: not an Xtream source');
   }
   if (!source.serverUrl || !source.username || !source.secretRef) {
     throw new WorkerTaskError('failed', 'Xtream sync: source has no credentials');
   }
-  const username = source.username;
+  const { serverUrl, username, secretRef } = source;
 
   const outcomes: Partial<Record<ContentType, TypeSyncStatus>> = {};
   const startedAt = now();
 
-  /** Persists per-type outcomes, real stored counts and (unless cancelled) the overall status. */
-  async function finish(cancelled: boolean): Promise<SyncXtreamResult> {
-    const stats = await storedStats(source.id);
+  /**
+   * Persists per-type outcomes (merged into the *current* source row, only for the types this run
+   * attempted), real stored counts and, depending on `mode`, the overall status.
+   */
+  async function finish(
+    mode: 'complete' | 'fatal' | 'cancelled',
+    fatalCode?: XtreamSyncErrorCode,
+  ): Promise<SyncXtreamResult> {
+    const current = await sourcesRepo.get(sourceId);
+    if (!current) throw new SourceRemovedError();
+    const stats = await storedStats(sourceId);
     const ok = types.filter((t) => outcomes[t]?.status === 'ok').length;
     const status: SyncXtreamResult['status'] =
       ok === types.length ? 'ok' : ok > 0 ? 'partial' : 'error';
-    const merged: Partial<Record<ContentType, TypeSyncStatus>> = {
-      ...source.lastSyncByType,
-    };
+    const merged: Partial<Record<ContentType, TypeSyncStatus>> = { ...current.lastSyncByType };
     for (const t of types) {
       const outcome = outcomes[t];
       if (!outcome) continue;
@@ -223,32 +349,40 @@ export async function syncXtreamSource(
           : { ...outcome, lastOkAt: previous };
     }
     const changes: Partial<Omit<Source, 'id'>> = { stats, lastSyncByType: merged };
-    if (!cancelled) {
-      const firstError = types.map((t) => outcomes[t]?.error).find((e) => e !== undefined);
+    if (mode === 'complete') {
       changes.lastSyncStatus = status;
-      changes.lastSyncError = firstError;
+      changes.lastSyncError = types.map((t) => outcomes[t]?.error).find((e) => e !== undefined);
       if (ok > 0) changes.lastSyncAt = now();
+    } else if (mode === 'fatal') {
+      // Not advancing `lastSyncAt` makes `isSyncDue` retry on the next app open.
+      changes.lastSyncStatus = 'error';
+      changes.lastSyncError = fatalCode;
     }
-    await sourcesRepo.update(source.id, changes);
-    return { sourceId: source.id, status, types: outcomes, stats };
+    if (!(await sourcesRepo.update(sourceId, changes))) throw new SourceRemovedError();
+    return { sourceId, status, types: outcomes, stats };
   }
 
-  async function failAll(err: unknown): Promise<never> {
-    const { code, httpStatus } = errorCode(err);
+  /** Records `code` for every requested type that has no outcome yet in this run. */
+  function markRemaining(code: XtreamSyncErrorCode, httpStatus?: number): void {
     for (const t of types) {
-      if (outcomes[t]?.status === 'ok') continue;
+      if (outcomes[t] !== undefined) continue;
       const outcome: TypeSyncStatus = { status: 'error', at: now(), error: code };
       if (httpStatus !== undefined) outcome.httpStatus = httpStatus;
       outcomes[t] = outcome;
     }
-    await finish(false);
-    log.warn('xtream sync: aborted', { sourceId: source.id, code });
+  }
+
+  async function failAll(err: unknown): Promise<never> {
+    const { code, httpStatus } = errorCode(err);
+    markRemaining(code, httpStatus);
+    await finish('fatal', code);
+    log.warn('xtream sync: aborted', { sourceId, code });
     throw new WorkerTaskError('failed', `Xtream sync failed (${code})`);
   }
 
   let password: string | undefined;
   try {
-    password = await vault.get(source.secretRef);
+    password = await vault.get(secretRef);
   } catch (err) {
     return failAll(err);
   }
@@ -258,24 +392,27 @@ export async function syncXtreamSource(
   const abort = new AbortController();
   const poll = setInterval(() => {
     if (ctx.cancelled) abort.abort();
-  }, deps.cancelPollMs ?? 50);
+  }, pollMs);
   const { signal } = abort;
 
   /** After an awaited step: a cancellation wins over whatever the step threw. */
   const checkpoint = () => ctx.throwIfCancelled();
 
   try {
-    const clientOptions: Parameters<typeof createXtreamClient>[0] = {
-      baseUrl: source.serverUrl,
-      username,
-      password,
-      timeoutMs: deps.timeoutMs ?? SYNC_REQUEST_TIMEOUT_MS,
-    };
-    if (deps.fetchImpl) clientOptions.fetchImpl = deps.fetchImpl;
-    let client: XtreamClient;
+    const base: XtreamClientOptions = { baseUrl: serverUrl, username, password };
+    if (deps.fetchImpl) base.fetchImpl = deps.fetchImpl;
+    let categoriesClient: ReturnType<typeof createXtreamClient>;
+    let itemsClient: ReturnType<typeof createXtreamClient>;
     try {
-      client = createXtreamClient(clientOptions);
-      const info = await client.authenticate(signal);
+      categoriesClient = createXtreamClient({
+        ...base,
+        timeoutMs: deps.categoriesTimeoutMs ?? CATEGORIES_TIMEOUT_MS,
+      });
+      itemsClient = createXtreamClient({
+        ...base,
+        timeoutMs: deps.itemsTimeoutMs ?? ITEMS_TIMEOUT_MS,
+      });
+      const info = await categoriesClient.authenticate(signal);
       checkpoint();
       const status = info.account.status?.toLowerCase();
       if (status !== undefined && status !== 'active') {
@@ -294,8 +431,9 @@ export async function syncXtreamSource(
       const actions = XTREAM_CATALOG_ACTIONS[type];
       try {
         ctx.progress({ phase: `${type}-categories`, done: 0 });
-        const categories = mapCategories(asList(await client.call(actions.categories, {}, signal)));
+        const rawCategories = asList(await categoriesClient.call(actions.categories, {}, signal));
         checkpoint();
+        const categories = mapCategories(rawCategories);
         ctx.progress({
           phase: `${type}-categories`,
           done: categories.items.length,
@@ -305,18 +443,25 @@ export async function syncXtreamSource(
         ctx.progress({ phase: type, done: 0 });
         const mapped = mapItems(
           type,
-          asList(await client.call(actions.items, {}, signal)),
+          asList(await itemsClient.call(actions.items, {}, signal)),
           mapOptions,
         );
         checkpoint();
         const received = mapped.items.length + mapped.skipped;
         if (received > 0 && mapped.items.length === 0) throw new SyncTypeError('invalid-response');
+        if (
+          received === 0 &&
+          rawCategories.length > 0 &&
+          (await catalogRepo.count(sourceId, type)) > 0
+        ) {
+          throw new SyncTypeError('empty-response');
+        }
         ctx.progress({ phase: type, done: 0, total: mapped.items.length });
 
         checkpoint();
-        let written: Awaited<ReturnType<typeof catalogRepo.replaceForSource>>;
+        let written: Awaited<ReturnType<typeof catalogRepo.replaceForExistingSource>>;
         try {
-          written = await catalogRepo.replaceForSource(sourceId, type, {
+          written = await catalogRepo.replaceForExistingSource(sourceId, type, {
             categories: categories.items,
             items: mapped.items,
           });
@@ -324,6 +469,7 @@ export async function syncXtreamSource(
           // The transaction rolled back: this type keeps its previous data.
           throw new SyncTypeError('storage');
         }
+        if (written === undefined) throw new SourceRemovedError();
         const at = now();
         outcomes[type] = {
           status: 'ok',
@@ -342,6 +488,7 @@ export async function syncXtreamSource(
           });
         }
       } catch (err) {
+        if (err instanceof SourceRemovedError) throw err;
         checkpoint();
         const { code, httpStatus } = errorCode(err);
         if (FATAL_CODES.has(code)) return await failAll(err);
@@ -349,11 +496,15 @@ export async function syncXtreamSource(
         if (httpStatus !== undefined) outcome.httpStatus = httpStatus;
         outcomes[type] = outcome;
         log.warn('xtream sync: type failed', { type, code, httpStatus });
+        if (UNREACHABLE_CODES.has(code)) {
+          markRemaining('server-unreachable');
+          break;
+        }
       }
     }
 
     checkpoint();
-    const result = await finish(false);
+    const result = await finish('complete');
     ctx.progress({ phase: 'done', done: types.length, total: types.length });
     log.info('xtream sync: finished', {
       sourceId,
@@ -363,9 +514,9 @@ export async function syncXtreamSource(
     });
     return result;
   } catch (err) {
-    if (ctx.cancelled) {
+    if (ctx.cancelled && !(err instanceof SourceRemovedError)) {
       // Keep the record of what was written before the cancellation; leave the overall status.
-      await finish(true).catch(() => undefined);
+      await finish('cancelled').catch(() => undefined);
       ctx.throwIfCancelled();
     }
     throw err;

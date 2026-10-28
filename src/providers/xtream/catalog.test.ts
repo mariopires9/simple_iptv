@@ -6,9 +6,9 @@ import {
   mapSeries,
   mapVodStreams,
   toExternalId,
-  toNumber,
   toYear,
 } from './catalog';
+import { toInt, toNumber } from './schemas';
 
 describe('coercion helpers', () => {
   it.each([
@@ -36,6 +36,14 @@ describe('coercion helpers', () => {
     [Number.NaN, undefined],
   ])('toNumber(%j) → %j', (input, expected) => {
     expect(toNumber(input)).toBe(expected);
+  });
+
+  it('one parser: toInt is toNumber with truncation', () => {
+    expect(toNumber('12.9', true)).toBe(12);
+    expect(toInt('12.9')).toBe(12);
+    expect(toNumber('12.9')).toBe(12.9);
+    expect(toNumber(-3.7, true)).toBe(-3);
+    expect(toNumber(Infinity, true)).toBeUndefined();
   });
 
   it.each([

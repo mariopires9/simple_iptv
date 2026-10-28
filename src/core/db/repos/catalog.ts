@@ -91,6 +91,54 @@ function buildItems<T extends ContentType>(
   });
 }
 
+/**
+ * Shared body of `replaceForSource` / `replaceForExistingSource`. With `requireSource`, the
+ * existence check of the `sources` row runs inside the same rw transaction as the write, so a
+ * concurrent `sourcesRepo.remove` (which also locks `sources` and the catalogue tables) either
+ * happens entirely before (nothing is written) or entirely after (it deletes what was written).
+ */
+async function replace<T extends ContentType>(
+  sourceId: string,
+  type: T,
+  data: CatalogReplacement<T>,
+  requireSource: boolean,
+): Promise<ReplaceResult | undefined> {
+  const categories: Category[] = dedupeByKey(
+    data.categories.map((c, order) => ({
+      key: categoryKey(sourceId, type, c.externalId),
+      sourceId,
+      type,
+      externalId: c.externalId,
+      name: c.name,
+      order,
+    })),
+  );
+  const allItems = buildItems(sourceId, type, data);
+  const items = dedupeByKey(allItems);
+
+  const db = await getDb();
+  const table = itemTable(db, type);
+  const written = await db.transaction('rw', [db.sources, db.categories, table], async () => {
+    if (requireSource && (await db.sources.get(sourceId)) === undefined) return false;
+    // Delete by primary-key range (prefix `${sourceId}:${type}:`): Dexie turns it into a single
+    // native `deleteRange`, much faster than walking a secondary index.
+    const prefix = typePrefix(sourceId, type);
+    await db.categories.where('key').startsWith(prefix).delete();
+    await table.where('key').startsWith(prefix).delete();
+    await db.categories.bulkPut(categories);
+    for (let i = 0; i < items.length; i += BULK_CHUNK_SIZE) {
+      await table.bulkPut(items.slice(i, i + BULK_CHUNK_SIZE));
+    }
+    return true;
+  });
+  if (!written) return undefined;
+  return {
+    categories: categories.length,
+    items: items.length,
+    duplicates: allItems.length - items.length,
+  };
+}
+
 export const catalogRepo = {
   /**
    * Replaces all categories and items of a source+type in a single transaction:
@@ -101,37 +149,20 @@ export const catalogRepo = {
     type: T,
     data: CatalogReplacement<T>,
   ): Promise<ReplaceResult> {
-    const categories: Category[] = dedupeByKey(
-      data.categories.map((c, order) => ({
-        key: categoryKey(sourceId, type, c.externalId),
-        sourceId,
-        type,
-        externalId: c.externalId,
-        name: c.name,
-        order,
-      })),
-    );
-    const allItems = buildItems(sourceId, type, data);
-    const items = dedupeByKey(allItems);
+    return (await replace(sourceId, type, data, false)) as ReplaceResult;
+  },
 
-    const db = await getDb();
-    const table = itemTable(db, type);
-    await db.transaction('rw', db.categories, table, async () => {
-      // Delete by primary-key range (prefix `${sourceId}:${type}:`): Dexie turns it into a single
-      // native `deleteRange`, much faster than walking a secondary index.
-      const prefix = typePrefix(sourceId, type);
-      await db.categories.where('key').startsWith(prefix).delete();
-      await table.where('key').startsWith(prefix).delete();
-      await db.categories.bulkPut(categories);
-      for (let i = 0; i < items.length; i += BULK_CHUNK_SIZE) {
-        await table.bulkPut(items.slice(i, i + BULK_CHUNK_SIZE));
-      }
-    });
-    return {
-      categories: categories.length,
-      items: items.length,
-      duplicates: allItems.length - items.length,
-    };
+  /**
+   * Like `replaceForSource`, but only if the `sources` row still exists, checked atomically in
+   * the same transaction. Returns `undefined` (and writes nothing) when the source is gone — e.g.
+   * removed by the user while a sync was downloading — so no orphan rows are left behind.
+   */
+  async replaceForExistingSource<T extends ContentType>(
+    sourceId: string,
+    type: T,
+    data: CatalogReplacement<T>,
+  ): Promise<ReplaceResult | undefined> {
+    return replace(sourceId, type, data, true);
   },
 
   /** Categories of a source+type in the source's original order. */

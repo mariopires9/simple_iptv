@@ -21,9 +21,10 @@ import {
   WorkerTaskError,
   type DataWorkerApi,
   type DataWorkerRemote,
+  type RunTaskOptions,
   type TaskProgress,
 } from '@/core/worker';
-import type { SyncXtreamResult } from '@/providers/xtream';
+import { isSourceSyncing, type SyncXtreamResult } from '@/providers/xtream';
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
 import {
@@ -78,7 +79,7 @@ function source(id: string, extra: Partial<Source> = {}): Source {
 
 describe('registry and client', () => {
   it('registers selfTest and syncXtream', () => {
-    expect(Object.keys(tasks).sort()).toEqual(['selfTest', 'syncXtream']);
+    expect(Object.keys(tasks).sort()).toEqual(['selfTest', 'syncXtream', 'waitSyncIdle']);
   });
 
   it('runs selfTest through the real registry', async () => {
@@ -301,5 +302,99 @@ describe('startBackgroundSyncIfDue (AC5)', () => {
     ]);
     expect((await sourcesRepo.get('never'))?.stats).toEqual({ live: 6, movies: 4, series: 3 });
     clearSecrets();
+  });
+});
+
+describe('background + manual syncs of one source (review #3 and #5)', () => {
+  beforeEach(async () => {
+    await openFreshDatabase();
+    await sourcesRepo.put(source('stale', { createdAt: 1, lastSyncAt: NOW - 30 * HOUR }));
+    await sourcesRepo.put(source('never', { createdAt: 2 }));
+    await credentialVault.put('xtream:stale', XTREAM_TEST_CREDENTIALS.password);
+    await credentialVault.put('xtream:never', XTREAM_TEST_CREDENTIALS.password);
+  });
+  afterEach(async () => {
+    server.events.removeAllListeners();
+    await closeDatabase();
+    clearSecrets();
+  });
+
+  const FULL = [
+    'auth',
+    'get_live_categories',
+    'get_live_streams',
+    'get_vod_categories',
+    'get_vod_streams',
+    'get_series_categories',
+    'get_series',
+  ];
+
+  it('a manual sync and a background sync of the same source never interleave', async () => {
+    const order: string[] = [];
+    server.events.on('request:start', ({ request }) => {
+      order.push(new URL(request.url).searchParams.get('action') ?? 'auth');
+    });
+    server.use(...xtreamHandlers({ delayMs: 5 }));
+    const api = connect();
+    const manual = runTaskOn<SyncXtreamResult>(api, 'syncXtream', { sourceId: 'stale' });
+    const background = await startBackgroundSyncIfDue({
+      now: NOW,
+      isOnline: () => true,
+      run: (sourceId, options) =>
+        runTaskOn<SyncXtreamResult>(api, 'syncXtream', { sourceId }, options),
+      waitIdle: (sourceId) => runTaskOn(api, 'waitSyncIdle', { sourceId }),
+    });
+    expect(background.started).toEqual(['stale', 'never']);
+    expect((await manual).status).toBe('ok');
+    expect(await background.done).toEqual([
+      { sourceId: 'stale', status: 'ok' },
+      { sourceId: 'never', status: 'ok' },
+    ]);
+    // Three complete, non-interleaved runs: manual (stale), background (stale), background (never).
+    expect(order).toEqual([...FULL, ...FULL, ...FULL]);
+    expect((await sourcesRepo.get('stale'))?.lastSyncByType?.series?.status).toBe('ok');
+  });
+
+  it('cancel + immediate restart: the source stays in flight until the worker has stopped', async () => {
+    server.use(...xtreamHandlers({ delayMs: 30 }));
+    const api = connect();
+    const waited: string[] = [];
+    const options = (signal?: AbortSignal) => ({
+      now: NOW,
+      isOnline: () => true,
+      run: (sourceId: string, opts: RunTaskOptions) =>
+        runTaskOn<SyncXtreamResult>(api, 'syncXtream', { sourceId }, opts),
+      waitIdle: async (sourceId: string) => {
+        await runTaskOn(api, 'waitSyncIdle', { sourceId });
+        // By now the worker-side task has settled.
+        expect(isSourceSyncing(sourceId)).toBe(false);
+        waited.push(sourceId);
+      },
+      ...(signal ? { signal } : {}),
+    });
+
+    const ctrl = new AbortController();
+    const first = await startBackgroundSyncIfDue({
+      ...options(ctrl.signal),
+      onProgress: (p) => {
+        if (p.phase === 'live-categories') ctrl.abort();
+      },
+    });
+    expect(first.started).toEqual(['stale', 'never']);
+    await new Promise((r) => setTimeout(r, 40));
+    // The client already rejected, but the worker may still be stopping: no second run yet.
+    const restart = await startBackgroundSyncIfDue(options());
+    expect(restart.started).toEqual([]);
+
+    expect(await first.done).toEqual([
+      { sourceId: 'stale', status: 'cancelled' },
+      { sourceId: 'never', status: 'cancelled' },
+    ]);
+    expect(waited).toEqual(['stale']);
+    expect(isSourceSyncing('stale')).toBe(false);
+
+    const again = await startBackgroundSyncIfDue(options());
+    expect(again.started).toEqual(['stale', 'never']);
+    expect((await again.done).map((o) => o.status)).toEqual(['ok', 'ok']);
   });
 });

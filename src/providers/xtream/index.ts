@@ -7,11 +7,17 @@ export {
   mapSeries,
   mapVodStreams,
   toExternalId,
-  toNumber,
   toYear,
 } from './catalog';
 export type { MapOptions, Mapped } from './catalog';
-export { SYNC_REQUEST_TIMEOUT_MS, credentialFreeUrl, syncXtreamSource } from './sync';
+export {
+  CATEGORIES_TIMEOUT_MS,
+  ITEMS_TIMEOUT_MS,
+  credentialFreeUrl,
+  isSourceSyncing,
+  syncXtreamSource,
+  waitForSourceIdle,
+} from './sync';
 export type {
   SyncXtreamDeps,
   SyncXtreamInput,
@@ -23,7 +29,7 @@ export { createXtreamClient } from './client';
 export type { XtreamClient, XtreamClientOptions, XtreamParams } from './client';
 export { InvalidServerUrlError, assertServerUrl, normalizeServerUrl } from './normalizeServerUrl';
 export type { ServerUrlResult } from './normalizeServerUrl';
-export { parseAuthResponse } from './schemas';
+export { coerce, parseAuthResponse, toInt, toNumber } from './schemas';
 export type { XtreamAccount, XtreamAuthInfo, XtreamServerInfo } from './schemas';
 export { DEFAULT_PROBE_TIMEOUT_MS, testConnection } from './testConnection';
 export type { TestConnectionOptions } from './testConnection';

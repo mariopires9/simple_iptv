@@ -4,16 +4,24 @@
 // instead of failing the whole response.
 import * as v from 'valibot';
 
-/** `12`, `"12"`, `" 12 "` → 12; `""`, `null`, `"abc"`, `NaN` → undefined. */
-export function toInt(value: unknown): number | undefined {
-  if (typeof value === 'number') return Number.isFinite(value) ? Math.trunc(value) : undefined;
-  if (typeof value === 'string') {
+/**
+ * The single numeric parser for panel values: `7.1`, `"7.1"`, `" 12 "` → number; `""`, `null`,
+ * `"abc"`, `"1e3"`, `NaN` → undefined. With `truncate`, the result is truncated to an integer.
+ */
+export function toNumber(value: unknown, truncate = false): number | undefined {
+  let n: number | undefined;
+  if (typeof value === 'number') n = value;
+  else if (typeof value === 'string') {
     const trimmed = value.trim();
-    if (!/^-?\d+(?:\.\d+)?$/.test(trimmed)) return undefined;
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? Math.trunc(n) : undefined;
+    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) n = Number(trimmed);
   }
-  return undefined;
+  if (n === undefined || !Number.isFinite(n)) return undefined;
+  return truncate ? Math.trunc(n) : n;
+}
+
+/** `12`, `"12"`, `" 12 "`, `"12.9"` → 12; `""`, `null`, `"abc"`, `NaN` → undefined. */
+export function toInt(value: unknown): number | undefined {
+  return toNumber(value, true);
 }
 
 /** Non-empty trimmed string; numbers are stringified; anything else → undefined. */
@@ -61,7 +69,9 @@ export function toStringList(value: unknown): string[] {
   return out;
 }
 
-const coerce = <T>(fn: (value: unknown) => T) => v.optional(v.pipe(v.unknown(), v.transform(fn)));
+/** Optional field run through a coercion function (unusable values become `undefined`). */
+export const coerce = <T>(fn: (value: unknown) => T) =>
+  v.optional(v.pipe(v.unknown(), v.transform(fn)));
 
 export const UserInfoSchema = v.object({
   auth: coerce(toBool),

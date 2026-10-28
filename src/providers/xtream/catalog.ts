@@ -11,19 +11,7 @@
 import * as v from 'valibot';
 import type { CatalogItemInput, CategoryInput, ContentType } from '@/core/db';
 import { parseExternalUrl } from '@/core/net';
-import { toEpochMs, toInt, toText } from './schemas';
-
-/** `7.1`, `"7.1"`, `" 8 "` → number; anything else → undefined. */
-export function toNumber(value: unknown): number | undefined {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!/^-?\d+(?:\.\d+)?$/.test(trimmed)) return undefined;
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? n : undefined;
-  }
-  return undefined;
-}
+import { coerce as field, toEpochMs, toInt, toNumber, toText } from './schemas';
 
 /** Non-negative integer id as a string (`1001`, `"1001"`); anything else → undefined. */
 export function toExternalId(value: unknown): string | undefined {
@@ -67,11 +55,10 @@ function toExtension(value: unknown): string | undefined {
 
 const MAX_TEXT = 4096;
 
-function clip(text: string | undefined): string | undefined {
-  return text !== undefined && text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) : text;
+/** Caps free text from the panel at {@link MAX_TEXT} characters. */
+function clip(text: string): string {
+  return text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) : text;
 }
-
-const field = <T>(fn: (value: unknown) => T) => v.optional(v.pipe(v.unknown(), v.transform(fn)));
 
 export const XtreamCategorySchema = v.object({
   category_id: field(toCategoryId),
@@ -93,7 +80,7 @@ export const XtreamVodStreamSchema = v.object({
   stream_id: field(toExternalId),
   name: field(toText),
   stream_icon: field(toText),
-  rating: field(toNumber),
+  rating: field((x) => toNumber(x)),
   year: field(toText),
   added: field(toEpochMs),
   category_id: field(toCategoryId),
@@ -108,7 +95,7 @@ export const XtreamSeriesSchema = v.object({
   cover: field(toText),
   plot: field(toText),
   genre: field(toText),
-  rating: field(toNumber),
+  rating: field((x) => toNumber(x)),
   year: field(toText),
   releaseDate: field(toText),
   release_date: field(toText),
@@ -157,7 +144,7 @@ function mapList<S extends v.GenericSchema, T>(
 export function mapCategories(list: readonly unknown[]): Mapped<CategoryInput> {
   return mapList(list, XtreamCategorySchema, (c) => {
     if (c.category_id === undefined || c.category_name === undefined) return undefined;
-    return { externalId: c.category_id, name: clip(c.category_name) ?? c.category_name };
+    return { externalId: c.category_id, name: clip(c.category_name) };
   });
 }
 
@@ -170,13 +157,13 @@ export function mapLiveStreams(
     if (s.stream_id === undefined || s.name === undefined) return undefined;
     const item: CatalogItemInput<'live'> = {
       externalId: s.stream_id,
-      name: clip(s.name) ?? s.name,
+      name: clip(s.name),
       streamPath: s.stream_id,
     };
     const logo = imageUrl(s.stream_icon, options);
     if (logo !== undefined) item.logo = logo;
     if (s.num !== undefined && s.num > 0) item.number = s.num;
-    if (s.epg_channel_id !== undefined) item.epgId = clip(s.epg_channel_id) ?? s.epg_channel_id;
+    if (s.epg_channel_id !== undefined) item.epgId = clip(s.epg_channel_id);
     if (s.category_id !== undefined) item.categoryExternalId = s.category_id;
     if (s.tv_archive !== undefined && s.tv_archive > 0) {
       const days = s.tv_archive_duration;
@@ -196,7 +183,7 @@ export function mapVodStreams(
     const ext = toExtension(s.container_extension);
     const item: CatalogItemInput<'movie'> = {
       externalId: s.stream_id,
-      name: clip(s.name) ?? s.name,
+      name: clip(s.name),
       streamPath: ext !== undefined ? `${s.stream_id}.${ext}` : s.stream_id,
     };
     if (ext !== undefined) item.ext = ext;
@@ -207,8 +194,8 @@ export function mapVodStreams(
     const year = toYear(s.year);
     if (year !== undefined) item.year = year;
     if (s.added !== undefined) item.addedAt = s.added;
-    if (s.plot !== undefined) item.plot = clip(s.plot) ?? s.plot;
-    if (s.genre !== undefined) item.genre = clip(s.genre) ?? s.genre;
+    if (s.plot !== undefined) item.plot = clip(s.plot);
+    if (s.genre !== undefined) item.genre = clip(s.genre);
     if (s.category_id !== undefined) item.categoryExternalId = s.category_id;
     return item;
   });
@@ -223,12 +210,12 @@ export function mapSeries(
     if (s.series_id === undefined || s.name === undefined) return undefined;
     const item: CatalogItemInput<'series'> = {
       externalId: s.series_id,
-      name: clip(s.name) ?? s.name,
+      name: clip(s.name),
     };
     const cover = imageUrl(s.cover, options);
     if (cover !== undefined) item.cover = cover;
-    if (s.plot !== undefined) item.plot = clip(s.plot) ?? s.plot;
-    if (s.genre !== undefined) item.genre = clip(s.genre) ?? s.genre;
+    if (s.plot !== undefined) item.plot = clip(s.plot);
+    if (s.genre !== undefined) item.genre = clip(s.genre);
     const rating = toRating(s.rating);
     if (rating !== undefined) item.rating = rating;
     const year = toYear(s.year) ?? toYear(s.releaseDate) ?? toYear(s.release_date);
