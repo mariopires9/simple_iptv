@@ -2,13 +2,14 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { cspPlugin } from './build/csp';
 
 // GitHub Pages serves the app under /<repo>/ — set in the deploy workflow (ADR-007).
 const base = process.env.VITE_BASE ?? '/';
 
 export default defineConfig({
   base,
-  plugins: [react()],
+  plugins: [react(), cspPlugin()],
   // Workers as ES modules: allows dynamic import() inside tasks (FND-07).
   worker: { format: 'es' },
   resolve: {

@@ -35,6 +35,23 @@ export default tseslint.config(
           selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
           message: 'External metadata is rendered as text only (SEC-01).',
         },
+        {
+          selector:
+            'AssignmentExpression > MemberExpression.left[property.name=/^(innerHTML|outerHTML)$/]',
+          message: 'Do not assign HTML strings; render external metadata as text only (SEC-01).',
+        },
+        {
+          selector:
+            'AssignmentExpression > MemberExpression.left[property.value=/^(innerHTML|outerHTML)$/]',
+          message: 'Do not assign HTML strings; render external metadata as text only (SEC-01).',
+        },
+      ],
+      'no-restricted-properties': [
+        'error',
+        {
+          property: 'insertAdjacentHTML',
+          message: 'Do not insert HTML strings; render external metadata as text only (SEC-01).',
+        },
       ],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
