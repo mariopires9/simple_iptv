@@ -2,7 +2,7 @@
 // Node environment: real WebCrypto (Node 24) and structured clone of CryptoKey in fake-indexeddb.
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeDatabase, openDatabase } from '@/core/db';
+import { closeDatabase, openDatabase, vaultStore, type SecretRecord } from '@/core/db';
 import { clearSecrets, MASK, redact, registerSecret, unregisterSecret } from '@/core/log';
 import {
   createCredentialVault,
@@ -136,8 +136,11 @@ describe('AC2 — only iv + ciphertext are stored', () => {
     const rows = await db.secrets.toArray();
     expect(rows).toHaveLength(1);
     const row = rows[0]!;
-    expect(Object.keys(row).sort()).toEqual(['ciphertext', 'iv', 'ref']);
+    expect(Object.keys(row).sort()).toEqual(['ciphertext', 'iv', 'kid', 'ref']);
     expect(row.ref).toBe('secret-a');
+    // kid: random, non-secret key identity (16 bytes hex), equal to the stored key's kid.
+    expect(row.kid).toMatch(/^[0-9a-f]{32}$/);
+    expect(row.kid).toBe((await db.keys.toArray())[0]!.kid);
     expect(row.iv).toBeInstanceOf(Uint8Array);
     expect(row.iv.byteLength).toBe(12);
     expect(row.ciphertext).toBeInstanceOf(ArrayBuffer);
@@ -158,13 +161,17 @@ describe('AC2 — only iv + ciphertext are stored', () => {
     ).not.toContain(SECRET);
   });
 
-  it('uses the injected random source for the 96-bit IV', async () => {
+  it('uses the injected random source for the kid and the 96-bit IV', async () => {
     const random = vi.fn((a: Uint8Array) => a.fill(7));
-    await createCredentialVault({ random }).put('secret-a', SECRET);
-    expect(random).toHaveBeenCalledTimes(1);
-    expect(random.mock.calls[0]![0].byteLength).toBe(12);
+    const vault = createCredentialVault({ random });
+    await vault.put('secret-a', SECRET);
+    // First use: 16 bytes for the kid, then 12 bytes for the IV.
+    expect(random.mock.calls.map(([a]) => a.byteLength)).toEqual([16, 12]);
+    await vault.put('secret-b', SECRET);
+    expect(random.mock.calls.map(([a]) => a.byteLength)).toEqual([16, 12, 12]);
     const db = await rawDb();
     expect(Array.from((await db.secrets.get('secret-a'))!.iv)).toEqual(new Array(12).fill(7));
+    expect((await db.keys.toArray())[0]!.kid).toBe('07'.repeat(16));
   });
 });
 
@@ -203,15 +210,20 @@ describe('AC3 — round trip and unique IVs', () => {
     expect(ivs.size).toBe(1000);
   });
 
-  it('rejects an empty ref', async () => {
+  it('rejects an empty ref or a non-string secret without registering anything', async () => {
     const vault = createCredentialVault();
     await expect(vault.put('', SECRET)).rejects.toThrow(TypeError);
+    await expect(vault.put('secret-a', 42 as unknown as string)).rejects.toThrow(TypeError);
     await expect(vault.get('')).rejects.toThrow(TypeError);
     await expect(vault.delete('')).rejects.toThrow(TypeError);
+    expect(registerSecret).not.toHaveBeenCalled();
+    const db = await rawDb();
+    expect(await db.secrets.count()).toBe(0);
+    expect(await db.keys.count()).toBe(0);
   });
 });
 
-describe('integrity (AAD and tampering) → VaultKeyLostError(decrypt-failed)', () => {
+describe('integrity (AAD and tampering, same kid) → VaultKeyLostError(decrypt-failed)', () => {
   it('a ciphertext copied to another ref fails to decrypt (AAD = ref)', async () => {
     const vault = createCredentialVault();
     await vault.put('secret-a', SECRET);
@@ -230,6 +242,7 @@ describe('integrity (AAD and tampering) → VaultKeyLostError(decrypt-failed)', 
     const tampered = new Uint8Array(row.ciphertext.slice(0));
     tampered[0]! ^= 0x01;
     await db.secrets.put({ ...row, ciphertext: tampered.buffer });
+    expect(row.kid).toBe((await db.keys.toArray())[0]!.kid);
     await expectKeyLost(vault, 'secret-a', 'decrypt-failed');
   });
 
@@ -266,20 +279,49 @@ describe('key loss', () => {
     await vault.put('secret-a', 're-entered-secret');
     expect(await db.keys.count()).toBe(1);
     expect(await vault.get('secret-a')).toBe('re-entered-secret');
-    await expectKeyLost(vault, 'secret-b', 'decrypt-failed');
+    // Encrypted with the lost key (kid mismatch): missing-key, not decrypt-failed.
+    await expectKeyLost(vault, 'secret-b', 'missing-key');
   });
 
-  it('a different key (key replaced) → VaultKeyLostError(decrypt-failed)', async () => {
+  it('a row without a kid → VaultKeyLostError(missing-key)', async () => {
     const vault = createCredentialVault();
     await vault.put('secret-a', SECRET);
     const db = await rawDb();
-    const [row] = await db.keys.toArray();
+    const row: Partial<SecretRecord> = { ...(await db.secrets.get('secret-a'))! };
+    delete row.kid;
+    await db.secrets.put(row as SecretRecord);
+    await expectKeyLost(vault, 'secret-a', 'missing-key');
+  });
+
+  it('a regenerated key (other kid) → missing-key; same kid, wrong key → decrypt-failed', async () => {
+    const vault = createCredentialVault();
+    await vault.put('secret-a', SECRET);
+    const db = await rawDb();
+    const [keyRow] = await db.keys.toArray();
     const other = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
       'encrypt',
       'decrypt',
     ]);
-    await db.keys.put({ id: row!.id, key: other });
+    await db.keys.put({ id: keyRow!.id, kid: 'another-kid', key: other });
+    await expectKeyLost(vault, 'secret-a', 'missing-key');
+    await db.keys.put({ id: keyRow!.id, kid: keyRow!.kid, key: other });
     await expectKeyLost(vault, 'secret-a', 'decrypt-failed');
+  });
+
+  it('get returns undefined if a concurrent wipe removed both key and secret', async () => {
+    const vault = createCredentialVault();
+    await vault.put('secret-a', SECRET);
+    const realGetKey = vaultStore.getKey.bind(vaultStore);
+    // Another tab/instance wipes between the secret read and the key read.
+    const spy = vi.spyOn(vaultStore, 'getKey').mockImplementationOnce(async (id) => {
+      await vaultStore.clear();
+      return realGetKey(id);
+    });
+    try {
+      expect(await vault.get('secret-a')).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
@@ -311,6 +353,38 @@ describe('concurrency', () => {
   });
 });
 
+describe('per-instance operation ordering', () => {
+  it('put followed immediately by wipe leaves no secret and no key', async () => {
+    const vault = createCredentialVault();
+    await Promise.all([vault.put('secret-a', SECRET), vault.wipe()]);
+    const db = await rawDb();
+    expect(await db.secrets.count()).toBe(0);
+    expect(await db.keys.count()).toBe(0);
+  });
+
+  it('put followed immediately by delete of the same ref leaves nothing', async () => {
+    const vault = createCredentialVault();
+    await Promise.all([vault.put('secret-a', SECRET), vault.delete('secret-a')]);
+    const db = await rawDb();
+    expect(await db.secrets.count()).toBe(0);
+    expect(await vault.get('secret-a')).toBeUndefined();
+  });
+
+  it('operations run in call order and a failure does not block the queue', async () => {
+    const vault = createCredentialVault();
+    const db = await rawDb();
+    await vault.put('secret-a', SECRET);
+    await db.keys.clear();
+    const results = await Promise.allSettled([
+      vault.get('secret-a'), // fails: key missing
+      vault.put('secret-a', 'second-secret'),
+      vault.get('secret-a'),
+    ]);
+    expect(results[0]!.status).toBe('rejected');
+    expect(results[2]).toEqual({ status: 'fulfilled', value: 'second-secret' });
+  });
+});
+
 describe('AC4 — wipe', () => {
   it('deletes the key and all secrets; the next put generates a new key', async () => {
     const { subtle, generateKey } = spySubtle();
@@ -329,14 +403,13 @@ describe('AC4 — wipe', () => {
     expect(await vault.get('secret-a')).toBe('fresh-secret');
   });
 
-  it('unregisters the secrets it registered', async () => {
+  it('keeps the secrets registered with the redactor (never unregisters)', async () => {
     const vault = createCredentialVault();
     await vault.put('secret-a', SECRET);
     await vault.put('secret-b', 'other-secret');
     await vault.wipe();
-    expect(unregisterSecret).toHaveBeenCalledWith(SECRET);
-    expect(unregisterSecret).toHaveBeenCalledWith('other-secret');
-    expect(redact(`x ${SECRET} y`)).toBe(`x ${SECRET} y`);
+    expect(unregisterSecret).not.toHaveBeenCalled();
+    expect(redact(`x ${SECRET} y`)).toBe(`x ${MASK} y`);
   });
 });
 
@@ -358,26 +431,32 @@ describe('log redaction', () => {
     expect(redact(SECRET)).toBe(MASK);
   });
 
-  it('delete removes the secret and unregisters it', async () => {
+  it('delete removes the secret but keeps it registered for the session', async () => {
     const vault = createCredentialVault();
     await vault.put('secret-a', SECRET);
     await vault.delete('secret-a');
     expect(await vault.get('secret-a')).toBeUndefined();
     const db = await rawDb();
     expect(await db.secrets.count()).toBe(0);
-    expect(unregisterSecret).toHaveBeenCalledWith(SECRET);
-    expect(redact(SECRET)).toBe(SECRET);
-  });
-
-  it('delete keeps redacting a value still stored under another ref', async () => {
-    const vault = createCredentialVault();
-    await vault.put('secret-a', SECRET);
-    await vault.put('secret-b', SECRET);
-    await vault.delete('secret-a');
     expect(unregisterSecret).not.toHaveBeenCalled();
     expect(redact(SECRET)).toBe(MASK);
-    await vault.delete('secret-b');
-    expect(unregisterSecret).toHaveBeenCalledWith(SECRET);
+  });
+
+  it('a value shared by two refs or two instances stays redacted after delete/wipe', async () => {
+    const first = createCredentialVault();
+    const second = createCredentialVault();
+    await first.put('secret-a', SECRET);
+    await second.put('secret-b', SECRET);
+    await first.delete('secret-a');
+    await first.wipe();
+    expect(redact(SECRET)).toBe(MASK);
+  });
+
+  it('overwriting a ref keeps the old value redacted', async () => {
+    const vault = createCredentialVault();
+    await vault.put('secret-a', 'old-password-1');
+    await vault.put('secret-a', 'new-password-2');
+    expect(redact('old-password-1 new-password-2')).toBe(`${MASK} ${MASK}`);
   });
 
   it('delete of an unknown ref is a no-op', async () => {

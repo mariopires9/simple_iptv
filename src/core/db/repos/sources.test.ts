@@ -38,6 +38,7 @@ async function seed(id: string) {
   await sourcesRepo.put(source(id, id === 'a' ? 1 : 2));
   await vaultStore.putSecret({
     ref: `secret-${id}`,
+    kid: 'kid-test',
     iv: new Uint8Array(12),
     ciphertext: new ArrayBuffer(8),
   });

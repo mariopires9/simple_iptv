@@ -24,11 +24,6 @@ export const vaultStore = {
     return db.keys.get(id);
   },
 
-  async putKey(record: KeyRecord): Promise<void> {
-    const db = await getDb();
-    await db.keys.put(record);
-  },
-
   /**
    * Stores `record` only if no key with the same id exists yet, atomically (single rw
    * transaction). Returns the key that ends up stored: the existing one or `record`.

@@ -2,18 +2,28 @@
 //
 // Secrets (Xtream passwords, M3U URLs) are encrypted with AES-GCM 256 using a device key that is
 // a non-extractable WebCrypto CryptoKey persisted in IndexedDB (structured clone keeps it
-// non-extractable). The `secrets` table only ever holds `{ ref, iv, ciphertext }`.
+// non-extractable). The `secrets` table only ever holds `{ ref, kid, iv, ciphertext }`.
 //
 // - IV: 96 random bits per encryption.
 // - Additional authenticated data: the UTF-8 bytes of `ref`, so a ciphertext copied to another
 //   ref fails to decrypt.
-// - Every secret passed to `put` or returned by `get` is registered with the log redactor;
-//   `delete`/`wipe` unregister the values this instance registered.
+// - Key identity: each key generation gets a random, non-secret `kid`; every secret row records
+//   the `kid` it was encrypted with, so a regenerated key is reported as `missing-key` rather
+//   than being mistaken for tampering.
+// - Redaction: every secret passed to `put` or returned by `get` is registered with the log
+//   redactor and stays registered for the rest of the session (until a page reload). It is never
+//   unregistered: the redactor is global and not reference-counted, and under-redaction leaks
+//   credentials while over-redaction is harmless.
+// - Ordering: operations of one vault instance run one at a time, in call order, so e.g. a `put`
+//   in flight cannot be overtaken by `delete`/`wipe` and resurrect data. Operations from other
+//   instances or other tabs are NOT serialized with these; `putKeyIfAbsent` keeps the key
+//   creation race-free and `get` tolerates a concurrent wipe, but a `put` in one tab racing a
+//   `wipe` in another can still leave a secret behind.
 //
 // What this does NOT protect against (ADR-006): code running on the same origin, anyone using the
 // unlocked device, browser extensions, credentials embedded in stream URLs.
-import { vaultStore } from '@/core/db';
-import { log, registerSecret, unregisterSecret } from '@/core/log';
+import { vaultStore, type KeyRecord } from '@/core/db';
+import { log, registerSecret } from '@/core/log';
 
 export interface CredentialVault {
   put(ref: string, secret: string): Promise<void>;
@@ -30,11 +40,11 @@ export interface CredentialVaultDeps {
 }
 
 /**
- * - `missing-key`: a ciphertext exists but the device key is gone (e.g. the browser partially
- *   cleared site data).
- * - `decrypt-failed`: the key exists but authentication failed — a different key (regenerated
- *   after loss), a tampered ciphertext/IV, or a ciphertext moved to another ref. AES-GCM cannot
- *   tell these apart, so they share one reason.
+ * - `missing-key`: a ciphertext exists but the key it was encrypted with is gone — no key at all
+ *   (e.g. the browser partially cleared site data) or the key was regenerated since (`kid`
+ *   mismatch). The user must re-enter the credential.
+ * - `decrypt-failed`: the right key (same `kid`) is present but authentication failed — the
+ *   ciphertext/IV was tampered with or the row was moved to another ref.
  */
 export type VaultKeyLostReason = 'missing-key' | 'decrypt-failed';
 
@@ -60,10 +70,16 @@ const KEY_ID = 'credential-vault/aes-gcm-256/v1';
 const IV_BYTES = 12;
 const KEY_ALGORITHM: AesKeyGenParams = { name: 'AES-GCM', length: 256 };
 
+const KID_BYTES = 16;
+
 function assertRef(ref: string): void {
   if (typeof ref !== 'string' || ref.length === 0) {
     throw new TypeError('CredentialVault: ref must be a non-empty string');
   }
+}
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function createCredentialVault(deps: CredentialVaultDeps = {}): CredentialVault {
@@ -73,108 +89,105 @@ export function createCredentialVault(deps: CredentialVaultDeps = {}): Credentia
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
-  /** Plaintexts this instance registered with the redactor, by ref (to unregister on delete). */
-  const registered = new Map<string, string>();
-  /** Single in-flight key load/creation, shared by concurrent first-use calls. */
-  let keyInFlight: Promise<CryptoKey> | undefined;
+  /** Tail of the per-instance operation queue (never rejects). */
+  let tail: Promise<unknown> = Promise.resolve();
 
-  function track(ref: string, secret: string): void {
-    registerSecret(secret);
-    registered.set(ref, secret);
+  /** Runs `op` after every previously enqueued operation of this instance has settled. */
+  function enqueue<T>(op: () => Promise<T>): Promise<T> {
+    const run = tail.then(op, op);
+    tail = run.catch(() => undefined);
+    return run;
   }
 
-  function untrack(ref: string): void {
-    const secret = registered.get(ref);
-    if (secret === undefined) return;
-    registered.delete(ref);
-    // Another ref may hold the same value: keep redacting it in that case.
-    for (const other of registered.values()) if (other === secret) return;
-    unregisterSecret(secret);
+  function randomBytes(length: number): Uint8Array<ArrayBuffer> {
+    const bytes = new Uint8Array(length);
+    const filled = random(bytes);
+    if (filled !== bytes) {
+      if (filled.length !== length) throw new Error('CredentialVault: invalid random source');
+      bytes.set(filled);
+    }
+    return bytes;
   }
 
-  async function loadOrCreateKey(): Promise<CryptoKey> {
+  /**
+   * Returns the device key, creating it on first use. Runs inside the queue, so one instance never
+   * creates two keys; `putKeyIfAbsent` covers other instances/tabs. The key is never cached.
+   */
+  async function loadOrCreateKey(): Promise<KeyRecord> {
     const existing = await vaultStore.getKey(KEY_ID);
-    if (existing) return existing.key;
+    if (existing) return existing;
     const key = await subtle().generateKey(KEY_ALGORITHM, false, ['encrypt', 'decrypt']);
-    // Atomic check-and-add: another tab may have created the key in the meantime.
-    const stored = await vaultStore.putKeyIfAbsent({ id: KEY_ID, key });
-    if (stored.key === key) log.info('credential vault: device key generated');
-    return stored.key;
+    const kid = toHex(randomBytes(KID_BYTES));
+    const stored = await vaultStore.putKeyIfAbsent({ id: KEY_ID, kid, key });
+    if (stored.kid === kid) log.info('credential vault: device key generated');
+    return stored;
   }
 
-  /** Returns the device key, creating it on first use. The key itself is never cached. */
-  function ensureKey(): Promise<CryptoKey> {
-    if (!keyInFlight) {
-      const promise = loadOrCreateKey().finally(() => {
-        if (keyInFlight === promise) keyInFlight = undefined;
-      });
-      keyInFlight = promise;
-    }
-    return keyInFlight;
-  }
-
-  function newIv(): Uint8Array<ArrayBuffer> {
-    const iv = new Uint8Array(IV_BYTES);
-    const filled = random(iv);
-    if (filled !== iv) {
-      if (filled.length !== IV_BYTES) throw new Error('CredentialVault: invalid random source');
-      iv.set(filled);
-    }
-    return iv;
-  }
-
+  // Methods are `async` but do their validation, redactor registration and `enqueue` call
+  // synchronously (before any await), so the queue order is exactly the call order.
   return {
     async put(ref, secret) {
       assertRef(ref);
-      if (typeof secret !== 'string')
+      if (typeof secret !== 'string') {
         throw new TypeError('CredentialVault: secret must be a string');
-      // Register before any await so that even an error on the way cannot leak it to the logs.
-      track(ref, secret);
-      const key = await ensureKey();
-      const iv = newIv();
-      const ciphertext = await subtle().encrypt(
-        { name: 'AES-GCM', iv, additionalData: encoder.encode(ref) },
-        key,
-        encoder.encode(secret),
-      );
-      await vaultStore.putSecret({ ref, iv, ciphertext });
+      }
+      // Register (after validation) before any await, so even an error on the way cannot leak it.
+      registerSecret(secret);
+      return enqueue(async () => {
+        const { kid, key } = await loadOrCreateKey();
+        const iv = randomBytes(IV_BYTES);
+        const ciphertext = await subtle().encrypt(
+          { name: 'AES-GCM', iv, additionalData: encoder.encode(ref) },
+          key,
+          encoder.encode(secret),
+        );
+        await vaultStore.putSecret({ ref, kid, iv, ciphertext });
+      });
     },
 
     async get(ref) {
       assertRef(ref);
-      const record = await vaultStore.getSecret(ref);
-      if (!record) return undefined;
-      const keyRecord = await vaultStore.getKey(KEY_ID);
-      if (!keyRecord) {
-        log.warn('credential vault: device key missing', { ref });
-        throw new VaultKeyLostError(ref, 'missing-key');
-      }
-      let plaintext: ArrayBuffer;
-      try {
-        plaintext = await subtle().decrypt(
-          { name: 'AES-GCM', iv: record.iv, additionalData: encoder.encode(ref) },
-          keyRecord.key,
-          record.ciphertext,
-        );
-      } catch (error) {
-        log.warn('credential vault: decryption failed', { ref });
-        throw new VaultKeyLostError(ref, 'decrypt-failed', { cause: error });
-      }
-      const secret = decoder.decode(plaintext);
-      track(ref, secret);
-      return secret;
+      return enqueue(async () => {
+        const record = await vaultStore.getSecret(ref);
+        if (!record) return undefined;
+        const keyRecord = await vaultStore.getKey(KEY_ID);
+        if (!keyRecord) {
+          // A wipe from another instance/tab may have removed both in between: re-check.
+          if (!(await vaultStore.getSecret(ref))) return undefined;
+          log.warn('credential vault: device key missing', { ref });
+          throw new VaultKeyLostError(ref, 'missing-key');
+        }
+        if (record.kid !== keyRecord.kid) {
+          log.warn('credential vault: secret encrypted with a previous key', { ref });
+          throw new VaultKeyLostError(ref, 'missing-key');
+        }
+        let plaintext: ArrayBuffer;
+        try {
+          plaintext = await subtle().decrypt(
+            { name: 'AES-GCM', iv: record.iv, additionalData: encoder.encode(ref) },
+            keyRecord.key,
+            record.ciphertext,
+          );
+        } catch (error) {
+          log.warn('credential vault: decryption failed', { ref });
+          throw new VaultKeyLostError(ref, 'decrypt-failed', { cause: error });
+        }
+        const secret = decoder.decode(plaintext);
+        registerSecret(secret);
+        return secret;
+      });
     },
 
     async delete(ref) {
       assertRef(ref);
-      await vaultStore.deleteSecret(ref);
-      untrack(ref);
+      return enqueue(() => vaultStore.deleteSecret(ref));
     },
 
     async wipe() {
-      await vaultStore.clear();
-      for (const ref of [...registered.keys()]) untrack(ref);
-      log.info('credential vault: wiped');
+      return enqueue(async () => {
+        await vaultStore.clear();
+        log.info('credential vault: wiped');
+      });
     },
   };
 }

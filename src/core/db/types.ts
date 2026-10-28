@@ -47,12 +47,19 @@ export interface Source {
 
 export interface SecretRecord {
   ref: string;
+  /** Id (`KeyRecord.kid`) of the device key this secret was encrypted with. Not indexed. */
+  kid: string;
   iv: Uint8Array<ArrayBuffer>;
   ciphertext: ArrayBuffer;
 }
 
 export interface KeyRecord {
   id: string;
+  /**
+   * Random identity of this key generation (not secret). Lets core/crypto tell "the key this
+   * secret needs is gone" apart from "the ciphertext was tampered with". Not indexed.
+   */
+  kid: string;
   /** Non-extractable CryptoKey (stored via structured clone). */
   key: CryptoKey;
 }

@@ -178,10 +178,11 @@ describe('vaultStore', () => {
   it('stores encrypted secrets and keys; clear deletes everything', async () => {
     await vaultStore.putSecret({
       ref: 'r1',
+      kid: 'kid-test',
       iv: new Uint8Array([1, 2]),
       ciphertext: new ArrayBuffer(4),
     });
-    await vaultStore.putKey({ id: 'device', key: {} as CryptoKey });
+    await vaultStore.putKeyIfAbsent({ id: 'device', kid: 'kid-test', key: {} as CryptoKey });
     const secret = await vaultStore.getSecret('r1');
     expect(Array.from(secret?.iv ?? [])).toEqual([1, 2]); // structured clone changes the realm
     expect(await vaultStore.getKey('device')).toBeDefined();
@@ -189,6 +190,7 @@ describe('vaultStore', () => {
     expect(await vaultStore.getSecret('r1')).toBeUndefined();
     await vaultStore.putSecret({
       ref: 'r2',
+      kid: 'kid-test',
       iv: new Uint8Array(1),
       ciphertext: new ArrayBuffer(1),
     });

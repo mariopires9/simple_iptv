@@ -29,10 +29,16 @@ async function sameKey(reference: CryptoKey, candidate: CryptoKey): Promise<bool
   }
 }
 
+describe('vaultStore', () => {
+  it('has no unconditional putKey (it could overwrite the device key)', () => {
+    expect('putKey' in vaultStore).toBe(false);
+  });
+});
+
 describe('vaultStore.putKeyIfAbsent', () => {
   it('stores the key when none exists and returns it', async () => {
     const key = await aesKey();
-    const stored = await vaultStore.putKeyIfAbsent({ id: 'k', key });
+    const stored = await vaultStore.putKeyIfAbsent({ id: 'k', kid: 'kid-1', key });
     expect(stored.key).toBe(key);
     const read = await vaultStore.getKey('k');
     expect(read).toBeDefined();
@@ -43,10 +49,11 @@ describe('vaultStore.putKeyIfAbsent', () => {
   it('keeps and returns the existing key instead of overwriting it', async () => {
     const first = await aesKey();
     const second = await aesKey();
-    await vaultStore.putKeyIfAbsent({ id: 'k', key: first });
-    const stored = await vaultStore.putKeyIfAbsent({ id: 'k', key: second });
+    await vaultStore.putKeyIfAbsent({ id: 'k', kid: 'kid-first', key: first });
+    const stored = await vaultStore.putKeyIfAbsent({ id: 'k', kid: 'kid-second', key: second });
     expect(await sameKey(first, stored.key)).toBe(true);
     expect(await sameKey(second, stored.key)).toBe(false);
+    expect(stored.kid).toBe('kid-first');
     const read = await vaultStore.getKey('k');
     expect(await sameKey(first, read!.key)).toBe(true);
   });
@@ -54,11 +61,14 @@ describe('vaultStore.putKeyIfAbsent', () => {
   it('concurrent calls converge on a single stored key', async () => {
     const keys = await Promise.all([aesKey(), aesKey(), aesKey()]);
     const results = await Promise.all(
-      keys.map((key) => vaultStore.putKeyIfAbsent({ id: 'k', key })),
+      keys.map((key, i) => vaultStore.putKeyIfAbsent({ id: 'k', kid: `kid-${i}`, key })),
     );
     const db = await getDb();
     expect(await db.keys.count()).toBe(1);
     const read = await vaultStore.getKey('k');
-    for (const result of results) expect(await sameKey(read!.key, result.key)).toBe(true);
+    for (const result of results) {
+      expect(await sameKey(read!.key, result.key)).toBe(true);
+      expect(result.kid).toBe(read!.kid);
+    }
   });
 });
