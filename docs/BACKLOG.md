@@ -14,13 +14,13 @@ Allowed statuses (exactly one per story):
 | S-00 | Validate real provider compatibility | E0 | Must | 3 | — | 0 | M0 | In Progress |
 | FND-01 | Project scaffold | E0 | Must | 3 | — | 0 | M0 | Done |
 | FND-02 | CI pipeline | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
-| FND-03 | Tokens, theme and AppShell | E0 | Must | 5 | FND-01 | 1 | M0 | Backlog |
+| FND-03 | Tokens, theme and AppShell | E0 | Must | 5 | FND-01 | 1 | M0 | In Progress |
 | FND-05 | Dexie persistence | E0 | Must | 5 | FND-01 | 1 | M0 | Done |
 | FND-06 | Redacting logger and errors | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
 | FND-07 | Web Worker infra | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
 | PWA-01 | Manifest and installability | E10 | Must | 2 | FND-01 | 1 | M0 | Backlog |
-| SEC-01 | CSP, URL validation, sanitization | E12 | Must | 3 | FND-01 | 1 | M0 | Backlog |
-| QA-01 | Fixtures, mocks and test streams | E13 | Must | 3 | FND-01 | 1 | M0 | Backlog |
+| SEC-01 | CSP, URL validation, sanitization | E12 | Must | 3 | FND-01 | 1 | M0 | In Progress |
+| QA-01 | Fixtures, mocks and test streams | E13 | Must | 3 | FND-01 | 1 | M0 | In Progress |
 | FND-04 | Routing and skeleton | E0 | Must | 2 | FND-03 | 2 | M0 | Backlog |
 | UX-02 | State components | E11 | Must | 3 | FND-03 | 2 | M0 | Backlog |
 | SRC-01 | Credential vault | E1 | Must | 3 | FND-05, FND-06 | 2 | M1 | Backlog |
