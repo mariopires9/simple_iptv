@@ -110,7 +110,7 @@ Reachable from the list selector (top bar), from Settings and, on desktop, from 
 ┌──────────────────────────────┐
 │ ← My lists             [+ Add]
 ├──────────────────────────────┤
-│ ● Home                ACTIVE │
+│ ● Living room         ACTIVE │
 │   Xtream · 1 234 channels · 8 900 movies · 410 series
 │   Updated 2 h ago · Account valid until 12/2026
 │   [Refresh] [Edit] [⋮]       │
@@ -131,7 +131,7 @@ States: no lists → onboarding; syncing → progress bar on the card; error →
 
 ### 4.2 Xtream form
 ```
-Name (optional)       [ Home                 ]
+Name (optional)       [ Living room          ]
 Server                [ http://example:8080  ]  ← accepts with/without http(s), port, trailing slash
 Username              [                      ]
 Password              [ ••••••••        (👁) ]

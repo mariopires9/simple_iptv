@@ -250,7 +250,7 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Priority:** Must · **Effort:** 2 · **Value:** High (privacy)
 - **Story:** As a user, I want to delete all the app's data with one action, so that I can sell/lend the device or start over.
 - **AC:**
-  1. Given Settings › Privacy › "Delete all data", When I confirm by typing `DELETE`, Then IndexedDB, Cache Storage and preferences are removed and the app returns to onboarding.
+  1. Given Settings › Privacy › "Delete all data", When I confirm by typing the localized confirmation word (`DELETE` in English, `APAGAR` in pt-PT), Then IndexedDB, Cache Storage and preferences are removed and the app returns to onboarding.
   2. Given the operation, Then the service worker remains (the app stays installed) but without data.
   3. Given a partial failure, Then the app reports it and offers to retry.
 - **Dependencies:** FND-05, SRC-01, PWA-02.
