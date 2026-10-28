@@ -13,7 +13,7 @@ Coluna **Onda**: stories da mesma onda **podem correr em paralelo** desde que as
 |---|---|---|---|---|---|---|---|---|
 | S-00 | Validar compatibilidade do fornecedor real | E0 | Must | 3 | — | 0 | M0 | In Progress |
 | FND-01 | Scaffold do projeto | E0 | Must | 3 | — | 0 | M0 | Done |
-| FND-02 | Pipeline de CI | E0 | Must | 2 | FND-01 | 1 | M0 | Backlog |
+| FND-02 | Pipeline de CI | E0 | Must | 2 | FND-01 | 1 | M0 | In Review |
 | FND-03 | Tokens, tema e AppShell | E0 | Must | 5 | FND-01 | 1 | M0 | Backlog |
 | FND-05 | Persistência Dexie | E0 | Must | 5 | FND-01 | 1 | M0 | Backlog |
 | FND-06 | Logger com redação e erros | E0 | Must | 2 | FND-01 | 1 | M0 | Backlog |

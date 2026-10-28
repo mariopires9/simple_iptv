@@ -47,7 +47,7 @@ export default tseslint.config(
   // O logger (core/log) é o único ponto autorizado a escrever na consola.
   { files: ['src/core/log/**'], rules: { 'no-console': 'off' } },
   {
-    files: ['*.config.{js,ts}', 'e2e/**'],
+    files: ['*.config.{js,ts}', 'e2e/**', 'scripts/**'],
     languageOptions: { globals: { ...globals.node } },
   },
 );
