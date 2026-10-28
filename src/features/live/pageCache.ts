@@ -1,6 +1,8 @@
 // Page cache over a `ChannelPager` (LIV-01 AC2): rows are fetched in pages of `pageSize` as the
 // viewport reaches them, and at most `maxPages` pages are kept (the farthest from the viewport
-// are evicted), so memory stays bounded however far the user scrolls.
+// are evicted), so memory stays bounded however far the user scrolls. The page of the active
+// (keyboard-selected) row is pinned: it is never evicted, so Enter/F keep working on it and it is
+// not re-read every time the viewport moves away from it.
 import type { Channel } from '@/core/db';
 import type { ChannelPager } from './pagers';
 
@@ -13,6 +15,7 @@ export class PageCache {
   private listener: (() => void) | undefined;
   private errorListener: ((error: unknown) => void) | undefined;
   private center = 0;
+  private pinnedPage: number | undefined;
   private disposed = false;
 
   constructor(
@@ -45,6 +48,11 @@ export class PageCache {
       this.listener = undefined;
       this.errorListener = undefined;
     };
+  }
+
+  /** Keeps the page of row `index` cached (the active row); `undefined` unpins. */
+  pin(index: number | undefined): void {
+    this.pinnedPage = index === undefined ? undefined : Math.floor(index / this.pageSize);
   }
 
   /** Loads every missing page that covers rows `[start, end]`. */
@@ -80,12 +88,14 @@ export class PageCache {
       let farthest = -1;
       let distance = -1;
       for (const page of this.pages.keys()) {
+        if (page === this.pinnedPage) continue;
         const d = Math.abs(page - this.center);
         if (d > distance) {
           distance = d;
           farthest = page;
         }
       }
+      if (farthest < 0) return;
       this.pages.delete(farthest);
     }
   }

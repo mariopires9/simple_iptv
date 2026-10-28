@@ -7,6 +7,7 @@ import Chip from '@mui/material/Chip';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { t } from '@/i18n';
 import { categoryPath, type LiveCategory } from './categories';
@@ -18,6 +19,16 @@ export interface CategoryNavProps {
 }
 
 export function CategoryNav({ categories, selectedId, variant }: CategoryNavProps) {
+  const selectedChip = useRef<HTMLAnchorElement>(null);
+  // Mobile: keep the selected chip visible in the horizontal strip (deep links, Back).
+  useEffect(() => {
+    const chip = selectedChip.current;
+    // jsdom (and very old engines) have no scrollIntoView.
+    if (variant === 'chips' && chip && typeof chip.scrollIntoView === 'function') {
+      chip.scrollIntoView({ inline: 'center', block: 'nearest' });
+    }
+  }, [variant, selectedId]);
+
   if (variant === 'chips') {
     return (
       <Box
@@ -34,6 +45,7 @@ export function CategoryNav({ categories, selectedId, variant }: CategoryNavProp
             return (
               <li key={c.id}>
                 <Chip
+                  ref={selected ? selectedChip : undefined}
                   component={Link}
                   to={categoryPath(c.id)}
                   clickable

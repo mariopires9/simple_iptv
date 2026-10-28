@@ -63,7 +63,9 @@ export interface ChannelAvatarProps {
 /** Decorative: the channel name is always next to it, so the image has an empty `alt`. */
 export function ChannelAvatar({ name, logo }: ChannelAvatarProps) {
   const theme = useTheme();
-  const [failed, setFailed] = useState(false);
+  // The logo that failed to load: a new `logo` (e.g. a recycled row) gets its own attempt.
+  const [failedLogo, setFailedLogo] = useState<string>();
+  const failed = failedLogo !== undefined && failedLogo === logo;
   const box = {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
@@ -82,7 +84,7 @@ export function ChannelAvatar({ name, logo }: ChannelAvatarProps) {
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
+        onError={() => setFailedLogo(logo)}
         sx={{ ...box, objectFit: 'contain', bgcolor: 'tokens.surface2' }}
       />
     );

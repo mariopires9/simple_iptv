@@ -69,19 +69,50 @@ export function concatPager(segments: readonly { key: string; count: number }[])
   };
 }
 
-/** Builds the pager of a category of the given source. */
+/**
+ * Per-category channel counts of "All", memoised for one (source, sync) at a time: switching to
+ * "All" would otherwise issue one count per source category every time. The catalogue only
+ * changes on a sync, which moves `lastSyncAt`, so that timestamp is part of the key.
+ */
+let allCounts: { key: string; counts: Promise<number[]> } | undefined;
+
+/** Forgets the memoised "All" counts (tests; a sync already invalidates them via `lastSyncAt`). */
+export function clearCountCache(): void {
+  allCounts = undefined;
+}
+
+function countsForAll(
+  sourceId: string,
+  syncStamp: number | undefined,
+  keys: readonly string[],
+): Promise<number[]> {
+  const key = [sourceId, syncStamp ?? 'never', ...keys].join('\n');
+  if (allCounts?.key !== key) {
+    const counts = Promise.all(keys.map((k) => catalogRepo.countByCategory('live', k)));
+    allCounts = { key, counts };
+    // A failed count is not memoised: the next attempt (Retry) counts again.
+    counts.catch(() => {
+      if (allCounts?.counts === counts) allCounts = undefined;
+    });
+  }
+  return allCounts.counts;
+}
+
+/**
+ * Builds the pager of a category of the given source. `syncStamp` (the source's `lastSyncAt`)
+ * versions the memoised counts of "All".
+ */
 export async function createPager(
   category: LiveCategory,
   sourceId: string,
   sourceCategoryKeys: readonly string[],
+  syncStamp?: number,
 ): Promise<ChannelPager> {
   switch (category.kind) {
     case 'source':
       return categoryPager(category.key, await catalogRepo.countByCategory('live', category.key));
     case 'all': {
-      const counts = await Promise.all(
-        sourceCategoryKeys.map((key) => catalogRepo.countByCategory('live', key)),
-      );
+      const counts = await countsForAll(sourceId, syncStamp, sourceCategoryKeys);
       return concatPager(sourceCategoryKeys.map((key, i) => ({ key, count: counts[i] ?? 0 })));
     }
     case 'favorites': {

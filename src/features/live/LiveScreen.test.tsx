@@ -331,6 +331,103 @@ describe('LiveScreen — keyboard (AC4)', () => {
   });
 });
 
+describe('LiveScreen — review fixes', () => {
+  it("keeps the active row's page while scrolling 2 000 rows away (read once; Enter works)", async () => {
+    stubDeepPages();
+    const spy = vi.mocked(catalogRepo.listByCategory);
+    const user = userEvent.setup();
+    const { router } = show('/live');
+    const list = await listbox('Channels in All');
+    await within(list).findByText('Channel 1');
+    list.focus();
+    // More than MAX_PAGES pages away from the active row (0), one page at a time.
+    for (let row = PAGE_SIZE; row <= 2_000; row += PAGE_SIZE) {
+      await act(async () => {
+        list.scrollTo({ top: row * CHANNEL_ROW_HEIGHT });
+      });
+      await within(list).findByText(`Channel ${row + 1}`, undefined, { timeout: 10_000 });
+    }
+    expect(Math.ceil(2_000 / PAGE_SIZE) + 1).toBeGreaterThan(MAX_PAGES);
+    const news = categoryKey(SOURCE_ID, 'live', '10');
+    expect(
+      spy.mock.calls.filter(([, catKey, page]) => catKey === news && (page?.offset ?? 0) === 0),
+    ).toHaveLength(1);
+    await user.keyboard('{Enter}');
+    expect(new URLSearchParams(router.state.location.search).get('channel')).toBe(key(1));
+    await user.keyboard('f');
+    expect(screen.getByText('Channel 1 added to favorites')).toBeInTheDocument();
+    await waitFor(async () => expect(await favoritesRepo.has(key(1))).toBe(true));
+  }, 30_000);
+
+  it('selecting channels replaces the history entry instead of pushing one per channel', async () => {
+    const user = userEvent.setup();
+    const { router } = show('/live/category/10');
+    const list = await listbox('Channels in News');
+    await within(list).findByText('Channel 1');
+    list.focus();
+    await user.keyboard('{Enter}{ArrowDown}{Enter}');
+    expect(router.state.historyAction).toBe('REPLACE');
+    expect(new URLSearchParams(router.state.location.search).get('channel')).toBe(key(2));
+  });
+
+  it('"Favorites" drops a removed channel, and shows the empty state after the last one', async () => {
+    await favoritesRepo.add(key(1), 1);
+    await favoritesRepo.add(key(2), 2);
+    const user = userEvent.setup();
+    show(`/live/category/~favorites`);
+    const list = await listbox('Channels in Favorites');
+    await within(list).findByText('Channel 2');
+    expect(options()).toHaveLength(2);
+    list.focus();
+    await user.keyboard('f');
+    await waitFor(() => expect(screen.queryByText('Channel 2')).toBeNull());
+    expect(options()).toHaveLength(1);
+    const again = await listbox('Channels in Favorites');
+    again.focus();
+    await user.keyboard('f');
+    expect(
+      await screen.findByRole('heading', { name: 'No favorite channels yet' }),
+    ).toBeInTheDocument();
+  });
+
+  it('rolls back to the confirmed state when add and then remove both fail', async () => {
+    const pending: { reject: (e: Error) => void }[] = [];
+    const deferred = () =>
+      new Promise<never>((_, reject) => {
+        pending.push({ reject });
+      });
+    vi.spyOn(favoritesRepo, 'add').mockImplementation(deferred);
+    vi.spyOn(favoritesRepo, 'remove').mockImplementation(deferred);
+    const user = userEvent.setup();
+    show('/live/category/10');
+    const list = await listbox('Channels in News');
+    await within(list).findByText('Channel 1');
+    list.focus();
+    await user.keyboard('fF'); // add, then remove, both in flight
+    expect(pending).toHaveLength(2);
+    await act(async () => {
+      pending[0]?.reject(new Error('quota'));
+      pending[1]?.reject(new Error('quota'));
+    });
+    expect(await screen.findByText("Couldn't update favorites for Channel 1")).toBeInTheDocument();
+    expect(within(option(1) as HTMLElement).queryByText(', Favorite')).toBeNull();
+  });
+
+  it('a failed remove after a successful add keeps the channel a favourite', async () => {
+    vi.spyOn(favoritesRepo, 'remove').mockRejectedValue(new Error('quota'));
+    const user = userEvent.setup();
+    show('/live/category/10');
+    const list = await listbox('Channels in News');
+    await within(list).findByText('Channel 1');
+    list.focus();
+    await user.keyboard('f');
+    await waitFor(async () => expect(await favoritesRepo.has(key(1))).toBe(true));
+    await user.keyboard('F');
+    expect(await screen.findByText("Couldn't update favorites for Channel 1")).toBeInTheDocument();
+    expect(within(option(1) as HTMLElement).getByText(', Favorite')).toBeInTheDocument();
+  });
+});
+
 describe('LiveScreen — states (AC5)', () => {
   it('an empty category shows the empty state', async () => {
     show('/live/category/40');

@@ -91,6 +91,7 @@ export function ChannelList({
   // Fetch the pages covering the viewport (plus overscan) and the active row — two separate
   // ranges, so jumping with End does not fetch every page in between.
   useEffect(() => {
+    cache.pin(active < total ? active : undefined);
     if (active < total) cache.ensure(active, active);
     // Last, so eviction keeps the pages around the viewport.
     if (lastIndex >= 0) cache.ensure(firstIndex, lastIndex);

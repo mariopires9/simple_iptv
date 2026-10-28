@@ -9,7 +9,7 @@ import Button from '@mui/material/Button';
 import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { favoritesRepo, type Channel } from '@/core/db';
 import { t } from '@/i18n';
@@ -20,7 +20,6 @@ import {
   errorDetails,
   visuallyHidden,
 } from '@/ui/state';
-import { navSize, pageMargin } from '@/ui/theme/tokens';
 import {
   DEFAULT_CATEGORY_ID,
   VIRTUAL_CATEGORY_IDS,
@@ -32,13 +31,14 @@ import { ChannelList } from './ChannelList';
 import { loadLiveSource, type LiveSourceState } from './liveSource';
 import { PageCache } from './pageCache';
 import { createPager } from './pagers';
+import { useFillHeight } from './useFillHeight';
 
-/** Height of the MUI bottom navigation on mobile (px). */
-const BOTTOM_NAV_HEIGHT = 56;
+/** Minimum height of the Live layout (px); below it the page scrolls. */
+const MIN_HEIGHT = 320;
 
 type PagerState =
-  | { key: string; status: 'ready'; cache: PageCache }
-  | { key: string; status: 'error'; error: unknown };
+  | { key: string; base: string; status: 'ready'; cache: PageCache }
+  | { key: string; base: string; status: 'error'; error: unknown };
 
 export function LiveScreen() {
   const { categoryId = DEFAULT_CATEGORY_ID } = useParams();
@@ -51,7 +51,12 @@ export function LiveScreen() {
   const [attempt, setAttempt] = useState(0);
   const [source, setSource] = useState<LiveSourceState>({ status: 'loading' });
   const [favorites, setFavorites] = useState<ReadonlySet<string>>(() => new Set());
+  // Latest favourites for the toggle handler (rapid toggles run before a re-render).
+  const favoritesRef = useRef(favorites);
+  // Bumped when a favourite write settles, so "Favorites" re-reads its (in-memory) list.
+  const [favoritesVersion, setFavoritesVersion] = useState(0);
   const [announcement, setAnnouncement] = useState('');
+  const { ref: fillRef, height } = useFillHeight(MIN_HEIGHT);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +64,10 @@ export function LiveScreen() {
       (next) => {
         if (cancelled) return;
         setSource(next);
-        if (next.status === 'ready') setFavorites(new Set(next.favoriteKeys));
+        if (next.status === 'ready') {
+          favoritesRef.current = new Set(next.favoriteKeys);
+          setFavorites(favoritesRef.current);
+        }
       },
       (error: unknown) => {
         if (!cancelled) setSource({ status: 'error', error });
@@ -73,67 +81,88 @@ export function LiveScreen() {
   const ready = source.status === 'ready' ? source : undefined;
   const category = ready?.categories.find((c) => c.id === categoryId);
 
-  // One pager per (source, category, attempt); a stale result is ignored by comparing keys.
+  // One pager per (source, category, attempt) — and, for "Favorites", per favourites change; a
+  // stale result is ignored by comparing keys. While "Favorites" is re-read, the previous pager of
+  // the same category (`base`) stays on screen instead of flashing the skeleton.
   const [pagerAttempt, setPagerAttempt] = useState(0);
-  const pagerKey = ready && category ? `${ready.source.id}\n${category.id}\n${pagerAttempt}` : '';
+  const pagerBase = ready && category ? `${ready.source.id}\n${category.id}\n${pagerAttempt}` : '';
+  const pagerKey = category?.kind === 'favorites' ? `${pagerBase}\n${favoritesVersion}` : pagerBase;
   const [pager, setPager] = useState<PagerState | undefined>();
   useEffect(() => {
     if (!ready || !category) return undefined;
     let cancelled = false;
-    createPager(category, ready.source.id, ready.sourceCategoryKeys).then(
+    const base = pagerBase;
+    createPager(category, ready.source.id, ready.sourceCategoryKeys, ready.source.lastSyncAt).then(
       (p) => {
-        if (!cancelled) setPager({ key: pagerKey, status: 'ready', cache: new PageCache(p) });
+        if (!cancelled) setPager({ key: pagerKey, base, status: 'ready', cache: new PageCache(p) });
       },
       (error: unknown) => {
-        if (!cancelled) setPager({ key: pagerKey, status: 'error', error });
+        if (!cancelled) setPager({ key: pagerKey, base, status: 'error', error });
       },
     );
     return () => {
       cancelled = true;
     };
-    // `pagerKey` already encodes source, category and attempt.
+    // `pagerKey` already encodes source, category, attempt (and the favourites version).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagerKey]);
-  const currentPager = pager?.key === pagerKey ? pager : undefined;
+  const currentPager =
+    pager?.key === pagerKey || (pager?.status === 'ready' && pager.base === pagerBase)
+      ? pager
+      : undefined;
 
   const onPageError = useCallback(
-    (error: unknown) => setPager({ key: pagerKey, status: 'error', error }),
-    [pagerKey],
+    (error: unknown) => setPager({ key: pagerKey, base: pagerBase, status: 'error', error }),
+    [pagerKey, pagerBase],
   );
 
   const onPlay = useCallback(
     (channel: Channel) => {
       // PLY-02/LIV-02 start playback from this URL; for now it only marks the selection.
-      navigate(`${categoryPath(categoryId)}?channel=${encodeURIComponent(channel.key)}`);
+      // Replace: picking channels must not stack one history entry per channel.
+      navigate(`${categoryPath(categoryId)}?channel=${encodeURIComponent(channel.key)}`, {
+        replace: true,
+      });
     },
     [navigate, categoryId],
   );
 
-  const onToggleFavorite = useCallback(
-    (channel: Channel) => {
-      const wasFavorite = favorites.has(channel.key);
-      const apply = (favorite: boolean) =>
-        setFavorites((current) => {
-          const next = new Set(current);
-          if (favorite) next.add(channel.key);
-          else next.delete(channel.key);
-          return next;
-        });
-      // Optimistic: the star changes at once; a failed write is rolled back and announced.
-      apply(!wasFavorite);
-      setAnnouncement(
-        wasFavorite ? t.live.favoriteRemoved(channel.name) : t.live.favoriteAdded(channel.name),
-      );
-      const write = wasFavorite
-        ? favoritesRepo.remove(channel.key)
-        : favoritesRepo.add(channel.key);
-      write.catch(() => {
-        apply(wasFavorite);
+  // Optimistic favourites: the star changes at once and the write runs in the background. Per
+  // channel we keep the last state confirmed by IndexedDB and a version per toggle, so a failure
+  // rolls back to the confirmed state — and only if no later toggle of that channel superseded it.
+  const confirmedFavorite = useRef(new Map<string, boolean>());
+  const toggleVersion = useRef(new Map<string, number>());
+  const onToggleFavorite = useCallback((channel: Channel) => {
+    const { key } = channel;
+    const wasFavorite = favoritesRef.current.has(key);
+    const favorite = !wasFavorite;
+    if (!confirmedFavorite.current.has(key)) confirmedFavorite.current.set(key, wasFavorite);
+    const version = (toggleVersion.current.get(key) ?? 0) + 1;
+    toggleVersion.current.set(key, version);
+    const apply = (value: boolean) => {
+      const next = new Set(favoritesRef.current);
+      if (value) next.add(key);
+      else next.delete(key);
+      favoritesRef.current = next;
+      setFavorites(next);
+    };
+    apply(favorite);
+    setAnnouncement(
+      favorite ? t.live.favoriteAdded(channel.name) : t.live.favoriteRemoved(channel.name),
+    );
+    const write = favorite ? favoritesRepo.add(key) : favoritesRepo.remove(key);
+    write.then(
+      () => {
+        confirmedFavorite.current.set(key, favorite);
+        setFavoritesVersion((n) => n + 1);
+      },
+      () => {
+        if (toggleVersion.current.get(key) !== version) return;
+        apply(confirmedFavorite.current.get(key) ?? wasFavorite);
         setAnnouncement(t.live.favoriteFailed(channel.name));
-      });
-    },
-    [favorites],
-  );
+      },
+    );
+  }, []);
 
   const retrySource = () => {
     setSource({ status: 'loading' });
@@ -210,17 +239,10 @@ export function LiveScreen() {
 
   return (
     <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 1,
-        minHeight: 320,
-        height: {
-          xs: `calc(100dvh - ${navSize.topBar + BOTTOM_NAV_HEIGHT + 2 * pageMargin.mobile}px)`,
-          sm: `calc(100dvh - ${navSize.topBar + 2 * pageMargin.tablet}px)`,
-          lg: `calc(100dvh - ${navSize.topBar + 2 * pageMargin.desktop}px)`,
-        },
-      }}
+      ref={fillRef}
+      // Fills the free space of <main> (measured, see useFillHeight); the list scrolls inside.
+      style={height !== undefined ? { height } : undefined}
+      sx={{ display: 'flex', flexDirection: 'column', gap: 1, minHeight: MIN_HEIGHT }}
     >
       <Typography variant="h3" component="h1" sx={isTablet ? undefined : visuallyHidden}>
         {t.live.title}
