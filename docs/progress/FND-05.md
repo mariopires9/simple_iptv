@@ -1,24 +1,24 @@
-# FND-05 — Camada de persistência (Dexie)
+# FND-05 — Persistence layer (Dexie)
 
-**Estado:** Done (2026-10-28) · agente `implementer` (worktree) · revisão: `/code-review`
+**Status:** Done (2026-10-28) · agent `implementer` (worktree) · review: `/code-review`
 
-## Entregue
-- `src/core/db`: schema v1 (13 tabelas), `openDatabase`/`closeDatabase`/`wipeAll`, `DatabaseUnavailableError`, `DatabaseClosedError`, helpers de chaves, repositórios `sourcesRepo`, `catalogRepo`, `favoritesRepo`, `historyRepo`, `settingsRepo`, `vaultStore`.
-- `src/i18n/pt-PT/db.ts`: mensagens de erro da base de dados (ADR-012).
+## Delivered
+- `src/core/db`: schema v1 (13 tables), `openDatabase`/`closeDatabase`/`wipeAll`, `DatabaseUnavailableError`, `DatabaseClosedError`, key helpers, repositories `sourcesRepo`, `catalogRepo`, `favoritesRepo`, `historyRepo`, `settingsRepo`, `vaultStore`.
+- `src/i18n/pt-PT/db.ts`: database error messages (ADR-012).
 
-## Revisão
-`/code-review`: 10 achados, todos corrigidos com testes — concorrência abrir/fechar/apagar (contador de geração), `historyRepo.upsert` funde em vez de substituir, paginação real com índice `[categoryKey+order]` (substitui `[sourceId+categoryKey]`), `normalizeName` só remove marcas combinantes, deduplicação e contagens reais em `replaceForSource`, texto pt-PT movido para i18n, chaves de categoria rejeitadas como chaves de item, ramo `version` inalcançável removido.
+## Review
+`/code-review`: 10 findings, all fixed with tests — open/close/wipe concurrency (generation counter), `historyRepo.upsert` merges instead of replacing, real pagination with the `[categoryKey+order]` index (replaces `[sourceId+categoryKey]`), `normalizeName` only strips combining marks, deduplication and real counts in `replaceForSource`, pt-PT text moved to i18n, category keys rejected as item keys, unreachable `version` branch removed.
 
-## Verificação dos CA
-| CA | Resultado | Evidência |
+## AC verification
+| AC | Result | Evidence |
 |---|---|---|
-| 1. Base `simple-iptv` v1 com tabelas e índices | Cumprido | teste via API IndexedDB crua |
-| 2. Repositórios tipados; sem `db.table()` nas features | Cumprido | `index.test.ts` analisa `src/` |
-| 3. 100k itens numa transação, antigos removidos | Cumprido | 1,7–2,8 s em Node com fake-indexeddb (não é medição de browser) |
-| 4. Remoção em cascata | Cumprido | teste com duas fontes |
-| 5. IndexedDB indisponível → erro tipado | Cumprido | `unsupported`, `open-failed`, `timeout` |
+| 1. `simple-iptv` v1 database with tables and indexes | Met | test via the raw IndexedDB API |
+| 2. Typed repositories; no `db.table()` in features | Met | `index.test.ts` scans `src/` |
+| 3. 100k items in one transaction, old ones removed | Met | 1.7–2.8 s in Node with fake-indexeddb (not a browser measurement) |
+| 4. Cascading removal | Met | test with two sources |
+| 5. IndexedDB unavailable → typed error | Met | `unsupported`, `open-failed`, `timeout` |
 
-## Riscos / pendências
-- A ligação do erro à UI (ecrã de erro em vez de ecrã em branco) é feita em FND-04/UX-02.
-- `epgPrograms` apaga por índice `sourceId` (mais lento); tabela só usada pós-MVP.
-- Desempenho real em browser a medir em QA-03/DEP-02.
+## Risks / open items
+- Wiring the error to the UI (error screen instead of a blank screen) is done in FND-04/UX-02.
+- `epgPrograms` deletes by the `sourceId` index (slower); table only used post-MVP.
+- Real browser performance to be measured in QA-03/DEP-02.

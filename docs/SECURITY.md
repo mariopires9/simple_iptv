@@ -1,54 +1,56 @@
-# Segurança, privacidade e limites legais
+# Security, privacy and legal limits
 
-## 1. Modelo de ameaças (resumo)
-| Ativo | Ameaça | Mitigação | Risco residual |
+## 1. Threat model (summary)
+| Asset | Threat | Mitigation | Residual risk |
 |---|---|---|---|
-| Credenciais Xtream / URLs M3U | Leitura dos dados da app (backup, cópia de perfil, ferramenta forense casual) | AES-GCM com chave não exportável (ADR-006) | Quem usa o dispositivo desbloqueado na mesma origem consegue usar as credenciais |
-| Credenciais | XSS via metadados/listas maliciosas | Renderização só como texto, CSP sem `unsafe-eval`/scripts externos, lint contra `dangerouslySetInnerHTML`, validação de URLs | Vulnerabilidade numa dependência |
-| Credenciais | Exposição em logs/erros/relatórios | Redação central (FND-06), testes de propriedade | — |
-| Credenciais | Visíveis nos URLs dos streams (protocolo Xtream) | Inerente ao protocolo; documentado | Visíveis em DevTools e para o servidor IPTV/proxy |
-| Credenciais | Fuga de `Referer` para terceiros | `no-referrer` | — |
-| Privacidade | Telemetria/rastreamento | Nenhum analytics; fontes auto-alojadas; teste E2E de allowlist de domínios | — |
-| Integridade | Dependência comprometida (supply chain) | Lockfile, `npm ci`, Dependabot, audit, Actions fixadas por SHA, poucas dependências | Não eliminável |
-| Disponibilidade | Lista enorme/maliciosa (DoS local) | Parsing em worker, limites (tamanho de linha 64 KB, nº de entradas configurável, aviso > 50 MB) | — |
+| Xtream credentials / M3U URLs | Reading of app data (backup, profile copy, casual forensic tool) | AES-GCM with non-exportable key (ADR-006) | Anyone using the unlocked device on the same origin can use the credentials |
+| Credentials | XSS via malicious metadata/lists | Rendering as text only, CSP without `unsafe-eval`/external scripts, lint against `dangerouslySetInnerHTML`, URL validation | Vulnerability in a dependency |
+| Credentials | Exposure in logs/errors/reports | Central redaction (FND-06), property tests | — |
+| Credentials | Visible in stream URLs (Xtream protocol) | Inherent to the protocol; documented | Visible in DevTools and to the IPTV server/proxy |
+| Credentials | `Referer` leak to third parties | `no-referrer` | — |
+| Privacy | Telemetry/tracking | No analytics; self-hosted fonts; E2E domain allowlist test | — |
+| Integrity | Compromised dependency (supply chain) | Lockfile, `npm ci`, Dependabot, audit, Actions pinned by SHA, few dependencies | Cannot be eliminated |
+| Availability | Huge/malicious list (local DoS) | Parsing in a worker, limits (64 KB line length, configurable number of entries, warning > 50 MB) | — |
 
-## 2. Armazenamento de credenciais — o que dizemos ao utilizador (texto para UX-04)
-> "As tuas credenciais ficam apenas neste dispositivo, cifradas. Isto impede leituras casuais dos dados da app, mas **não** protege contra quem tenha acesso ao teu dispositivo desbloqueado. As credenciais também fazem parte dos endereços dos canais, que são enviados ao teu fornecedor. Podes apagar tudo em Definições › Privacidade."
+## 2. Credential storage — what we tell the user (text for UX-04)
+> "Your credentials are stored only on this device, encrypted. This prevents casual reading of the app's data, but does **not** protect against someone with access to your unlocked device. Your credentials are also part of the channel addresses, which are sent to your provider. You can delete everything in Settings › Privacy."
 
-Limitações documentadas:
-- Os URLs de streams de listas M3U ficam guardados **sem cifra** (custo de cifrar dezenas de milhares de URLs). Se a lista for de um servidor Xtream (`get.php`), a app propõe convertê-la numa fonte Xtream, onde só a palavra-passe é guardada (cifrada).
-- Uma aplicação client-side **não consegue** esconder credenciais do próprio utilizador nem do browser.
+The pt-PT version of this text lives in `src/i18n/pt-PT/`.
 
-## 3. Importação de listas e URLs
-- Esquemas aceites: `http:` e `https:` apenas. Rejeitados: `javascript:`, `data:`, `file:`, `blob:` externos, `ftp:`, etc.
-- URLs com `user:pass@host` são aceites para reprodução, mas nunca mostrados por inteiro na UI.
-- Nomes, grupos, sinopses: texto puro; comprimento máximo truncado (ex.: 512 chars nome, 8 KB sinopse).
-- Imagens externas: `<img>` com `referrerpolicy="no-referrer"`, sem `crossorigin` (evita CORS); falhas → fallback.
-- Ficheiros importados (M3U, export JSON): tratados como não confiáveis, validados por schema.
+Documented limitations:
+- Stream URLs from M3U lists are stored **unencrypted** (cost of encrypting tens of thousands of URLs). If the list comes from an Xtream server (`get.php`), the app offers to convert it into an Xtream source, where only the password is stored (encrypted).
+- A client-side application **cannot** hide credentials from the user themselves or from the browser.
 
-## 4. SSRF e proxy (só se PRX-01 avançar)
-O MVP não tem backend → não há SSRF do nosso lado. O proxy de referência, se criado, terá de: exigir token; aplicar allowlist de hosts definida pelo dono; bloquear IPs privados/loopback/link-local e metadados de cloud (169.254.169.254) **após** resolução DNS; limitar métodos a GET/HEAD; não registar URLs nem query strings; limitar taxa. Documentação a avisar contra expor o proxy publicamente sem token.
+## 3. Importing lists and URLs
+- Accepted schemes: `http:` and `https:` only. Rejected: `javascript:`, `data:`, `file:`, external `blob:`, `ftp:`, etc.
+- URLs with `user:pass@host` are accepted for playback, but never shown in full in the UI.
+- Names, groups, synopses: plain text; truncated to a maximum length (e.g. 512 chars for names, 8 KB for synopses).
+- External images: `<img>` with `referrerpolicy="no-referrer"`, without `crossorigin` (avoids CORS); failures → fallback.
+- Imported files (M3U, JSON export): treated as untrusted, validated by schema.
 
-## 5. Dependências e licenças
-- Allowlist de licenças no CI (FND-02). Todas as dependências previstas são MIT/Apache-2.0/ISC/OFL.
-- Codecs: a app **não distribui codecs**; usa os do browser/SO. Não há encargos de licenciamento de H.264/HEVC/AAC/AC-3 para a app (são responsabilidade do browser/SO).
-- hls.js e mpegts.js: Apache-2.0 → incluir aviso de licença em "Sobre › Licenças".
+## 4. SSRF and proxy (only if PRX-01 goes ahead)
+The MVP has no backend → there is no SSRF on our side. The reference proxy, if created, must: require a token; apply an owner-defined host allowlist; block private/loopback/link-local IPs and cloud metadata (169.254.169.254) **after** DNS resolution; restrict methods to GET/HEAD; not log URLs or query strings; rate-limit. Documentation must warn against exposing the proxy publicly without a token.
 
-## 6. Permissões da PWA
-Nenhuma permissão sensível pedida. Usadas apenas: armazenamento persistente (`storage.persist`), ecrã inteiro, PiP, orientação (opcional). **Não** pedidas: notificações, localização, câmara, microfone, rede local (exceto, no futuro, se o utilizador configurar um proxy na LAN — Chrome LNA).
+## 5. Dependencies and licenses
+- License allowlist in CI (FND-02). All planned dependencies are MIT/Apache-2.0/ISC/OFL.
+- Codecs: the app **does not distribute codecs**; it uses those of the browser/OS. There are no H.264/HEVC/AAC/AC-3 licensing fees for the app (they are the responsibility of the browser/OS).
+- hls.js and mpegts.js: Apache-2.0 → include the license notice in "About › Licenses".
 
-## 7. Eliminação de dados
-- "Apagar todos os dados" (SRC-10): IndexedDB (inclui chave do vault), Cache Storage de dados, `localStorage`/`sessionStorage` se usados. O utilizador pode ainda desinstalar a PWA ou limpar dados do site no browser.
-- Remover fonte apaga em cascata os dados dessa fonte.
+## 6. PWA permissions
+No sensitive permissions are requested. Used only: persistent storage (`storage.persist`), fullscreen, PiP, orientation (optional). **Not** requested: notifications, location, camera, microphone, local network (except, in the future, if the user configures a proxy on the LAN — Chrome LNA).
 
-## 8. Limites legais e posicionamento
-- A app é um **leitor genérico** (como VLC ou um browser): não fornece, aloja, indexa nem sugere conteúdos ou listas.
-- Não inclui listas de terceiros, nem diretórios, nem pesquisa de listas públicas.
-- Não implementa nem contorna DRM, autenticação ou restrições geográficas.
-- Não grava nem descarrega streams.
-- Aviso no onboarding e em "Sobre": "Usa apenas fontes e conteúdos que tens autorização para aceder."
-- Distinção: o **alojamento da app** (gratuito, GitHub Pages) é independente dos **serviços IPTV** do utilizador, que têm os seus próprios custos, termos e limitações (ex.: número máximo de ligações).
-- Nome e identidade visual próprios; não usar marcas, ícones ou capturas de outras apps (inclui "Smarters").
+## 7. Data deletion
+- "Delete all data" (SRC-10): IndexedDB (includes the vault key), data Cache Storage, `localStorage`/`sessionStorage` if used. The user can also uninstall the PWA or clear the site data in the browser.
+- Removing a source deletes that source's data in cascade.
 
-## 9. Checklist de segurança por story sensível
-Stories que tocam `core/crypto`, `core/net`, `core/log`, `providers/*`, parsers, CSP ou SW exigem `/security-review` além de `/code-review`, e testes de regressão para cada achado corrigido.
+## 8. Legal limits and positioning
+- The app is a **generic player** (like VLC or a browser): it does not provide, host, index or suggest content or lists.
+- It does not include third-party lists, directories, or search of public lists.
+- It does not implement or bypass DRM, authentication or geographic restrictions.
+- It does not record or download streams.
+- Notice in onboarding and in "About": "Use only sources and content you are authorized to access." (the pt-PT version lives in `src/i18n/pt-PT/`).
+- Distinction: the **app hosting** (free, GitHub Pages) is independent of the user's **IPTV services**, which have their own costs, terms and limitations (e.g. maximum number of connections).
+- Own name and visual identity; do not use trademarks, icons or screenshots of other apps (including "Smarters").
+
+## 9. Security checklist per sensitive story
+Stories that touch `core/crypto`, `core/net`, `core/log`, `providers/*`, parsers, CSP or SW require `/security-review` in addition to `/code-review`, plus regression tests for every fixed finding.

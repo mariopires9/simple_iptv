@@ -1,48 +1,48 @@
-# Publicação e alojamento
+# Publishing and hosting
 
-> Nada foi publicado nem configurado. Este documento descreve o que será feito em DEP-01, **após aprovação explícita do utilizador**.
+> Nothing has been published or configured. This document describes what will be done in DEP-01, **after explicit user approval**.
 
-## 1. Decisão (ADR-007 aceite em 2026-10-28)
-**GitHub Pages via GitHub Actions** — o utilizador já tem conta GitHub; não cria contas novas; HTTPS e domínio `https://<utilizador>.github.io/<repo>/` incluídos; limites (1 GB de site, 100 GB/mês soft) muito acima do necessário, porque o vídeo nunca passa pelo alojamento.
+## 1. Decision (ADR-007 accepted on 2026-10-28)
+**GitHub Pages via GitHub Actions** — the user already has a GitHub account; no new accounts are created; HTTPS and the `https://<user>.github.io/<repo>/` domain are included; limits (1 GB site, 100 GB/month soft) are far above what is needed, because video never goes through the hosting.
 
-**Alternativa:** Cloudflare Pages (ou Workers static assets), se forem necessários headers HTTP próprios (CSP por header, `frame-ancestors`), repositório privado, ou um proxy em Workers. Vercel e Supabase avaliados e não recomendados (ver `RESEARCH.md §10.1`).
+**Alternative:** Cloudflare Pages (or Workers static assets), if custom HTTP headers (CSP via header, `frame-ancestors`), a private repository, or a proxy on Workers are needed. Vercel and Supabase were evaluated and not recommended (see `RESEARCH.md §10.1`).
 
-Comparação completa: `RESEARCH.md §10`.
+Full comparison: `RESEARCH.md §10`.
 
-## 2. Configuração prevista (DEP-01)
-1. Repositório público `simple_iptv` (nome a confirmar).
+## 2. Planned configuration (DEP-01)
+1. Public repository `simple_iptv` (name to be confirmed).
 2. Settings › Pages › Source: **GitHub Actions**.
 3. Workflow `.github/workflows/deploy.yml`:
-   - Trigger: `push` em `main` (após CI verde) e `workflow_dispatch`.
-   - Jobs: `npm ci` → `npm run build` (com `VITE_BASE=/<repo>/`) → `actions/upload-pages-artifact` → `actions/deploy-pages`.
-   - Permissões mínimas: `pages: write`, `id-token: write`, `contents: read`.
-   - Actions fixadas por SHA.
-4. `vite.config.ts`: `base: process.env.VITE_BASE ?? '/'`; manifesto com `start_url`/`scope` relativos ao base.
-5. Router em modo hash (ADR-007) → sem necessidade de `404.html`.
-6. CSP via `<meta>` (sem headers no Pages).
-7. Smoke E2E contra o URL publicado (job pós-deploy, só leitura).
+   - Trigger: `push` on `main` (after green CI) and `workflow_dispatch`.
+   - Jobs: `npm ci` → `npm run build` (with `VITE_BASE=/<repo>/`) → `actions/upload-pages-artifact` → `actions/deploy-pages`.
+   - Minimal permissions: `pages: write`, `id-token: write`, `contents: read`.
+   - Actions pinned by SHA.
+4. `vite.config.ts`: `base: process.env.VITE_BASE ?? '/'`; manifest with `start_url`/`scope` relative to the base.
+5. Router in hash mode (ADR-007) → no need for `404.html`.
+6. CSP via `<meta>` (no headers on Pages).
+7. E2E smoke test against the published URL (post-deploy job, read-only).
 
-## 3. Ambientes
-| Ambiente | Como | Uso |
+## 3. Environments
+| Environment | How | Use |
 |---|---|---|
-| Local | `npm run dev` (http://localhost — contexto seguro) | Desenvolvimento |
-| Preview local | `npm run build && npm run preview` | Testar SW/PWA |
-| Produção | GitHub Pages | Utilização |
-| Previews por PR | Não disponível no Pages; opcional com Cloudflare Pages no futuro | — |
+| Local | `npm run dev` (http://localhost — secure context) | Development |
+| Local preview | `npm run build && npm run preview` | Testing SW/PWA |
+| Production | GitHub Pages | Usage |
+| Per-PR previews | Not available on Pages; optional with Cloudflare Pages in the future | — |
 
-## 4. Atualizações e rollback
-- Cada deploy é uma build imutável; o SW deteta nova versão e pede ao utilizador para atualizar (PWA-03).
-- Rollback: `git revert` + push (novo deploy) ou re-executar o workflow num commit anterior.
-- Migrações IndexedDB devem ser compatíveis para a frente; nunca apagar dados do utilizador numa migração sem aviso.
+## 4. Updates and rollback
+- Each deploy is an immutable build; the SW detects a new version and asks the user to update (PWA-03).
+- Rollback: `git revert` + push (new deploy) or re-run the workflow on an earlier commit.
+- IndexedDB migrations must be forward-compatible; never delete user data in a migration without warning.
 
-## 5. Custos
-| Item | Custo |
+## 5. Costs
+| Item | Cost |
 |---|---|
-| Alojamento GitHub Pages | 0 € |
-| GitHub Actions (repo público) | 0 € |
-| Domínio | 0 € (`github.io`); domínio próprio opcional (~10 €/ano) |
-| Serviço IPTV | Do utilizador, independente da app |
+| GitHub Pages hosting | 0 € |
+| GitHub Actions (public repo) | 0 € |
+| Domain | 0 € (`github.io`); optional custom domain (~10 €/year) |
+| IPTV service | The user's own, independent of the app |
 
-## 6. Riscos de plataforma
-- Alterações aos planos gratuitos: a app é estática e portável (Cloudflare Pages, Netlify, GitLab Pages) com alterações mínimas (`base` e workflow).
-- GitHub Pages proíbe usos como serviço comercial de alojamento de ficheiros/vídeo — não se aplica: só servimos a app.
+## 6. Platform risks
+- Changes to free plans: the app is static and portable (Cloudflare Pages, Netlify, GitLab Pages) with minimal changes (`base` and workflow).
+- GitHub Pages prohibits use as a commercial file/video hosting service — does not apply: we only serve the app.

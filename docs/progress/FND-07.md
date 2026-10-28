@@ -1,22 +1,22 @@
-# FND-07 — Infraestrutura de Web Worker
+# FND-07 — Web Worker infrastructure
 
-**Estado:** Done (2026-10-28) · agente `implementer` (worktree) · revisão: `/code-review`
+**Status:** Done (2026-10-28) · agent `implementer` (worktree) · review: `/code-review`
 
-## Entregue
-- `src/core/worker`: `createDataWorkerApi`, `data.worker.ts`, cliente `getDataWorker`/`runTask`/`terminateDataWorker`, `WorkerTaskError` (`cancelled`|`failed`), registo de tarefas com tipos derivados, tarefa demo `selfTest`.
-- Progresso com throttle de 50 ms por `MessageChannel` próprio (porta fechada em todos os caminhos); cancelamento imediato por `AbortSignal`.
-- `vite.config.ts`: `worker.format: 'es'` (coordenador).
+## Delivered
+- `src/core/worker`: `createDataWorkerApi`, `data.worker.ts`, client `getDataWorker`/`runTask`/`terminateDataWorker`, `WorkerTaskError` (`cancelled`|`failed`), task registry with derived types, demo task `selfTest`.
+- Progress throttled to 50 ms over a dedicated `MessageChannel` (port closed on all paths); immediate cancellation via `AbortSignal`.
+- `vite.config.ts`: `worker.format: 'es'` (coordinator).
 
-## Revisão
-- `/code-review`: 9 achados; 7 corrigidos com testes (só mensagens de `WorkerTaskError` atravessam a fronteira; erros/morte do worker rejeitam chamadas pendentes e recriam o worker; abort rejeita de imediato; ordem aborted→ok; fuga de portas; flush com timeout; `AbortError` → `cancelled`).
-- Não corrigidos, justificados: mensagens são diagnóstico (a UI mapeia `kind` para strings de `src/i18n`); RELEASE do proxy sem resposta é inofensivo.
+## Review
+- `/code-review`: 9 findings; 7 fixed with tests (only `WorkerTaskError` messages cross the boundary; worker errors/death reject pending calls and recreate the worker; abort rejects immediately; aborted→ok ordering; port leaks; flush with timeout; `AbortError` → `cancelled`).
+- Not fixed, justified: messages are diagnostic (the UI maps `kind` to strings from `src/i18n`); unanswered proxy RELEASE is harmless.
 
-## Verificação dos CA
-| CA | Resultado | Evidência |
+## AC verification
+| AC | Result | Evidence |
 |---|---|---|
-| 1. Comlink com progresso e cancelamento | Cumprido | `worker.test.ts` (27 testes, MessageChannel real) |
-| 2. Erros com `kind`, sem dados sensíveis | Cumprido | testes de envelope (só `name/kind/message`) |
-| 3. Chunk separado em produção | Cumprido | build com import temporário: `data.worker-*.js 6.28 kB` (formato ES) |
+| 1. Comlink with progress and cancellation | Met | `worker.test.ts` (27 tests, real MessageChannel) |
+| 2. Errors with `kind`, no sensitive data | Met | envelope tests (only `name/kind/message`) |
+| 3. Separate chunk in production | Met | build with a temporary import: `data.worker-*.js 6.28 kB` (ES format) |
 
-## Riscos
-- Cancelamento cooperativo: tarefas que não chamam `throwIfCancelled()` atrasam as seguintes no worker único.
+## Risks
+- Cooperative cancellation: tasks that do not call `throwIfCancelled()` delay subsequent ones in the single worker.

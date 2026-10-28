@@ -1,77 +1,77 @@
-# Plano de testes e qualidade
+# Test and quality plan
 
-## 1. Pirâmide e ferramentas
-| Nível | Ferramenta | Alvo | Onde corre |
+## 1. Pyramid and tools
+| Level | Tool | Target | Where it runs |
 |---|---|---|---|
-| Unitário | Vitest 5 + jsdom | Parsers, normalizadores, schemas, redação, seleção de engine, lógica de retomar/zapping | Local + CI |
-| Componente | Testing Library | Formulários, listas, leitor (media mock), estados | Local + CI |
-| Integração | Vitest + MSW + `fake-indexeddb` | Cliente Xtream → worker → Dexie; import M3U → índice | Local + CI |
-| Propriedades | fast-check | Parser M3U nunca lança exceção; redação nunca deixa passar segredos | CI |
-| E2E | Playwright 1.64 (Chromium, WebKit, Firefox; viewports 390×844, 820×1180, 1440×900) | Fluxos críticos, PWA, offline | CI |
-| Acessibilidade | `@axe-core/playwright` + manual (NVDA, VoiceOver) | Todas as rotas | CI + manual |
-| Desempenho | Lighthouse CI, `size-limit`, traços Playwright, benchmarks Vitest (`bench`) | NFR-01..05 | CI (budgets) |
-| Segurança | `npm audit`, licenças, ESLint security rules, testes XSS, `/security-review` | Dependências e código | CI + por story sensível |
-| Manual | Checklist §5 | Dispositivos reais | Antes da release |
+| Unit | Vitest 5 + jsdom | Parsers, normalizers, schemas, redaction, engine selection, resume/zapping logic | Local + CI |
+| Component | Testing Library | Forms, lists, player (media mock), states | Local + CI |
+| Integration | Vitest + MSW + `fake-indexeddb` | Xtream client → worker → Dexie; M3U import → index | Local + CI |
+| Property | fast-check | M3U parser never throws; redaction never lets secrets through | CI |
+| E2E | Playwright 1.64 (Chromium, WebKit, Firefox; viewports 390×844, 820×1180, 1440×900) | Critical flows, PWA, offline | CI |
+| Accessibility | `@axe-core/playwright` + manual (NVDA, VoiceOver) | All routes | CI + manual |
+| Performance | Lighthouse CI, `size-limit`, Playwright traces, Vitest benchmarks (`bench`) | NFR-01..05 | CI (budgets) |
+| Security | `npm audit`, licenses, ESLint security rules, XSS tests, `/security-review` | Dependencies and code | CI + per sensitive story |
+| Manual | Checklist §5 | Real devices | Before release |
 
-Cobertura mínima: 80 % linhas em `core/`, `providers/`, `player/select*`; sem meta global (evitar testes vazios).
+Minimum coverage: 80 % lines in `core/`, `providers/`, `player/select*`; no global target (avoid empty tests).
 
-## 2. Dados de teste
-- `fixtures/xtream/`: `auth-ok.json`, `auth-fail.json`, `expired.json`, `live-streams-variantA/B/C.json`, `series-info-episodes-array.json`, `series-info-episodes-object.json`, `short-epg.json` (base64), números como string, campos `null`.
-- `fixtures/m3u/`: `basic.m3u`, `attributes-edge-cases.m3u`, `crlf-bom.m3u`, `malicious.m3u` (`javascript:` URLs, `<script>` em nomes, atributos gigantes), gerador de 50k/200k entradas.
-- `fixtures/xmltv/`: pequeno, `.gz`, entidades/CDATA, fusos.
-- Streams: gerados por ffmpeg (testsrc + sine), licença própria; servidor local de testes com CORS ligável e modo "lento"/"erro 500"/"redirect 302".
-- **Nunca** dados ou URLs de fornecedores reais em fixtures ou logs de CI.
+## 2. Test data
+- `fixtures/xtream/`: `auth-ok.json`, `auth-fail.json`, `expired.json`, `live-streams-variantA/B/C.json`, `series-info-episodes-array.json`, `series-info-episodes-object.json`, `short-epg.json` (base64), numbers as strings, `null` fields.
+- `fixtures/m3u/`: `basic.m3u`, `attributes-edge-cases.m3u`, `crlf-bom.m3u`, `malicious.m3u` (`javascript:` URLs, `<script>` in names, huge attributes), generator for 50k/200k entries.
+- `fixtures/xmltv/`: small, `.gz`, entities/CDATA, time zones.
+- Streams: generated with ffmpeg (testsrc + sine), own license; local test server with toggleable CORS and "slow"/"error 500"/"redirect 302" modes.
+- **Never** real provider data or URLs in fixtures or CI logs.
 
-## 3. Matriz de testes por área
-| Área | Casos essenciais |
+## 3. Test matrix by area
+| Area | Essential cases |
 |---|---|
-| Parser M3U | atributos com/sem aspas; vírgulas no nome; EXTGRP; BOM; CRLF; vazio; sem `#EXTM3U`; URL inválido; 50k performance; streaming parcial (chunk corta linha a meio) |
-| Xtream | normalização de URL; auth ok/falha/expirado/banido; 401/403/404/500/timeout; JSON inválido; HTML em vez de JSON; `allowed_output_formats`; `https_port` |
-| Erros de rede | mapeamento `TypeError`→`blocked` com hint mixed-content vs cors; abort; offline |
-| Vault | cifra/decifra; IV único; chave não exportável; wipe; chave perdida → fluxo de recuperação |
-| Persistência | replaceForSource atómico; remoção em cascata; favoritos persistem após resync; migração v1→v2 (quando existir) |
-| Leitor | matriz `selectEngine` (container × capacidades × browser); destroy sem fugas (contagem de listeners/ObjectURLs); fallback .ts→.m3u8; erro de codec AC-3; retry com backoff; zapping rápido aborta pedidos |
-| EPG | base64 UTF-8; timestamps/fusos; ausência de EPG; (v1.1) XMLTV gz, janela, matching |
-| Pesquisa | acentos; prefixo; fuzzy; números de canal; 100k < 100 ms |
-| PWA | instalabilidade (Lighthouse); precache; offline abre app; **Cache Storage sem URLs com credenciais**; prompt de atualização não interrompe reprodução |
-| Responsividade | 3 viewports × rotas principais (screenshots de regressão visual opcionais) |
-| A11y | axe por rota; fluxo só-teclado; foco visível; contraste dos tokens |
-| Segurança | M3U malicioso não executa código; CSP presente; `no-referrer`; logs redigidos (snapshot); nenhuma requisição a domínios inesperados (Playwright `page.on('request')` com allowlist) |
+| M3U parser | quoted/unquoted attributes; commas in the name; EXTGRP; BOM; CRLF; empty; no `#EXTM3U`; invalid URL; 50k performance; partial streaming (chunk splits a line in the middle) |
+| Xtream | URL normalization; auth ok/failed/expired/banned; 401/403/404/500/timeout; invalid JSON; HTML instead of JSON; `allowed_output_formats`; `https_port` |
+| Network errors | mapping `TypeError`→`blocked` with mixed-content vs cors hint; abort; offline |
+| Vault | encrypt/decrypt; unique IV; non-exportable key; wipe; lost key → recovery flow |
+| Persistence | atomic replaceForSource; cascading removal; favorites persist after resync; v1→v2 migration (when it exists) |
+| Player | `selectEngine` matrix (container × capabilities × browser); destroy without leaks (listener/ObjectURL count); .ts→.m3u8 fallback; AC-3 codec error; retry with backoff; fast zapping aborts requests |
+| EPG | base64 UTF-8; timestamps/time zones; missing EPG; (v1.1) XMLTV gz, window, matching |
+| Search | accents; prefix; fuzzy; channel numbers; 100k < 100 ms |
+| PWA | installability (Lighthouse); precache; offline opens the app; **Cache Storage without URLs containing credentials**; update prompt does not interrupt playback |
+| Responsiveness | 3 viewports × main routes (optional visual regression screenshots) |
+| A11y | axe per route; keyboard-only flow; visible focus; token contrast |
+| Security | malicious M3U does not execute code; CSP present; `no-referrer`; redacted logs (snapshot); no requests to unexpected domains (Playwright `page.on('request')` with allowlist) |
 
-## 4. Critérios mensuráveis (metas)
-| Métrica | Meta | Medição |
+## 4. Measurable criteria (targets)
+| Metric | Target | Measurement |
 |---|---|---|
-| Arranque repetido (SW ativo) | Ecrã útil < 1,0 s (Android médio) / < 0,5 s desktop | Playwright + `performance.mark('app-ready')` com CPU throttling 4× |
-| Primeiro carregamento | LCP < 2,5 s; TBT < 200 ms | Lighthouse mobile |
-| JS inicial | ≤ 200 KB gz | size-limit |
-| Mudar de ecrã (dados locais) | < 150 ms até conteúdo | `performance.measure` |
-| Scroll 20k canais | 0 long tasks > 50 ms; ≥ 55 fps | traço Playwright |
-| Filtro/pesquisa | < 100 ms (100k itens) | bench |
-| Parse M3U 50k | < 5 s Android médio (≈ < 1,5 s desktop com 4× throttling como proxy) | bench |
-| Zapping (stream local de teste) | primeiro frame < 1,5 s | E2E (`loadeddata`) |
-| Zapping (fornecedor real) | registar p50/p75 — **sem meta garantida** | manual DEP-02 |
+| Repeat startup (SW active) | Usable screen < 1.0 s (mid-range Android) / < 0.5 s desktop | Playwright + `performance.mark('app-ready')` with 4× CPU throttling |
+| First load | LCP < 2.5 s; TBT < 200 ms | Lighthouse mobile |
+| Initial JS | ≤ 200 KB gz | size-limit |
+| Screen change (local data) | < 150 ms to content | `performance.measure` |
+| Scroll 20k channels | 0 long tasks > 50 ms; ≥ 55 fps | Playwright trace |
+| Filter/search | < 100 ms (100k items) | bench |
+| M3U parse 50k | < 5 s mid-range Android (≈ < 1.5 s desktop with 4× throttling as a proxy) | bench |
+| Zapping (local test stream) | first frame < 1.5 s | E2E (`loadeddata`) |
+| Zapping (real provider) | record p50/p75 — **no guaranteed target** | manual DEP-02 |
 
-## 5. Checklist manual por dispositivo (DEP-02)
-Para cada: Android Chrome · iPhone Safari (browser) · iPhone PWA instalada · Desktop Chrome · Desktop Firefox · (macOS Safari se disponível).
-1. Instalar a app / adicionar ao ecrã inicial; ícone e nome corretos; abre em standalone.
-2. Adicionar fonte real; diagnóstico coerente.
-3. Reproduzir 5 canais (TS e HLS se disponível); medir tempo até primeiro frame; som presente?
-4. Zapping 10× rápido; sem crash, sem áudio duplicado.
-5. Ecrã inteiro, rotação, PiP, voltar do Android.
-6. Filme: reproduzir, seek, sair, retomar.
-7. Série: episódio seguinte.
-8. Pesquisa; favoritos; recentes.
-9. Modo avião: app abre, mensagens corretas.
-10. Atualização da app com reprodução em curso.
-11. Apagar todos os dados.
-12. Leitor de ecrã (TalkBack/VoiceOver) no fluxo de zapping.
-Registo em `docs/progress/compatibility-matrix.md` (data, dispositivo, SO, browser, resultado, notas). **Só o que foi testado é declarado compatível.**
+## 5. Manual checklist per device (DEP-02)
+For each: Android Chrome · iPhone Safari (browser) · iPhone installed PWA · Desktop Chrome · Desktop Firefox · (macOS Safari if available).
+1. Install the app / add to home screen; correct icon and name; opens in standalone mode.
+2. Add a real source; consistent diagnostics.
+3. Play 5 channels (TS and HLS if available); measure time to first frame; is there sound?
+4. Fast zapping 10×; no crash, no duplicated audio.
+5. Fullscreen, rotation, PiP, Android back button.
+6. Movie: play, seek, exit, resume.
+7. Series: next episode.
+8. Search; favorites; recents.
+9. Airplane mode: app opens, correct messages.
+10. App update with playback in progress.
+11. Delete all data.
+12. Screen reader (TalkBack/VoiceOver) in the zapping flow.
+Record in `docs/progress/compatibility-matrix.md` (date, device, OS, browser, result, notes). **Only what has been tested is declared compatible.**
 
-## 6. Gates de qualidade
-| Gate | Quando | Bloqueia merge/avanço se |
+## 6. Quality gates
+| Gate | When | Blocks merge/progress if |
 |---|---|---|
-| CI | Cada PR/commit | lint, typecheck, testes, build, audit high, licenças |
-| Revisão | Stories ≥ 3 pts ou sensíveis | achados críticos/altos não resolvidos |
-| E2E + axe | A partir de QA-02 | falha em qualquer browser |
-| Budgets | A partir de QA-03 | Lighthouse/size-limit abaixo das metas |
-| Release | Antes de v1.0 | DEP-02 incompleto ou NFR sem medição |
+| CI | Every PR/commit | lint, typecheck, tests, build, audit high, licenses |
+| Review | Stories ≥ 3 pts or sensitive | unresolved critical/high findings |
+| E2E + axe | From QA-02 onwards | failure in any browser |
+| Budgets | From QA-03 onwards | Lighthouse/size-limit below targets |
+| Release | Before v1.0 | DEP-02 incomplete or NFR without measurement |
