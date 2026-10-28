@@ -18,7 +18,6 @@ export const routes = {
     search: { title: 'Search', empty: 'Search channels, movies and series.' },
     settings: { title: 'Settings', empty: 'Settings will appear here.' },
     sources: { title: 'My lists', empty: 'Your IPTV lists will appear here.' },
-    onboarding: { title: 'Welcome', empty: 'Add your first IPTV list to get started.' },
   },
   /** Labels for the route parameter shown by the placeholder screens. */
   categoryLabel: (id: string) => `Category: ${id}`,

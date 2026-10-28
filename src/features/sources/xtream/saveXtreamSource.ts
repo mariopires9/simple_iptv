@@ -7,7 +7,7 @@ import { settingsRepo, sourcesRepo, type Source, type SyncStatus } from '@/core/
 import { log } from '@/core/log';
 import { setSourcesPresent } from '../sourcesPresence';
 
-/** Maximum length of a source name (docs/SECURITY.md §3: names are truncated). */
+/** Maximum length of a source name, in code points (docs/SECURITY.md §3: names are truncated). */
 export const MAX_SOURCE_NAME_LENGTH = 512;
 
 export interface SaveXtreamSourceInput {
@@ -31,7 +31,10 @@ export const passwordRef = (sourceId: string) => `source:${sourceId}:password`;
 export async function saveXtreamSource(input: SaveXtreamSourceInput): Promise<Source> {
   const id = crypto.randomUUID();
   const secretRef = passwordRef(id);
-  const name = (input.name.trim() || input.host).slice(0, MAX_SOURCE_NAME_LENGTH);
+  // Cut by code points, never inside a surrogate pair (an emoji at the boundary).
+  const name = Array.from(input.name.trim() || input.host)
+    .slice(0, MAX_SOURCE_NAME_LENGTH)
+    .join('');
   const source: Source = {
     id,
     kind: 'xtream',

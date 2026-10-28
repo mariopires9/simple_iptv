@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sourcesRepo, wipeAll, type Source } from '@/core/db';
 import {
+  getSourcesPresenceSnapshot,
   getSourcesPresent,
   hasSources,
   invalidateSourcesPresence,
@@ -64,6 +65,39 @@ describe('sources presence cache (UX-01 guard)', () => {
     const read = hasSources();
     setSourcesPresent(true);
     await read;
+    expect(getSourcesPresent()).toBe(true);
+  });
+});
+
+// Review finding 1: an invalidation during the first read never leaves subscribers stuck.
+describe('sources presence — invalidation while a read is in flight', () => {
+  it('publishes a fresh snapshot and applies the read when nothing newer exists', async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeSourcesPresent(listener);
+    const before = getSourcesPresenceSnapshot();
+    const read = hasSources();
+    invalidateSourcesPresence();
+    const after = getSourcesPresenceSnapshot();
+    expect(after).not.toBe(before);
+    expect(after.version).toBeGreaterThan(before.version);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    expect(await read).toBe(false);
+    // Nobody started a newer read: the in-flight answer is applied.
+    expect(getSourcesPresent()).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it('a newer read started after the invalidation wins over the stale one', async () => {
+    const list = vi.spyOn(sourcesRepo, 'list');
+    list.mockResolvedValueOnce([]); // stale: before the source was added
+    const stale = hasSources();
+    invalidateSourcesPresence();
+    list.mockResolvedValueOnce([source]);
+    const fresh = hasSources();
+    expect(await stale).toBe(false);
+    expect(await fresh).toBe(true);
     expect(getSourcesPresent()).toBe(true);
   });
 });

@@ -8,7 +8,7 @@ import { Link } from 'react-router';
 import { t } from '@/i18n';
 import { XtreamSourceForm } from './xtream/XtreamSourceForm';
 
-function AddXtream({ backTo }: { backTo: string }) {
+function AddXtream({ backTo, doneTo }: { backTo: string; doneTo: string }) {
   const text = t.sources.addXtream;
   return (
     <Box sx={{ maxWidth: 560, mx: 'auto' }}>
@@ -21,17 +21,17 @@ function AddXtream({ backTo }: { backTo: string }) {
       <Typography color="text.secondary" sx={{ mb: 3 }}>
         {text.intro}
       </Typography>
-      <XtreamSourceForm />
+      <XtreamSourceForm doneTo={doneTo} />
     </Box>
   );
 }
 
-/** `/onboarding/xtream` (UX-01 → SRC-03). */
+/** `/onboarding/xtream` (UX-01 → SRC-03): Home once saved. */
 export function OnboardingXtreamScreen() {
-  return <AddXtream backTo="/onboarding" />;
+  return <AddXtream backTo="/onboarding" doneTo="/" />;
 }
 
-/** `/settings/sources/add/xtream`. */
+/** `/settings/sources/add/xtream`: back to My lists once saved. */
 export function AddXtreamScreen() {
-  return <AddXtream backTo="/settings/sources" />;
+  return <AddXtream backTo="/settings/sources" doneTo="/settings/sources" />;
 }

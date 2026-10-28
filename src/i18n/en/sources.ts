@@ -51,6 +51,7 @@ export const sources = {
   saveAnywayHint:
     'You can save the list now, but channels will not load from this page until the problem is solved.',
   toasts: {
+    saved: 'List saved.',
     syncing: 'Loading your channels…',
     savedWithError: 'List saved. Channels will load once the connection problem is solved.',
   },
