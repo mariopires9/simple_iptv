@@ -22,11 +22,11 @@ Allowed statuses (exactly one per story):
 | SEC-01 | CSP, URL validation, sanitization | E12 | Must | 3 | FND-01 | 1 | M0 | Done |
 | QA-01 | Fixtures, mocks and test streams | E13 | Must | 3 | FND-01 | 1 | M0 | Done |
 | FND-04 | Routing and skeleton | E0 | Must | 2 | FND-03 | 2 | M0 | Done |
-| UX-02 | State components | E11 | Must | 3 | FND-03 | 2 | M0 | Backlog |
+| UX-02 | State components | E11 | Must | 3 | FND-03 | 2 | M0 | In Progress |
 | SRC-01 | Credential vault | E1 | Must | 3 | FND-05, FND-06 | 2 | M1 | Done |
 | SRC-02 | Xtream client: auth/account | E1 | Must | 3 | FND-06 | 2 | M1 | Done |
 | SRC-04 | Streaming M3U parser | E1 | Must | 5 | FND-07 | 2 | M1 | Backlog |
-| PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | Backlog |
+| PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | In Progress |
 | FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | Backlog |
 | FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | Backlog |
 | PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | Backlog |
@@ -38,7 +38,7 @@ Allowed statuses (exactly one per story):
 | SRC-03 | Add Xtream source (UI) | E1 | Must | 3 | SRC-01, SRC-02, FND-04, UX-02 | 3 | M1 | Backlog |
 | SRC-05 | Import M3U by URL | E1 | Must | 3 | SRC-04, SRC-01, FND-05 | 3 | M1 | Backlog |
 | SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | Backlog |
-| SRC-07 | Sync Xtream catalog | E1 | Must | 5 | SRC-02, FND-05, FND-07 | 3 | M1 | Backlog |
+| SRC-07 | Sync Xtream catalog | E1 | Must | 5 | SRC-02, FND-05, FND-07 | 3 | M1 | In Progress |
 | VOD-04 | VOD/series classification in M3U | E5 | Must | 3 | SRC-04 | 3 | M2 | Backlog |
 | PLY-02 | Player UI | E3 | Must | 5 | PLY-01, FND-03 | 3 | M1 | Backlog |
 | PLY-04 | Playback errors | E3 | Must | 3 | PLY-01, FND-06 | 3 | M1 | Backlog |
