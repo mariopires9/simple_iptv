@@ -33,9 +33,9 @@ Allowed statuses (exactly one per story):
 | PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | Backlog |
 | QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Backlog |
 | DEP-01 | GitHub Pages deploy (**approval**) | E13 | Must | 2 | FND-02, PWA-01 | 2 | M0 | Backlog |
-| UX-01 | Onboarding | E11 | Must | 2 | FND-04 | 3 | M1 | Backlog |
+| UX-01 | Onboarding | E11 | Must | 2 | FND-04 | 3 | M1 | In Progress |
 | UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | Backlog |
-| SRC-03 | Add Xtream source (UI) | E1 | Must | 3 | SRC-01, SRC-02, FND-04, UX-02 | 3 | M1 | Backlog |
+| SRC-03 | Add Xtream source (UI) | E1 | Must | 3 | SRC-01, SRC-02, FND-04, UX-02 | 3 | M1 | In Progress |
 | SRC-05 | Import M3U by URL | E1 | Must | 3 | SRC-04, SRC-01, FND-05 | 3 | M1 | Backlog |
 | SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | Backlog |
 | SRC-07 | Sync Xtream catalog | E1 | Must | 5 | SRC-02, FND-05, FND-07 | 3 | M1 | In Progress |
