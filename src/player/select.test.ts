@@ -11,16 +11,16 @@ const exhaustive: Exclude<StreamContainer, (typeof CONTAINERS)[number]> extends 
   : false = true;
 
 const PROFILES = {
-  chromeDesktop: { mse: true, mms: false, nativeHls: false, isSafari: false, isIOS: false },
-  chromeWithNativeHls: { mse: true, mms: false, nativeHls: true, isSafari: false, isIOS: false },
-  firefox: { mse: true, mms: false, nativeHls: false, isSafari: false, isIOS: false },
-  androidChrome: { mse: true, mms: false, nativeHls: true, isSafari: false, isIOS: false },
-  safariMac: { mse: true, mms: true, nativeHls: true, isSafari: true, isIOS: false },
-  safariNoNativeHls: { mse: true, mms: true, nativeHls: false, isSafari: true, isIOS: false },
-  iosMms: { mse: false, mms: true, nativeHls: true, isSafari: true, isIOS: true },
-  iosLegacy: { mse: false, mms: false, nativeHls: true, isSafari: true, isIOS: true },
-  noMse: { mse: false, mms: false, nativeHls: false, isSafari: false, isIOS: false },
-  noMseNativeHls: { mse: false, mms: false, nativeHls: true, isSafari: false, isIOS: false },
+  chromeDesktop: { mse: true, mms: false, nativeHls: false, isSafari: false },
+  chromeWithNativeHls: { mse: true, mms: false, nativeHls: true, isSafari: false },
+  firefox: { mse: true, mms: false, nativeHls: false, isSafari: false },
+  androidChrome: { mse: true, mms: false, nativeHls: true, isSafari: false },
+  safariMac: { mse: true, mms: true, nativeHls: true, isSafari: true },
+  safariNoNativeHls: { mse: true, mms: true, nativeHls: false, isSafari: true },
+  iosMms: { mse: false, mms: true, nativeHls: true, isSafari: true },
+  iosLegacy: { mse: false, mms: false, nativeHls: true, isSafari: true },
+  noMse: { mse: false, mms: false, nativeHls: false, isSafari: false },
+  noMseNativeHls: { mse: false, mms: false, nativeHls: true, isSafari: false },
 } satisfies Record<string, SelectionCapabilities>;
 
 type Row = Record<(typeof CONTAINERS)[number], EngineChoice>;
@@ -70,13 +70,12 @@ describe('selectEngine', () => {
 
   // Invariants over every boolean combination of the capabilities.
   const combos: SelectionCapabilities[] = [];
-  for (let bits = 0; bits < 32; bits++) {
+  for (let bits = 0; bits < 16; bits++) {
     combos.push({
       mse: (bits & 1) > 0,
       mms: (bits & 2) > 0,
       nativeHls: (bits & 4) > 0,
       isSafari: (bits & 8) > 0,
-      isIOS: (bits & 16) > 0,
     });
   }
 
@@ -98,9 +97,14 @@ describe('selectEngine', () => {
   });
 
   it('HLS on Apple WebKit with native HLS is always native', () => {
-    for (const caps of combos.filter((c) => (c.isSafari || c.isIOS) && c.nativeHls)) {
+    for (const caps of combos.filter((c) => c.isSafari && c.nativeHls)) {
       expect(selectEngine(descriptor('hls'), caps)).toBe('native');
     }
+  });
+
+  it('isIOS is not consulted (isSafari already covers every iOS browser)', () => {
+    const iosFlagOnly = { ...PROFILES.chromeWithNativeHls, isIOS: true };
+    expect(selectEngine(descriptor('hls'), iosFlagOnly)).toBe('hls');
   });
 
   it('VOD and live select the same engine', () => {

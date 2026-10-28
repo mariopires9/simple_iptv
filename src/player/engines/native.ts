@@ -1,10 +1,16 @@
 // Native <video> engine (PLY-01): MP4/WebM/MOV/MKV everywhere, HLS on Safari/iOS.
 import { mapMediaError } from '../errors';
 import type { EngineDeps, PlayerEngine, StreamDescriptor } from '../types';
-import { createErrorEmitter, requireVideo, resetMediaElement } from './shared';
+import {
+  createEngineEmitter,
+  requireVideo,
+  resetMediaElement,
+  resumePosition,
+  seekWhenReady,
+} from './shared';
 
 export function createNativeEngine({ rewriter, pageProtocol }: EngineDeps): PlayerEngine {
-  const errors = createErrorEmitter();
+  const events = createEngineEmitter();
   let video: HTMLVideoElement | undefined;
   let cleanup: (() => void) | undefined;
   let destroyed = false;
@@ -24,15 +30,16 @@ export function createNativeEngine({ rewriter, pageProtocol }: EngineDeps): Play
       const url = rewriter.rewrite(stream.url, stream.container === 'hls' ? 'playlist' : 'stream');
 
       const onError = () =>
-        errors.emit(mapMediaError(el.error?.code, { engine: 'native', url, pageProtocol }));
-      const onMetadata = () => {
-        if (startAt !== undefined && startAt > 0) el.currentTime = startAt;
-      };
+        events.emit(
+          'error',
+          mapMediaError(el.error?.code, { engine: 'native', url, pageProtocol }),
+        );
       el.addEventListener('error', onError);
-      el.addEventListener('loadedmetadata', onMetadata, { once: true });
+      const resume = resumePosition(stream, startAt);
+      const stopSeek = resume !== undefined ? seekWhenReady(el, resume, events) : undefined;
       cleanup = () => {
         el.removeEventListener('error', onError);
-        el.removeEventListener('loadedmetadata', onMetadata);
+        stopSeek?.();
       };
       el.src = url;
     },
@@ -42,13 +49,13 @@ export function createNativeEngine({ rewriter, pageProtocol }: EngineDeps): Play
       destroyed = true;
       cleanup?.();
       cleanup = undefined;
-      errors.clear();
+      events.clear();
       if (video) resetMediaElement(video);
       video = undefined;
     },
 
-    on(_evt, cb) {
-      return errors.on(cb);
+    on(evt, cb) {
+      return events.on(evt, cb);
     },
   };
 }

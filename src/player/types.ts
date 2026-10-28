@@ -99,11 +99,23 @@ export interface PlayerEngine {
    * Starts loading `stream` into the attached element. Resolves once the source is attached
    * (playback itself is started by the caller with `video.play()`); later failures arrive through
    * `on('error')`. Resolves without doing anything if `destroy()` ran in the meantime.
+   * `startAt` (seconds) only applies to VOD; it is ignored for `kind: 'live'`.
    */
   load(stream: StreamDescriptor, startAt?: number): Promise<void>;
   /** Idempotent. Removes every listener, releases MediaSource/object URLs and empties the element. */
   destroy(): Promise<void>;
-  on(evt: 'error', cb: (e: PlaybackError) => void): () => void;
+  on<K extends keyof EngineEvents>(evt: K, cb: (payload: EngineEvents[K]) => void): () => void;
+}
+
+/**
+ * Non-fatal information about the current playback. `resume-unsupported`: the requested
+ * `startAt` is not seekable (common for MPEG-TS), so playback starts from the beginning.
+ */
+export type PlaybackNotice = { type: 'resume-unsupported'; startAt: number };
+
+export interface EngineEvents {
+  error: PlaybackError;
+  notice: PlaybackNotice;
 }
 
 export type EngineFactory = (deps: EngineDeps) => PlayerEngine;

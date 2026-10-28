@@ -5,15 +5,12 @@ import type { EngineId, StreamDescriptor } from './types';
 export type EngineChoice = EngineId | 'unsupported';
 
 /** Capabilities that selection reads. */
-export type SelectionCapabilities = Pick<
-  Capabilities,
-  'mse' | 'mms' | 'nativeHls' | 'isSafari' | 'isIOS'
->;
+export type SelectionCapabilities = Pick<Capabilities, 'mse' | 'mms' | 'nativeHls' | 'isSafari'>;
 
 /**
  * Picks the engine for one descriptor (its `fallbacks` are not considered — see
  * {@link planPlayback}):
- * 1. HLS on Safari/iOS → native first; otherwise hls.js with MSE/MMS; native as a last resort
+ * 1. HLS on Safari/iOS (`isSafari` covers every iOS browser) → native first; otherwise hls.js with MSE/MMS; native as a last resort
  *    when the browser reports native HLS but has no MSE/MMS.
  * 2. MPEG-TS and FLV → mpegts.js with MSE/MMS; otherwise unsupported here (for Xtream the
  *    provider puts the `.m3u8` variant in `fallbacks`).
@@ -28,7 +25,7 @@ export function selectEngine(
   const mediaSource = caps.mse || caps.mms;
   switch (descriptor.container) {
     case 'hls':
-      if ((caps.isSafari || caps.isIOS) && caps.nativeHls) return 'native';
+      if (caps.isSafari && caps.nativeHls) return 'native';
       if (mediaSource) return 'hls';
       return caps.nativeHls ? 'native' : 'unsupported';
     case 'ts':

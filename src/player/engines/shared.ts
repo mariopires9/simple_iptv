@@ -1,26 +1,68 @@
 // Helpers shared by the engines (PLY-01).
-import type { PlaybackError } from '../types';
+import type { EngineEvents, StreamDescriptor } from '../types';
 
-export interface ErrorEmitter {
-  on(cb: (e: PlaybackError) => void): () => void;
-  emit(e: PlaybackError): void;
+export interface EngineEmitter {
+  on<K extends keyof EngineEvents>(evt: K, cb: (payload: EngineEvents[K]) => void): () => void;
+  emit<K extends keyof EngineEvents>(evt: K, payload: EngineEvents[K]): void;
   clear(): void;
 }
 
-export function createErrorEmitter(): ErrorEmitter {
-  const listeners = new Set<(e: PlaybackError) => void>();
+export function createEngineEmitter(): EngineEmitter {
+  type AnyListener = (payload: never) => void;
+  const listeners: Record<keyof EngineEvents, Set<AnyListener>> = {
+    error: new Set(),
+    notice: new Set(),
+  };
   return {
-    on(cb) {
-      listeners.add(cb);
-      return () => listeners.delete(cb);
+    on(evt, cb) {
+      listeners[evt].add(cb);
+      return () => {
+        listeners[evt].delete(cb);
+      };
     },
-    emit(e) {
-      for (const cb of [...listeners]) cb(e);
+    emit(evt, payload) {
+      for (const cb of [...listeners[evt]]) (cb as (p: typeof payload) => void)(payload);
     },
     clear() {
-      listeners.clear();
+      listeners.error.clear();
+      listeners.notice.clear();
     },
   };
+}
+
+/** Whether `time` lies inside one of the element's seekable ranges. */
+export function isSeekable(video: HTMLVideoElement, time: number): boolean {
+  const ranges = video.seekable as TimeRanges | undefined;
+  if (!ranges) return false;
+  for (let i = 0; i < ranges.length; i++) {
+    if (time >= ranges.start(i) && time <= ranges.end(i)) return true;
+  }
+  return false;
+}
+
+/** VOD resume position, or undefined (live streams always start at the live edge). */
+export function resumePosition(stream: StreamDescriptor, startAt: number | undefined) {
+  return stream.kind === 'vod' && startAt !== undefined && startAt > 0 ? startAt : undefined;
+}
+
+/**
+ * Seeks to `startAt` once metadata is loaded if the element can seek there; otherwise emits a
+ * `resume-unsupported` notice. `seek` defaults to setting `currentTime`. Returns the cleanup.
+ */
+export function seekWhenReady(
+  video: HTMLVideoElement,
+  startAt: number,
+  emitter: EngineEmitter,
+  seek: (time: number) => void = (time) => {
+    video.currentTime = time;
+  },
+): () => void {
+  const onMetadata = () => {
+    if (isSeekable(video, startAt)) seek(startAt);
+    else emitter.emit('notice', { type: 'resume-unsupported', startAt });
+  };
+  video.addEventListener('loadedmetadata', onMetadata, { once: true });
+  return () => video.removeEventListener('loadedmetadata', onMetadata);
 }
 
 /**

@@ -10,6 +10,17 @@ export class FakeVideo extends EventTarget {
   error: { code: number } | null = null;
   currentTime = 0;
   readonly load = vi.fn();
+  /** Seekable ranges, as `[start, end]` pairs (empty by default, like a fresh element). */
+  seekableRanges: Array<[number, number]> = [];
+
+  get seekable(): TimeRanges {
+    const ranges = this.seekableRanges;
+    return {
+      length: ranges.length,
+      start: (i: number) => ranges[i]?.[0] ?? 0,
+      end: (i: number) => ranges[i]?.[1] ?? 0,
+    } as TimeRanges;
+  }
   private readonly active = new Map<string, Set<Listener>>();
 
   get src(): string {

@@ -12,10 +12,12 @@ export type { EngineChoice, PlaybackCandidate, SelectionCapabilities } from './s
 export { PlaybackError, isPlaybackError } from './types';
 export type {
   EngineDeps,
+  EngineEvents,
   EngineFactory,
   EngineId,
   PlaybackErrorInit,
   PlaybackErrorKind,
+  PlaybackNotice,
   PlayerEngine,
   StreamContainer,
   StreamDescriptor,

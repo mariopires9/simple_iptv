@@ -3,7 +3,7 @@ import type { UrlRewriter } from '@/core/net';
 import { FakeVideo, stubObjectUrls } from '../test-utils/fakeVideo';
 import { libState, resetLibState } from '../test-utils/libMocks';
 import type { PlaybackError, StreamDescriptor } from '../types';
-import { HLS_CONFIG, createHlsEngine } from './hls';
+import { HLS_CONFIG, createHlsEngine, createRecoveryPolicy } from './hls';
 
 vi.mock('hls.js', async () => (await import('../test-utils/libMocks')).hlsModule());
 
@@ -12,14 +12,23 @@ const LIVE: StreamDescriptor = {
   kind: 'live',
   container: 'hls',
 };
+const VOD: StreamDescriptor = {
+  url: 'https://a.test/movie/u/p/9.m3u8',
+  kind: 'vod',
+  container: 'hls',
+};
 const identity: UrlRewriter = { rewrite: (u) => u };
+const proxy = (url: string) => `https://proxy.test/?u=${encodeURIComponent(url)}`;
 
 let urls: ReturnType<typeof stubObjectUrls>;
 beforeEach(() => {
   resetLibState();
   urls = stubObjectUrls();
 });
-afterEach(() => urls.restore());
+afterEach(() => {
+  urls.restore();
+  vi.useRealTimers();
+});
 
 async function loaded(descriptor = LIVE, rewriter: UrlRewriter = identity, startAt?: number) {
   const video = new FakeVideo();
@@ -33,17 +42,20 @@ async function loaded(descriptor = LIVE, rewriter: UrlRewriter = identity, start
   return { video, engine, errors, hls };
 }
 
+const MEDIA_ERROR = { type: 'mediaError', details: 'bufferAppendError', fatal: true };
+
 describe('hls engine', () => {
-  it('lazy-loads hls.js, attaches the element and loads the source', async () => {
-    const { hls, video } = await loaded();
+  it('lazy-loads hls.js, attaches the element and loads the original source URL', async () => {
+    const { hls, video } = await loaded(LIVE, { rewrite: proxy });
     expect(libState.hls).toHaveLength(1);
     expect(hls.attached).toBe(true);
+    // The loader rewrites at request time; hls.js keeps the original URL as the playlist URL.
     expect(hls.source).toBe(LIVE.url);
     expect(video.src).toMatch(/^blob:fake\//);
   });
 
   it('uses the documented config (worker on, low latency off, live sync)', async () => {
-    const { hls } = await loaded(LIVE, identity, 120);
+    const { hls } = await loaded(VOD, identity, 120);
     expect(hls.config).toMatchObject({
       enableWorker: true,
       lowLatencyMode: false,
@@ -51,40 +63,38 @@ describe('hls engine', () => {
       liveMaxLatencyDurationCount: 10,
       startPosition: 120,
     });
+    expect(hls.config.xhrSetup).toBeUndefined();
     expect(HLS_CONFIG.liveMaxLatencyDurationCount).toBeGreaterThan(
       HLS_CONFIG.liveSyncDurationCount ?? 0,
     );
-    expect((await loaded()).hls.config.startPosition).toBe(-1);
+    expect((await loaded(VOD)).hls.config.startPosition).toBe(-1);
   });
 
-  it('routes every request through the rewriter (playlists and segments)', async () => {
-    const rewrite = vi.fn(
-      (url: string, purpose: string) => `https://proxy.test/${purpose}/${encodeURIComponent(url)}`,
-    );
-    const { hls } = await loaded(LIVE, { rewrite });
-    const xhrSetup = hls.config.xhrSetup as (
-      xhr: { open: (...a: unknown[]) => void },
-      url: string,
-      ctx: object,
-    ) => void;
-    const xhr = { open: vi.fn() };
+  it('ignores startAt for live streams', async () => {
+    const { hls } = await loaded(LIVE, identity, 120);
+    expect(hls.config.startPosition).toBe(-1);
+  });
 
-    xhrSetup(xhr, 'https://a.test/live/u/p/1.m3u8', { type: 'manifest' });
-    xhrSetup(xhr, 'https://a.test/seg/1.ts', { frag: {} });
-    expect(rewrite).toHaveBeenCalledWith('https://a.test/live/u/p/1.m3u8', 'playlist');
-    expect(rewrite).toHaveBeenCalledWith('https://a.test/seg/1.ts', 'stream');
-    expect(xhr.open).toHaveBeenNthCalledWith(
-      1,
-      'GET',
-      `https://proxy.test/playlist/${encodeURIComponent(LIVE.url)}`,
-      true,
-    );
-    expect(xhr.open).toHaveBeenNthCalledWith(
-      2,
-      'GET',
-      `https://proxy.test/stream/${encodeURIComponent('https://a.test/seg/1.ts')}`,
-      true,
-    );
+  it('every request goes through the rewriter, once, with the purpose from the context type', async () => {
+    const rewrite = vi.fn(proxy);
+    const { hls } = await loaded(LIVE, { rewrite });
+    rewrite.mockClear();
+    hls.request('https://a.test/live/u/p/1.m3u8', 'manifest');
+    hls.request('https://a.test/live/u/p/v1.m3u8', 'level');
+    hls.request('https://a.test/keys/k1', 'key');
+    hls.request('https://a.test/seg/1.ts', 'media-fragment');
+    expect(rewrite.mock.calls).toEqual([
+      ['https://a.test/live/u/p/1.m3u8', 'playlist'],
+      ['https://a.test/live/u/p/v1.m3u8', 'playlist'],
+      ['https://a.test/keys/k1', 'playlist'],
+      ['https://a.test/seg/1.ts', 'stream'],
+    ]);
+    expect(libState.hlsRequests).toEqual([
+      proxy('https://a.test/live/u/p/1.m3u8'),
+      proxy('https://a.test/live/u/p/v1.m3u8'),
+      proxy('https://a.test/keys/k1'),
+      proxy('https://a.test/seg/1.ts'),
+    ]);
   });
 
   it('maps fatal errors and ignores non-fatal ones', async () => {
@@ -101,15 +111,35 @@ describe('hls engine', () => {
     expect(errors[0]).toMatchObject({ kind: 'auth', status: 403, engine: 'hls' });
   });
 
-  it('tries recoverMediaError once before reporting a fatal media error', async () => {
+  it('two media errors separated by healthy playback both recover', async () => {
     const { hls, errors } = await loaded();
-    const media = { type: 'mediaError', details: 'bufferAppendError', fatal: true };
-    hls.error(media);
-    expect(hls.recoverMediaError).toHaveBeenCalledTimes(1);
+    hls.error(MEDIA_ERROR);
+    hls.fragBuffered();
+    hls.error(MEDIA_ERROR);
+    expect(hls.recoverMediaError).toHaveBeenCalledTimes(2);
     expect(errors).toHaveLength(0);
-    hls.error(media);
+  });
+
+  it('a media error right after a recovery without progress is reported', async () => {
+    const { hls, errors } = await loaded();
+    hls.error(MEDIA_ERROR);
+    hls.error(MEDIA_ERROR);
     expect(hls.recoverMediaError).toHaveBeenCalledTimes(1);
     expect(errors[0]).toMatchObject({ kind: 'decode' });
+  });
+
+  it('caps recoveries at 3 per 60 s', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(0);
+    const { hls, errors } = await loaded();
+    for (let i = 0; i < 3; i++) {
+      hls.error(MEDIA_ERROR);
+      hls.fragBuffered();
+      vi.setSystemTime((i + 1) * 10_000);
+    }
+    hls.error(MEDIA_ERROR); // 4th within 60 s
+    expect(hls.recoverMediaError).toHaveBeenCalledTimes(3);
+    expect(errors).toHaveLength(1);
   });
 
   it('reports codec errors without trying to recover', async () => {
@@ -119,11 +149,13 @@ describe('hls engine', () => {
     expect(errors[0]).toMatchObject({ kind: 'unsupported-codec' });
   });
 
-  it('destroy removes the handler, destroys hls.js and releases the element', async () => {
+  it('destroy removes the handlers, destroys hls.js and releases the element', async () => {
     const { hls, video, engine, errors } = await loaded();
     expect(hls.count('hlsError')).toBe(1);
+    expect(hls.count('hlsFragBuffered')).toBe(1);
     await engine.destroy();
     expect(hls.count('hlsError')).toBe(0);
+    expect(hls.count('hlsFragBuffered')).toBe(0);
     expect(hls.destroy).toHaveBeenCalledTimes(1);
     expect(urls.live.size).toBe(0);
     expect(video.getAttribute('src')).toBeNull();
@@ -158,5 +190,22 @@ describe('hls engine', () => {
     engine.attach(video.asElement());
     await expect(engine.load(LIVE)).rejects.toMatchObject({ kind: 'unsupported-container' });
     expect(libState.hls).toHaveLength(0);
+  });
+});
+
+describe('createRecoveryPolicy', () => {
+  it('allows max recoveries per window, each after progress, and frees slots as time passes', () => {
+    let t = 0;
+    const policy = createRecoveryPolicy(2, 1000, () => t);
+    expect(policy.shouldRecover()).toBe(true);
+    expect(policy.shouldRecover()).toBe(false); // no progress since the last recovery
+    policy.healthy();
+    t = 100;
+    expect(policy.shouldRecover()).toBe(true);
+    policy.healthy();
+    t = 500;
+    expect(policy.shouldRecover()).toBe(false); // 2 in the window
+    t = 1000;
+    expect(policy.shouldRecover()).toBe(true); // the first one left the window
   });
 });

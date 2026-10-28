@@ -44,14 +44,45 @@ describe('native engine', () => {
     expect(errors[0]).toMatchObject({ kind: 'blocked', hint: 'mixed-content', engine: 'native' });
   });
 
-  it('seeks to startAt once metadata is loaded', async () => {
+  it('VOD: seeks to startAt once metadata is loaded, if seekable', async () => {
     const video = new FakeVideo();
     const engine = createNativeEngine({ rewriter: { rewrite: (u) => u } });
+    const notices = vi.fn();
+    engine.on('notice', notices);
     engine.attach(video.asElement());
     await engine.load({ url: 'https://a.test/m.mp4', kind: 'vod', container: 'mp4' }, 42);
     expect(video.currentTime).toBe(0);
+    video.seekableRanges = [[0, 3600]];
     video.dispatchEvent(new Event('loadedmetadata'));
     expect(video.currentTime).toBe(42);
+    expect(notices).not.toHaveBeenCalled();
+  });
+
+  it('VOD: startAt outside the seekable range → resume-unsupported notice, no seek', async () => {
+    const video = new FakeVideo();
+    const engine = createNativeEngine({ rewriter: { rewrite: (u) => u } });
+    const notices = vi.fn();
+    engine.on('notice', notices);
+    engine.attach(video.asElement());
+    await engine.load({ url: 'https://a.test/m.mkv', kind: 'vod', container: 'mkv' }, 42);
+    video.seekableRanges = [[0, 10]];
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(video.currentTime).toBe(0);
+    expect(notices).toHaveBeenCalledWith({ type: 'resume-unsupported', startAt: 42 });
+  });
+
+  it('live: startAt is ignored', async () => {
+    const video = new FakeVideo();
+    const engine = createNativeEngine({ rewriter: { rewrite: (u) => u } });
+    const notices = vi.fn();
+    engine.on('notice', notices);
+    engine.attach(video.asElement());
+    await engine.load({ url: 'https://a.test/live.m3u8', kind: 'live', container: 'hls' }, 42);
+    expect(video.listenerCount('loadedmetadata')).toBe(0);
+    video.seekableRanges = [[0, 3600]];
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(video.currentTime).toBe(0);
+    expect(notices).not.toHaveBeenCalled();
   });
 
   it('destroy removes its listeners and empties the element', async () => {

@@ -12,6 +12,8 @@ export const libState = {
   /** Simulate a library that forgets to revoke its object URL on destroy. */
   leakObjectUrl: false,
   hls: [] as FakeHls[],
+  /** URLs requested through hls.js' default (base) loader. */
+  hlsRequests: [] as string[],
   mpegts: [] as FakeMpegtsPlayer[],
   mpegtsLogListeners: [] as Array<(level: string, msg: string) => void>,
   mpegtsLogging: { enableAll: true },
@@ -22,6 +24,7 @@ export function resetLibState(): void {
   libState.mpegtsSupported = true;
   libState.leakObjectUrl = false;
   libState.hls.length = 0;
+  libState.hlsRequests.length = 0;
   libState.mpegts.length = 0;
   libState.mpegtsLogListeners.length = 0;
   libState.mpegtsLogging.enableAll = true;
@@ -74,9 +77,22 @@ class MediaSourceAttachment {
   }
 }
 
+/** Stand-in for hls.js' default XHR loader: records the URL it is asked to fetch. */
+export class FakeBaseLoader {
+  context: { url: string } | null = null;
+  stats = {};
+  load(context: { url: string }) {
+    this.context = context;
+    libState.hlsRequests.push(context.url);
+  }
+  abort() {}
+  destroy() {}
+}
+
 export class FakeHls extends Emitter {
   static isSupported = () => libState.hlsSupported;
-  static Events = { ERROR: 'hlsError' };
+  static Events = { ERROR: 'hlsError', FRAG_BUFFERED: 'hlsFragBuffered' };
+  static DefaultConfig = { loader: FakeBaseLoader };
 
   readonly config: Record<string, unknown>;
   readonly attachment = new MediaSourceAttachment();
@@ -103,6 +119,27 @@ export class FakeHls extends Emitter {
   /** Fires `Hls.Events.ERROR` like hls.js does: `(event, data)`. */
   error(data: { type: string; details: string; fatal: boolean; response?: { code?: number } }) {
     this.fire(FakeHls.Events.ERROR, FakeHls.Events.ERROR, data);
+  }
+
+  fragBuffered() {
+    this.fire(FakeHls.Events.FRAG_BUFFERED, FakeHls.Events.FRAG_BUFFERED, {});
+  }
+
+  /** Issues a request through the configured loader, like hls.js does. */
+  request(url: string, type: string) {
+    const Loader = this.config.loader as new (c: unknown) => {
+      load(ctx: unknown, cfg: unknown, cbs: unknown): void;
+    };
+    const noop = () => undefined;
+    new Loader(this.config).load(
+      { url, type, responseType: 'text' },
+      {},
+      {
+        onSuccess: noop,
+        onError: noop,
+        onTimeout: noop,
+      },
+    );
   }
 }
 

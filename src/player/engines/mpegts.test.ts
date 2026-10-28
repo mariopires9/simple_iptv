@@ -73,6 +73,51 @@ describe('mpegts engine', () => {
     expect(player.dataSource).toMatchObject({ type: 'flv', isLive: false });
   });
 
+  it('VOD resume: seeks through the player once metadata says it is seekable', async () => {
+    const video = new FakeVideo();
+    const engine = createMpegtsEngine({ rewriter: identity });
+    const notices = vi.fn();
+    engine.on('notice', notices);
+    engine.attach(video.asElement());
+    await engine.load({ url: 'https://a.test/v.ts', kind: 'vod', container: 'ts' }, 600);
+    const player = libState.mpegts[0];
+    expect(player?.currentTime).toBe(0); // not before metadata
+    video.seekableRanges = [[0, 5400]];
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(player?.currentTime).toBe(600);
+    expect(notices).not.toHaveBeenCalled();
+  });
+
+  it('VOD resume on a non-seekable TS: resume-unsupported notice, starts from the beginning', async () => {
+    const video = new FakeVideo();
+    const engine = createMpegtsEngine({ rewriter: identity });
+    const notices = vi.fn();
+    engine.on('notice', notices);
+    engine.attach(video.asElement());
+    await engine.load({ url: 'https://a.test/v.ts', kind: 'vod', container: 'ts' }, 600);
+    video.dispatchEvent(new Event('loadedmetadata')); // seekable is empty
+    expect(libState.mpegts[0]?.currentTime).toBe(0);
+    expect(notices).toHaveBeenCalledWith({ type: 'resume-unsupported', startAt: 600 });
+  });
+
+  it('live: startAt is ignored and the resume listener is not installed', async () => {
+    const video = new FakeVideo();
+    const engine = createMpegtsEngine({ rewriter: identity });
+    engine.attach(video.asElement());
+    await engine.load(LIVE, 600);
+    expect(video.listenerCount('loadedmetadata')).toBe(0);
+  });
+
+  it('destroy removes the resume listener', async () => {
+    const video = new FakeVideo();
+    const engine = createMpegtsEngine({ rewriter: identity });
+    engine.attach(video.asElement());
+    await engine.load({ url: 'https://a.test/v.ts', kind: 'vod', container: 'ts' }, 600);
+    expect(video.listenerCount('loadedmetadata')).toBe(1);
+    await engine.destroy();
+    expect(video.listenerCount()).toBe(0);
+  });
+
   it('maps library errors', async () => {
     const { player, errors } = await loaded();
     player.error('NetworkError', 'HttpStatusCodeInvalid', { code: 401, msg: 'Unauthorized' });

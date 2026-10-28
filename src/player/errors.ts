@@ -11,6 +11,17 @@ export interface ErrorContext {
   pageProtocol?: string | undefined;
 }
 
+/**
+ * Protocol of the app page, or undefined outside a browser.
+ * TODO(follow-up, coordinator): core/net has the same private helper (`pageProtocol()` in
+ * http.ts); once it is exported from `@/core/net`, use it here and drop this copy. Keep the guard
+ * identical until then.
+ */
+export function currentPageProtocol(): string | undefined {
+  const location = (globalThis as { location?: { protocol?: unknown } }).location;
+  return typeof location?.protocol === 'string' ? location.protocol : undefined;
+}
+
 /** `https:` page requesting an `http:` URL: the browser blocks it (or auto-upgrades media). */
 export function isMixedContent(url: string, pageProtocol: string | undefined): boolean {
   return pageProtocol === 'https:' && /^http:/i.test(url);

@@ -6,7 +6,13 @@ import { mapMpegtsError, toPlaybackError } from '../errors';
 import type { MpegtsErrorInfo } from '../errors';
 import { PlaybackError } from '../types';
 import type { EngineDeps, PlayerEngine, StreamDescriptor } from '../types';
-import { createErrorEmitter, requireVideo, resetMediaElement } from './shared';
+import {
+  createEngineEmitter,
+  requireVideo,
+  resetMediaElement,
+  resumePosition,
+  seekWhenReady,
+} from './shared';
 
 type MpegtsStatic = typeof Mpegts;
 
@@ -52,10 +58,10 @@ export function resetMpegtsLoggingForTests(): void {
 }
 
 export function createMpegtsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerEngine {
-  const errors = createErrorEmitter();
+  const events = createEngineEmitter();
   let video: HTMLVideoElement | undefined;
   let player: Mpegts.Player | undefined;
-  let detachError: (() => void) | undefined;
+  let detachListeners: (() => void) | undefined;
   let destroyed = false;
 
   return {
@@ -94,14 +100,26 @@ export function createMpegtsEngine({ rewriter, pageProtocol }: EngineDeps): Play
       player = instance;
 
       const onError = (type: string, detail: string, info?: MpegtsErrorInfo) =>
-        errors.emit(mapMpegtsError(type, detail, info, ctx));
+        events.emit('error', mapMpegtsError(type, detail, info, ctx));
       instance.on(mpegts.Events.ERROR, onError);
-      detachError = () => instance.off(mpegts.Events.ERROR, onError);
+      // VOD resume: seek once the element knows what is seekable. MPEG-TS without an index is
+      // often not seekable at all; then playback starts from the beginning and a
+      // `resume-unsupported` notice is emitted.
+      const resume = resumePosition(stream, startAt);
+      const stopSeek =
+        resume !== undefined
+          ? seekWhenReady(el, resume, events, (time) => {
+              instance.currentTime = time;
+            })
+          : undefined;
+      detachListeners = () => {
+        instance.off(mpegts.Events.ERROR, onError);
+        stopSeek?.();
+      };
 
       try {
         instance.attachMediaElement(el);
         instance.load();
-        if (!isLive && startAt !== undefined && startAt > 0) instance.currentTime = startAt;
       } catch (e) {
         throw toPlaybackError(e, ctx);
       }
@@ -110,9 +128,9 @@ export function createMpegtsEngine({ rewriter, pageProtocol }: EngineDeps): Play
     async destroy() {
       if (destroyed) return;
       destroyed = true;
-      detachError?.();
-      detachError = undefined;
-      errors.clear();
+      detachListeners?.();
+      detachListeners = undefined;
+      events.clear();
       const instance = player;
       player = undefined;
       if (instance) {
@@ -128,8 +146,8 @@ export function createMpegtsEngine({ rewriter, pageProtocol }: EngineDeps): Play
       video = undefined;
     },
 
-    on(_evt, cb) {
-      return errors.on(cb);
+    on(evt, cb) {
+      return events.on(evt, cb);
     },
   };
 }

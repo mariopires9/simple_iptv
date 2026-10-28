@@ -5,7 +5,13 @@ import type { PlayerEvents } from './controller';
 import { FakeVideo, stubObjectUrls } from './test-utils/fakeVideo';
 import { libState, resetLibState } from './test-utils/libMocks';
 import { PlaybackError } from './types';
-import type { EngineFactory, EngineId, PlayerEngine, StreamDescriptor } from './types';
+import type {
+  EngineEvents,
+  EngineFactory,
+  EngineId,
+  PlayerEngine,
+  StreamDescriptor,
+} from './types';
 
 vi.mock('hls.js', async () => (await import('./test-utils/libMocks')).hlsModule());
 vi.mock('mpegts.js', async () => (await import('./test-utils/libMocks')).mpegtsModule());
@@ -48,6 +54,7 @@ const mp4 = (n: number | string = 1): StreamDescriptor => ({
 class FakeEngine implements PlayerEngine {
   static created: FakeEngine[] = [];
   readonly listeners = new Set<(e: PlaybackError) => void>();
+  readonly noticeListeners = new Set<(n: EngineEvents['notice']) => void>();
   readonly load = vi.fn(async (_stream: StreamDescriptor, _startAt?: number) => {
     if (this.loadError) throw this.loadError;
   });
@@ -63,9 +70,16 @@ class FakeEngine implements PlayerEngine {
     this.attached = video;
   }
 
-  on(_evt: 'error', cb: (e: PlaybackError) => void) {
-    this.listeners.add(cb);
-    return () => this.listeners.delete(cb);
+  on<K extends keyof EngineEvents>(evt: K, cb: (payload: EngineEvents[K]) => void) {
+    const set = (evt === 'error' ? this.listeners : this.noticeListeners) as Set<typeof cb>;
+    set.add(cb);
+    return () => {
+      set.delete(cb);
+    };
+  }
+
+  notice(n: EngineEvents['notice']) {
+    for (const cb of [...this.noticeListeners]) cb(n);
   }
 
   fail(error: PlaybackError) {
@@ -93,6 +107,10 @@ function record(controller: ReturnType<typeof createPlayerController>) {
   controller.on('fallback', (p) =>
     events.push(['fallback', `${p.error.kind}->${p.next.container}`]),
   );
+  controller.on('skipped', (p) =>
+    events.push(['skipped', `${p.reason}:${p.descriptor.container}:${p.attempt}`]),
+  );
+  controller.on('notice', (n) => events.push(['notice', `${n.type}:${n.startAt}`]));
   controller.on('error', (e) => events.push(['error', e.kind]));
   return events;
 }
@@ -208,7 +226,11 @@ describe('player controller — selection and fallbacks (fake engines)', () => {
     });
     const events = record(controller);
     await controller.play({ ...ts(), fallbacks: [m3u8()] });
-    expect(events).toEqual([['attempt', 'native:hls:1']]);
+    // An unsupported primary is reported as skipped, not as a fallback.
+    expect(events).toEqual([
+      ['skipped', 'unsupported:ts:0'],
+      ['attempt', 'native:hls:1'],
+    ]);
   });
 
   it('nothing playable: reports unsupported-container without creating an engine', async () => {
@@ -218,8 +240,144 @@ describe('player controller — selection and fallbacks (fake engines)', () => {
     });
     const events = record(controller);
     await controller.play({ url: 'https://a.test/x.avi', kind: 'vod', container: 'avi' });
-    expect(events).toEqual([['error', 'unsupported-container']]);
+    expect(events).toEqual([
+      ['skipped', 'unsupported:avi:0'],
+      ['error', 'unsupported-container'],
+    ]);
     expect(FakeEngine.created).toHaveLength(0);
+  });
+
+  it('fallback skips unsupported candidates: `next` is the one actually attempted', async () => {
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines: fakeEngines({ mpegts: [new PlaybackError({ kind: 'network' })] }),
+    });
+    const events = record(controller);
+    const avi = { url: 'https://a.test/x.avi', kind: 'vod' as const, container: 'avi' as const };
+    await controller.play({ ...ts(), fallbacks: [avi, m3u8()] });
+    expect(events).toEqual([
+      ['attempt', 'mpegts:ts:0'],
+      ['skipped', 'unsupported:avi:1'],
+      ['fallback', 'network->hls'],
+      ['attempt', 'hls:hls:2'],
+    ]);
+  });
+
+  it('failure with only unsupported fallbacks: no fallback event, the real error is reported', async () => {
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines: fakeEngines({ mpegts: [new PlaybackError({ kind: 'auth' })] }),
+    });
+    const events = record(controller);
+    const avi = { url: 'https://a.test/x.avi', kind: 'vod' as const, container: 'avi' as const };
+    await controller.play({ ...ts(), fallbacks: [avi] });
+    expect(events).toEqual([
+      ['attempt', 'mpegts:ts:0'],
+      ['skipped', 'unsupported:avi:1'],
+      ['error', 'auth'],
+    ]);
+  });
+
+  it('relays engine notices (resume-unsupported) of the current attempt', async () => {
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines: fakeEngines(),
+    });
+    const events = record(controller);
+    await controller.play(mp4(), { startAt: 30 });
+    const engine = FakeEngine.created[0];
+    engine?.notice({ type: 'resume-unsupported', startAt: 30 });
+    await controller.stop();
+    engine?.notice({ type: 'resume-unsupported', startAt: 30 }); // after stop: ignored
+    expect(events).toEqual([
+      ['attempt', 'native:mp4:0'],
+      ['notice', 'resume-unsupported:30'],
+    ]);
+  });
+
+  it('a throwing listener does not break the flow or reject play()', async () => {
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines: fakeEngines({ mpegts: [new PlaybackError({ kind: 'network' })] }),
+    });
+    for (const evt of ['attempt', 'fallback', 'skipped', 'error'] as const) {
+      controller.on(evt, () => {
+        throw new Error(`listener ${evt}`);
+      });
+    }
+    const events = record(controller);
+    await expect(controller.play({ ...ts(), fallbacks: [m3u8()] })).resolves.toBeUndefined();
+    expect(events).toEqual([
+      ['attempt', 'mpegts:ts:0'],
+      ['fallback', 'network->hls'],
+      ['attempt', 'hls:hls:1'],
+    ]);
+    expect(controller.engine).toBe('hls');
+  });
+
+  it('a throwing factory during fallback still ends with exactly one error event', async () => {
+    const engines = fakeEngines({ mpegts: [new PlaybackError({ kind: 'network' })] });
+    engines.hls = () => {
+      throw new Error('factory exploded');
+    };
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines,
+    });
+    const events = record(controller);
+    await expect(controller.play({ ...ts(), fallbacks: [m3u8()] })).resolves.toBeUndefined();
+    expect(events).toEqual([
+      ['attempt', 'mpegts:ts:0'],
+      ['fallback', 'network->hls'],
+      ['error', 'unknown'],
+    ]);
+    expect(controller.engine).toBeUndefined();
+  });
+
+  it('a throwing factory or attach() on the primary falls back like a load failure', async () => {
+    const engines = fakeEngines();
+    engines.mpegts = () => {
+      const engine = new FakeEngine('mpegts');
+      engine.attach = () => {
+        throw new Error('attach exploded');
+      };
+      return engine;
+    };
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines,
+    });
+    const events = record(controller);
+    await controller.play({ ...ts(), fallbacks: [m3u8()] });
+    expect(events).toEqual([
+      ['fallback', 'unknown->hls'],
+      ['attempt', 'hls:hls:1'],
+    ]);
+    expect(FakeEngine.created[0]?.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('an asynchronous error whose fallback factory throws produces no unhandled rejection', async () => {
+    const engines = fakeEngines();
+    engines.hls = () => {
+      throw new Error('factory exploded');
+    };
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines,
+    });
+    const events = record(controller);
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      await controller.play({ ...ts(), fallbacks: [m3u8()] });
+      FakeEngine.created[0]?.fail(new PlaybackError({ kind: 'network' }));
+      await flush();
+      await flush();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(events.at(-1)).toEqual(['error', 'unknown']);
   });
 
   it('errors after stop() are ignored', async () => {
@@ -373,18 +531,10 @@ describe('player controller — real engines with mocked hls.js/mpegts.js', () =
     );
 
     await controller.play(m3u8());
-    const xhrSetup = libState.hls[0]?.config.xhrSetup as (
-      x: { open: (...a: unknown[]) => void },
-      u: string,
-      c: object,
-    ) => void;
-    const xhr = { open: vi.fn() };
-    xhrSetup(xhr, m3u8().url, {});
-    expect(xhr.open).toHaveBeenCalledWith(
-      'GET',
+    libState.hls[0]?.request(m3u8().url, 'manifest');
+    expect(libState.hlsRequests).toEqual([
       `https://proxy.test/playlist?u=${encodeURIComponent(m3u8().url)}`,
-      true,
-    );
+    ]);
     expect(rewrite.mock.calls.map(([, purpose]) => purpose)).toEqual([
       'stream',
       'stream',

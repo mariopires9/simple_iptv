@@ -1,12 +1,14 @@
 // hls.js engine (PLY-01). hls.js is only downloaded on the first load() (ADR-005).
 import type Hls from 'hls.js';
-import type { ErrorData, HlsConfig, LoaderContext } from 'hls.js';
+import type { ErrorData, HlsConfig } from 'hls.js';
 import { log } from '@/core/log';
 import { shortenUrl } from '@/core/net';
 import { isRecoverableHlsMediaError, mapHlsError, toPlaybackError } from '../errors';
 import { PlaybackError } from '../types';
 import type { EngineDeps, PlayerEngine, StreamDescriptor } from '../types';
-import { createErrorEmitter, requireVideo, resetMediaElement } from './shared';
+import { createRewritingLoader } from './hlsLoader';
+import type { LoaderConstructor } from './hlsLoader';
+import { createEngineEmitter, requireVideo, resetMediaElement, resumePosition } from './shared';
 
 /**
  * hls.js settings (1.7):
@@ -16,6 +18,7 @@ import { createErrorEmitter, requireVideo, resetMediaElement } from './shared';
  * - Live: start 3 target durations from the live edge and jump back if more than 10 behind
  *   (e.g. after a stall), without speeding up playback (`maxLiveSyncPlaybackRate: 1`).
  * - `backBufferLength: 30`: bounds memory on long live sessions (default is unbounded).
+ * - `loader`: set per instance to {@link createRewritingLoader} around the default loader.
  */
 export const HLS_CONFIG: Partial<HlsConfig> = {
   debug: false,
@@ -27,15 +30,45 @@ export const HLS_CONFIG: Partial<HlsConfig> = {
   backBufferLength: 30,
 };
 
-function isFragmentRequest(context: LoaderContext): boolean {
-  return 'frag' in context;
+export interface RecoveryPolicy {
+  /** A fatal media error happened: `true` if `recoverMediaError()` should be tried. */
+  shouldRecover(): boolean;
+  /** Playback made progress (a fragment was buffered): the last recovery worked. */
+  healthy(): void;
+}
+
+/**
+ * At most `max` recoveries per `windowMs`, and never twice in a row without progress in between
+ * (a recovery that did not lead to a buffered fragment did not work; looping would only stall).
+ */
+export function createRecoveryPolicy(
+  max = 3,
+  windowMs = 60_000,
+  now: () => number = Date.now,
+): RecoveryPolicy {
+  const attempts: number[] = [];
+  let pending = false;
+  return {
+    shouldRecover() {
+      if (pending) return false;
+      const t = now();
+      while (attempts.length > 0 && t - (attempts[0] ?? 0) >= windowMs) attempts.shift();
+      if (attempts.length >= max) return false;
+      attempts.push(t);
+      pending = true;
+      return true;
+    },
+    healthy() {
+      pending = false;
+    },
+  };
 }
 
 export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerEngine {
-  const errors = createErrorEmitter();
+  const events = createEngineEmitter();
   let video: HTMLVideoElement | undefined;
   let hls: Hls | undefined;
-  let detachError: (() => void) | undefined;
+  let detachListeners: (() => void) | undefined;
   let destroyed = false;
 
   return {
@@ -64,37 +97,36 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
         });
       }
 
+      const resume = resumePosition(stream, startAt);
       const instance = new HlsClass({
         ...HLS_CONFIG,
-        startPosition: startAt !== undefined && startAt > 0 ? startAt : -1,
-        // Every request (playlists, keys, segments) goes through the rewriter. Relative URIs are
-        // resolved by hls.js against the original playlist URL, so each URL is rewritten once.
-        xhrSetup: (xhr, url, context) => {
-          xhr.open(
-            'GET',
-            rewriter.rewrite(url, isFragmentRequest(context) ? 'stream' : 'playlist'),
-            true,
-          );
-        },
+        startPosition: resume ?? -1,
+        // Every request (playlists, keys, segments) goes through the rewriter, exactly once,
+        // while relative URIs keep resolving against the original URLs (see hlsLoader.ts).
+        loader: createRewritingLoader(HlsClass.DefaultConfig.loader as LoaderConstructor, rewriter),
       });
       hls = instance;
 
-      let recovered = false;
+      const recovery = createRecoveryPolicy();
       const onError = (_event: string, data: ErrorData) => {
         if (!data.fatal) {
           log.debug('hls: non-fatal error', { details: data.details, url: shortenUrl(stream.url) });
           return;
         }
-        if (!recovered && isRecoverableHlsMediaError(data)) {
-          recovered = true;
+        if (isRecoverableHlsMediaError(data) && recovery.shouldRecover()) {
           log.warn('hls: fatal media error, trying to recover', { details: data.details });
           instance.recoverMediaError();
           return;
         }
-        errors.emit(mapHlsError(data, ctx));
+        events.emit('error', mapHlsError(data, ctx));
       };
+      const onFragBuffered = () => recovery.healthy();
       instance.on(HlsClass.Events.ERROR, onError);
-      detachError = () => instance.off(HlsClass.Events.ERROR, onError);
+      instance.on(HlsClass.Events.FRAG_BUFFERED, onFragBuffered);
+      detachListeners = () => {
+        instance.off(HlsClass.Events.ERROR, onError);
+        instance.off(HlsClass.Events.FRAG_BUFFERED, onFragBuffered);
+      };
 
       try {
         instance.attachMedia(el);
@@ -107,9 +139,9 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
     async destroy() {
       if (destroyed) return;
       destroyed = true;
-      detachError?.();
-      detachError = undefined;
-      errors.clear();
+      detachListeners?.();
+      detachListeners = undefined;
+      events.clear();
       try {
         // Detaches the media (removes the MediaSource, revokes its object URL) and stops loading.
         hls?.destroy();
@@ -121,8 +153,8 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
       video = undefined;
     },
 
-    on(_evt, cb) {
-      return errors.on(cb);
+    on(evt, cb) {
+      return events.on(evt, cb);
     },
   };
 }
