@@ -115,3 +115,36 @@ export const motion = {
  * (`useMediaQuery`) for the MUI theme and as the `@media` condition of the global CSS fallback.
  */
 export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+/** A background/foreground pair for name-derived avatars (initials). */
+export interface AvatarColors {
+  bg: string;
+  fg: string;
+}
+
+/**
+ * Palette for initials avatars when a logo is missing or fails (LIV-01): the entry is picked
+ * from a hash of the name, so a channel always gets the same color. Every pair meets 4.5:1.
+ */
+export const avatarPalette: Readonly<Record<ColorMode, readonly Readonly<AvatarColors>[]>> = {
+  dark: [
+    { bg: '#1F4E5F', fg: '#E8ECF1' },
+    { bg: '#5B3A6E', fg: '#E8ECF1' },
+    { bg: '#6E3B3B', fg: '#E8ECF1' },
+    { bg: '#3B5E3B', fg: '#E8ECF1' },
+    { bg: '#6A4E1F', fg: '#E8ECF1' },
+    { bg: '#2F4A7A', fg: '#E8ECF1' },
+    { bg: '#5E2F4F', fg: '#E8ECF1' },
+    { bg: '#2F5A5A', fg: '#E8ECF1' },
+  ],
+  light: [
+    { bg: '#CFE8EF', fg: '#11151B' },
+    { bg: '#E6D7F0', fg: '#11151B' },
+    { bg: '#F3D6D6', fg: '#11151B' },
+    { bg: '#D5ECD5', fg: '#11151B' },
+    { bg: '#F2E3C4', fg: '#11151B' },
+    { bg: '#D3E0F5', fg: '#11151B' },
+    { bg: '#EFD3E4', fg: '#11151B' },
+    { bg: '#D2E9E6', fg: '#11151B' },
+  ],
+};

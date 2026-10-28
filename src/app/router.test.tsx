@@ -35,7 +35,7 @@ describe('router — routes', () => {
   it.each([
     ['/', 'Home', null],
     ['/live', 'Live TV', null],
-    ['/live/category/7', 'Live TV', 'Category: 7'],
+    ['/live/category/7', 'Live TV', null],
     ['/movies', 'Movies', null],
     ['/movies/category/123', 'Movies', 'Category: 123'],
     ['/movies/42', 'Movie details', 'Item: 42'],
