@@ -1,2 +1,9 @@
-// Module core/crypto — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
-export {};
+// Module core/crypto — CredentialVault (SRC-01, ADR-006), see docs/ARCHITECTURE.md §4.
+export {
+  createCredentialVault,
+  credentialVault,
+  VaultKeyLostError,
+  type CredentialVault,
+  type CredentialVaultDeps,
+  type VaultKeyLostReason,
+} from './vault';
