@@ -356,7 +356,9 @@ describe('background + manual syncs of one source (review #3 and #5)', () => {
   });
 
   it('cancel + immediate restart: the source stays in flight until the worker has stopped', async () => {
-    server.use(...xtreamHandlers({ delayMs: 30 }));
+    // The abort is triggered from a (throttled) progress message: keep every panel response slow
+    // enough that the sync is still running when the abort lands, even on a loaded CI machine.
+    server.use(...xtreamHandlers({ delayMs: 300 }));
     const api = connect();
     const waited: string[] = [];
     const options = (signal?: AbortSignal) => ({

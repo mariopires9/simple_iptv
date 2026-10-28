@@ -166,7 +166,7 @@ Catalog keys are composite: `key = "${sourceId}:${type}:${externalId}"` — allo
 
 | Table | Key | Indexes | Main fields |
 |---|---|---|---|
-| `sources` | `id` (uuid) | `createdAt` | `kind: 'xtream'|'m3u-url'|'m3u-file'`, `name`, `serverUrl?`, `username?`, `secretRef?` (→ vault; absent for M3U files), `epgUrl?`, `prefs {liveFormat:'auto'|'ts'|'m3u8'}`, `lastSyncAt?`, `lastSyncStatus`, `stats {live, movies, series}` |
+| `sources` | `id` (uuid) | `createdAt` | `kind: 'xtream'|'m3u-url'|'m3u-file'`, `name`, `serverUrl?`, `username?`, `secretRef?` (→ vault; absent for M3U files), `epgUrl?`, `prefs {liveFormat:'auto'|'ts'|'m3u8'}`, `lastSyncAt?`, `lastSyncStatus`, `stats {live, movies, series}`, `lastSyncByType?` (per-type outcome, SRC-07) |
 | `secrets` | `ref` | — | `iv`, `ciphertext` (AES-GCM) |
 | `keys` | `id` | — | non-extractable `CryptoKey` |
 | `categories` | `key` | `[sourceId+type]`, `sourceId` | `name`, `order` |
