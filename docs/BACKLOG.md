@@ -26,7 +26,7 @@ Allowed statuses (exactly one per story):
 | SRC-01 | Credential vault | E1 | Must | 3 | FND-05, FND-06 | 2 | M1 | Done |
 | SRC-02 | Xtream client: auth/account | E1 | Must | 3 | FND-06 | 2 | M1 | Done |
 | SRC-04 | Streaming M3U parser | E1 | Must | 5 | FND-07 | 2 | M1 | Backlog |
-| PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | In Progress |
+| PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | Done |
 | FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | Backlog |
 | FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | Backlog |
 | PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | Backlog |

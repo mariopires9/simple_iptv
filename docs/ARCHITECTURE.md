@@ -148,6 +148,10 @@ export interface PlayerEngine {
 }
 export type PlaybackErrorKind = 'network' | 'blocked' | 'unsupported-container' | 'unsupported-codec' | 'decode' | 'auth' | 'unknown';
 export function selectEngine(s: StreamDescriptor, caps: Capabilities): PlayerEngine['id'] | 'unsupported';
+// As implemented in PLY-01 (src/player): containers also include 'mov' | 'avi'; PlaybackError carries
+// { kind, engine, detail?, status?, hint?, target? } where target = shortenUrl(url) (never the raw URL);
+// createPlayerController(video, { rewriter, capabilities }) emits 'attempt' | 'skipped' | 'fallback' |
+// 'notice' (e.g. resume-unsupported) | 'error'; play() never rejects. Audio/text track methods: PLY-05.
 
 // search (worker)
 export interface SearchApi {
