@@ -20,6 +20,7 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 | ADR-013 | Validation of external data with tolerant schemas (Valibot) | **Accepted** (2026-10-28) |
 | ADR-014 | Lists stored on the device only, no sync | **Accepted** (2026-10-28) |
 | ADR-015 | English as the repo language; UI in English (base) + pt-PT | **Accepted** (2026-10-28) |
+| ADR-016 | Worker task registry lives in `src/worker`, outside `core` | **Accepted** (2026-10-28) |
 
 ---
 
@@ -92,3 +93,8 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 - **Context:** the product owner wants all repository artifacts in English and the UI available in English and Portuguese. Supersedes ADR-012.
 - **Decision:** English (`en`) is the base locale; pt-PT is the second locale. UI strings live in `src/i18n/<locale>/<feature>.ts`: `en` defines the message types and `pt-PT` must satisfy the same type, so the compiler catches missing keys. Initial locale = saved preference, else the browser language (`pt*` → pt-PT, otherwise `en`). Users can switch language in Settings (story UX-06). `<html lang>` follows the active locale. Code, comments, docs, commit messages and agent briefs are written in English.
 - **Consequences:** every UI story ships both locales; tests assert on English strings by default.
+
+### ADR-016 — Worker composition root outside core — Accepted (2026-10-28)
+- **Context:** registering provider tasks (e.g. `syncXtream`, SRC-07) in `src/core/worker` would make `core` import `providers`, breaking the module boundaries (ARCHITECTURE §2).
+- **Decision:** `src/core/worker` stays a generic runtime (Comlink API, client factory, `TaskContext`, `WorkerTaskError`, progress throttling, cancellation). The task registry and the `data.worker.ts` entry live in `src/worker/`, which may import `core` and `providers`; features call the worker through `@/worker`. Enforced by ESLint and `src/test/boundaries.test.ts`.
+- **Alternatives:** a targeted `eslint-disable` in core (rejected: normalises boundary exceptions); relative imports to dodge the rule (rejected: hides the violation).

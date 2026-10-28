@@ -50,11 +50,12 @@ simple_iptv/
 │  │  ├─ net/              # httpClient, error classification, UrlRewriter
 │  │  ├─ crypto/           # CredentialVault
 │  │  ├─ log/              # logger with redaction
-│  │  ├─ worker/           # data.worker.ts + Comlink API
+│  │  ├─ worker/           # generic worker runtime: Comlink API, client, TaskContext, errors
 │  │  └─ platform/         # capability detection (MSE/MMS, codecs, iOS, standalone)
 │  ├─ providers/
 │  │  ├─ xtream/           # client, schemas, mapping → internal model
 │  │  └─ m3u/              # streaming parser, classification heuristics
+│  ├─ worker/              # worker composition root: task registry + data.worker.ts entry (ADR-016)
 │  ├─ player/              # PlayerEngine, engines, selectEngine, PlayerView, controls
 │  ├─ features/
 │  │  ├─ onboarding/
@@ -72,7 +73,7 @@ simple_iptv/
 └─ docs/
 ```
 
-Dependency rule: `features → (player, providers, core, ui)`; `providers → core`; `core` imports nothing from above; features do not import from each other except via routes or `core/db` (enforceable with `eslint-plugin-boundaries` or `no-restricted-imports` rules).
+Dependency rule: `features → (worker, player, providers, core, ui)`; `worker → (providers, core)`; `providers → core`; `core` imports nothing from above; features do not import from each other except via routes or `core/db` (enforceable with `eslint-plugin-boundaries` or `no-restricted-imports` rules).
 
 ## 3. Modules and responsibilities
 
