@@ -22,14 +22,14 @@ Principles:
 | `outline` | `#2E3845` | `#CBD2DA` | Dividers, secondary focus borders |
 | `text` | `#E8ECF1` | `#11151B` | Primary text |
 | `text-muted` | `#9AA6B4` | `#56606C` | Metadata |
-| `accent` | `#3DDCB0` (mint) | `#0A7A5E` | Primary action, selection, focus |
+| `accent` | `#3DDCB0` (mint) | `#087258` | Primary action, selection, focus |
 | `on-accent` | `#04130E` | `#FFFFFF` | Text on accent |
-| `live` | `#FF5A5F` | `#D62F35` | "Live" indicator, EPG progress |
-| `warning` | `#F5B544` | `#9A6400` | Account expiring, warnings |
-| `danger` | `#FF6B6B` | `#C62828` | Errors, destructive actions |
-| `focus-ring` | `#3DDCB0` 2 px + 2 px offset | `#0A7A5E` | Keyboard focus (always visible) |
+| `live` | `#FF5A5F` | `#BF2A2F` | "Live" indicator, EPG progress |
+| `warning` | `#F5B544` | `#8A5A00` | Account expiring, warnings |
+| `danger` | `#FF6B6B` | `#BE2626` | Errors, destructive actions |
+| `focus-ring` | `#3DDCB0` 2 px + 2 px offset | `#087258` | Keyboard focus (always visible) |
 
-Text/background pairs must meet ≥ 4.5:1 (normal text) and ≥ 3:1 (UI/icons) — **automated validation mandatory in FND-03** (the values above are a starting point, they have not been measured).
+Text/background pairs must meet ≥ 4.5:1 (normal text) and ≥ 3:1 (UI/icons) — **automated validation mandatory in FND-03** (validated by `src/ui/theme/contrast.test.ts`; light-theme accent, live, warning and danger were darkened in FND-03 to pass on all surfaces).
 
 ### 2.2 Typography
 - **Inter Variable** self-hosted (`@fontsource-variable/inter`, OFL) — no Google Fonts (privacy). Fallback: `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.

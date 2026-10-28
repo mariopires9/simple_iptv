@@ -73,6 +73,8 @@ describe('no literal colors outside src/ui/theme', () => {
   it('has no offenders', () => {
     const offenders = walk(SRC)
       .filter((f) => /\.(ts|tsx)$/.test(f))
+      // Tests are not rendered UI; their strings (e.g. URL fragments like '#abc123') are data.
+      .filter((f) => !/\.test\.(ts|tsx)$/.test(f))
       .filter((f) => !relative(SRC, f).startsWith(THEME_DIR))
       .flatMap((f) =>
         findColorLiterals(readFileSync(f, 'utf8'), f).map((c) => `${relative(SRC, f)}: ${c}`),

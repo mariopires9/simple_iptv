@@ -14,7 +14,7 @@ Allowed statuses (exactly one per story):
 | S-00 | Validate real provider compatibility | E0 | Must | 3 | — | 0 | M0 | In Progress |
 | FND-01 | Project scaffold | E0 | Must | 3 | — | 0 | M0 | Done |
 | FND-02 | CI pipeline | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
-| FND-03 | Tokens, theme and AppShell | E0 | Must | 5 | FND-01 | 1 | M0 | In Progress |
+| FND-03 | Tokens, theme and AppShell | E0 | Must | 5 | FND-01 | 1 | M0 | Done |
 | FND-05 | Dexie persistence | E0 | Must | 5 | FND-01 | 1 | M0 | Done |
 | FND-06 | Redacting logger and errors | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
 | FND-07 | Web Worker infra | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
