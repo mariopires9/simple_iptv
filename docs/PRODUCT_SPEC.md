@@ -1,83 +1,83 @@
-# Especificação de produto
+# Product specification
 
-## 1. Resumo
-**Simple IPTV** (nome provisório) é um leitor IPTV gratuito, sem anúncios e sem telemetria, que corre no browser e se instala como PWA em Android, iOS e desktop. O utilizador liga as **suas próprias** fontes (Xtream Codes ou listas M3U) e vê TV em direto, filmes e séries com uma interface moderna, rápida e mobile-first.
+## 1. Summary
+**Simple IPTV** (working name) is a free IPTV player with no ads and no telemetry that runs in the browser and installs as a PWA on Android, iOS and desktop. Users connect **their own** sources (Xtream Codes or M3U lists) and watch live TV, movies and series through a modern, fast, mobile-first interface.
 
-A app é um **leitor genérico**: não inclui, sugere nem distribui listas, canais ou conteúdos.
+The app is a **generic player**: it does not include, suggest or distribute lists, channels or content.
 
-## 2. Utilizadores-alvo
-| Persona | Necessidade | Implicação |
+## 2. Target users
+| Persona | Need | Implication |
 |---|---|---|
-| Utilizador comum com subscrição IPTV | "Colar os dados que o fornecedor me deu e ver TV" | Onboarding de 1 ecrã, mensagens de erro em linguagem simples |
-| Utilizador técnico | Várias listas, M3U locais, EPG externo | Gestão de fontes, diagnóstico detalhado |
-| Utilizador em desktop/TV com teclado | Zapping rápido | Atalhos de teclado, foco visível |
+| Regular user with an IPTV subscription | "Paste the details my provider gave me and watch TV" | 1-screen onboarding, error messages in plain language |
+| Technical user | Several lists, local M3U files, external EPG | Source management, detailed diagnostics |
+| Desktop/TV user with a keyboard | Fast zapping | Keyboard shortcuts, visible focus |
 
-## 3. Âmbito
+## 3. Scope
 
-### 3.1 MVP (obrigatório) — v1.0
-| Área | Incluído |
+### 3.1 MVP (mandatory) — v1.0
+| Area | Included |
 |---|---|
-| Fontes | Adicionar Xtream (servidor, utilizador, palavra-passe) com teste de ligação; importar M3U por URL e por ficheiro local; página **"As minhas listas"** com todas as listas guardadas no dispositivo (sem limite de número), onde se editam, atualizam, removem e escolhe a lista ativa; diagnóstico de erros (credenciais, conta expirada, HTTPS, CORS, timeout); credenciais cifradas; apagar todos os dados |
-| TV em direto | Categorias; lista virtualizada com logos; filtro rápido; favoritos; recentes; leitor com zapping (anterior/seguinte, lista sobreposta); ecrã inteiro; lembrar último canal e estado de navegação; agora/seguinte (Xtream) |
-| Filmes | Grelha por categoria com posters; detalhe (sinopse, ano, duração, rating quando existirem); reprodução; retomar |
-| Séries | Grelha por categoria; detalhe com temporadas e episódios; reprodução; retomar; próximo episódio |
-| Pesquisa | Pesquisa global na fonte ativa (canais, filmes, séries) |
-| Favoritos/Histórico | Favoritos de canais, filmes e séries; "continuar a ver"; canais recentes |
-| UX | Tema escuro (padrão) e claro; mobile/tablet/desktop; estados loading/erro/vazio/offline; navegação por teclado; acessibilidade WCAG 2.2 AA nos fluxos principais |
-| PWA | Instalação; app shell offline; prompt de atualização; mensagem clara sem ligação |
-| Leitor | Seleção automática de engine; mensagens de erro acionáveis; PiP quando suportado |
+| Sources | Add Xtream (server, username, password) with connection test; import M3U by URL and from a local file; **"My lists"** page with all lists saved on the device (no limit on number), where lists are edited, refreshed, removed and the active list is chosen; error diagnostics (credentials, expired account, HTTPS, CORS, timeout); encrypted credentials; delete all data |
+| Live TV | Categories; virtualized list with logos; quick filter; favorites; recents; player with zapping (previous/next, overlaid list); fullscreen; remember last channel and navigation state; now/next (Xtream) |
+| Movies | Grid by category with posters; details (synopsis, year, duration, rating when available); playback; resume |
+| Series | Grid by category; details with seasons and episodes; playback; resume; next episode |
+| Search | Global search in the active source (channels, movies, series) |
+| Favorites/History | Favorites for channels, movies and series; "Continue watching"; recent channels |
+| UX | Dark (default) and light theme; language selection (EN/pt-PT); mobile/tablet/desktop; loading/error/empty/offline states; keyboard navigation; WCAG 2.2 AA accessibility in the main flows |
+| PWA | Installation; offline app shell; update prompt; clear message when there is no connection |
+| Player | Automatic engine selection; actionable error messages; PiP when supported |
 
-### 3.2 Versão posterior (v1.1–v1.2)
-| Funcionalidade | Razão para adiar |
+### 3.2 Later version (v1.1–v1.2)
+| Feature | Reason for deferring |
 |---|---|
-| EPG XMLTV (url-tvg / URL manual) + correspondência de canais | Ficheiros grandes, parse e matching complexos; Xtream short EPG cobre o essencial |
-| Faixas de áudio e legendas | hls.js expõe facilmente; nativo/mpegts variam — precisa de testes por dispositivo |
-| Palavra-passe mestra (bloqueio da app) | Melhora segurança, mas acrescenta fricção; opcional |
-| Exportar/importar configurações (ficheiro, segredos cifrados com palavra-passe) | Substitui sincronização entre dispositivos sem backend |
-| Navegação D-pad/comando de TV | Necessita de gestão de foco espacial |
-| Media Session (controlos no ecrã de bloqueio) | Baixo custo, mas valor depende de reprodução em segundo plano |
+| XMLTV EPG (url-tvg / manual URL) + channel matching | Large files, complex parsing and matching; Xtream short EPG covers the essentials |
+| Audio tracks and subtitles | hls.js exposes them easily; native/mpegts vary — needs per-device testing |
+| Master password (app lock) | Improves security, but adds friction; optional |
+| Export/import settings (file, secrets encrypted with a password) | Replaces cross-device sync without a backend |
+| D-pad/TV remote navigation | Requires spatial focus management |
+| Media Session (lock screen controls) | Low cost, but value depends on background playback |
 
-### 3.3 Opcional / experimental
-| Funcionalidade | Nota |
+### 3.3 Optional / experimental
+| Feature | Note |
 |---|---|
-| Proxy self-hosted de referência (PRX-01) | Pode passar a obrigatório conforme ADR-010 |
-| Shell Android Capacitor (NAT-01) | Contorna CORS/mixed content no Android |
-| Controlo parental com PIN | Só dissuasor em client-side; não é segurança real |
-| Perfis múltiplos | Favoritos/histórico por perfil |
-| EPG em grelha | Custo alto de UI e desempenho |
-| Catch-up/timeshift | Depende do servidor |
-| Chromecast/AirPlay/Remote Playback | AirPlay "grátis" no Safari com engine nativa; Cast exige SDK e streams acessíveis pelo recetor |
-| Sincronização entre dispositivos | Exigiria backend ou armazenamento de terceiros; fora de âmbito |
+| Reference self-hosted proxy (PRX-01) | May become mandatory depending on ADR-010 |
+| Capacitor Android shell (NAT-01) | Works around CORS/mixed content on Android |
+| Parental control with PIN | Only a deterrent on the client side; not real security |
+| Multiple profiles | Favorites/history per profile |
+| Grid EPG | High UI and performance cost |
+| Catch-up/timeshift | Server dependent |
+| Chromecast/AirPlay/Remote Playback | AirPlay "for free" in Safari with the native engine; Cast requires an SDK and streams reachable by the receiver |
+| Cross-device sync | Would require a backend or third-party storage; out of scope |
 
-### 3.4 Fora de âmbito (explicitamente)
-Listas pré-carregadas, diretórios de canais, DRM ou contorno de DRM, gravação/download de streams, transcodificação, contas de utilizador na nossa infraestrutura, publicidade, analytics.
+### 3.4 Out of scope (explicitly)
+Preloaded lists, channel directories, DRM or DRM circumvention, recording/downloading streams, transcoding, user accounts on our infrastructure, advertising, analytics.
 
-## 4. Requisitos não funcionais
-| ID | Requisito | Meta (medida em QA-03 / TEST_PLAN) |
+## 4. Non-functional requirements
+| ID | Requirement | Target (measured in QA-03 / TEST_PLAN) |
 |---|---|---|
-| NFR-01 | Arranque (visita repetida, SW ativo, Android médio) | Ecrã útil < 1,0 s |
-| NFR-02 | Primeiro carregamento (Lighthouse mobile) | LCP < 2,5 s; JS inicial ≤ 200 KB gz |
-| NFR-03 | Scroll de listas com 20 000 canais | Sem *long tasks* > 50 ms; ≥ 55 fps |
-| NFR-04 | Pesquisa sobre 100 000 itens | Resultados < 100 ms após índice construído |
-| NFR-05 | Parse M3U de 50 000 entradas | < 5 s num Android médio, UI responsiva |
-| NFR-06 | Zapping (HLS/TS, rede boa, servidor responsivo) | Primeiro frame < 3 s em p75 — **dependente do servidor; medido, não garantido** |
-| NFR-07 | Acessibilidade | 0 violações axe "serious/critical"; Lighthouse a11y ≥ 95 |
-| NFR-08 | Privacidade | 0 pedidos de rede para domínios que não sejam a origem da app ou os servidores configurados pelo utilizador |
-| NFR-09 | Compatibilidade alvo | Chrome/Edge últimos 2, Firefox últimos 2, Safari ≥ 17.1 (iOS/macOS), Samsung Internet atual |
+| NFR-01 | Startup (repeat visit, SW active, mid-range Android) | Usable screen < 1.0 s |
+| NFR-02 | First load (Lighthouse mobile) | LCP < 2.5 s; initial JS ≤ 200 KB gz |
+| NFR-03 | Scrolling lists with 20 000 channels | No *long tasks* > 50 ms; ≥ 55 fps |
+| NFR-04 | Search over 100 000 items | Results < 100 ms after the index is built |
+| NFR-05 | Parsing an M3U with 50 000 entries | < 5 s on a mid-range Android, UI responsive |
+| NFR-06 | Zapping (HLS/TS, good network, responsive server) | First frame < 3 s at p75 — **server dependent; measured, not guaranteed** |
+| NFR-07 | Accessibility | 0 axe "serious/critical" violations; Lighthouse a11y ≥ 95 |
+| NFR-08 | Privacy | 0 network requests to domains other than the app origin or the servers configured by the user |
+| NFR-09 | Target compatibility | Chrome/Edge last 2, Firefox last 2, Safari ≥ 17.1 (iOS/macOS), current Samsung Internet |
 
-## 5. Limitações conhecidas a comunicar ao utilizador
-1. Servidores **apenas HTTP** ou **sem CORS** podem não funcionar no browser (ver diagnóstico na app).
-2. Áudio Dolby (AC-3/E-AC-3) e MP2 podem não ter som no Chrome/Firefox.
-3. MKV/AVI dependem do browser.
-4. No iPhone o ecrã inteiro usa os controlos nativos do iOS.
-5. Reprodução em segundo plano não é garantida.
-6. A app não funciona offline para ver conteúdo (só a interface abre).
-7. Credenciais ficam no dispositivo; quem tem acesso ao dispositivo desbloqueado pode aceder-lhes.
+## 5. Known limitations to communicate to the user
+1. **HTTP-only** servers or servers **without CORS** may not work in the browser (see diagnostics in the app).
+2. Dolby (AC-3/E-AC-3) and MP2 audio may have no sound in Chrome/Firefox.
+3. MKV/AVI depend on the browser.
+4. On the iPhone, fullscreen uses the native iOS controls.
+5. Background playback is not guaranteed.
+6. The app does not work offline for watching content (only the interface opens).
+7. Credentials stay on the device; anyone with access to the unlocked device can access them.
 
-## 6. Pressupostos
-- P1: O utilizador tem pelo menos uma fonte IPTV legítima para testes (necessária para S-00).
-- P2: Nome provisório "Simple IPTV" (derivado do nome do diretório) até decisão do utilizador.
-- P3: Repositório público no GitHub é aceitável (requisito do GitHub Pages gratuito).
-- P4: UI apenas em pt-PT no MVP.
-- P5: Utilizador único por dispositivo no MVP.
-- P6: As listas ficam só no dispositivo onde foram adicionadas; sem sincronização (ADR-014, decisão do utilizador).
+## 6. Assumptions
+- P1: The user has at least one legitimate IPTV source for testing (required for S-00).
+- P2: Working name "Simple IPTV" (derived from the directory name) until the user decides.
+- P3: A public GitHub repository is acceptable (a requirement of free GitHub Pages).
+- P4: UI in English and pt-PT, selectable (ADR-015).
+- P5: Single user per device in the MVP.
+- P6: Lists stay only on the device where they were added; no sync (ADR-014, user decision).

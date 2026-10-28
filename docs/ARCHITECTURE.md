@@ -1,23 +1,23 @@
-# Arquitetura técnica
+# Technical architecture
 
-> Baseada nas decisões de `DECISIONS.md` e na investigação de `RESEARCH.md`. Nada aqui está implementado.
+> Based on the decisions in `DECISIONS.md` and the research in `RESEARCH.md`. Nothing here is implemented.
 
-## 1. Visão geral
+## 1. Overview
 
 ```mermaid
 flowchart LR
-  subgraph Browser["Browser / PWA instalada (HTTPS)"]
-    UI["UI React<br/>(features/*)"]
-    ST["Estado<br/>Zustand + TanStack Query"]
+  subgraph Browser["Browser / installed PWA (HTTPS)"]
+    UI["React UI<br/>(features/*)"]
+    ST["State<br/>Zustand + TanStack Query"]
     PL["Player<br/>Native · hls.js · mpegts.js"]
-    WK["Data Worker<br/>parse · sync · índice"]
+    WK["Data Worker<br/>parse · sync · index"]
     DB[("IndexedDB<br/>Dexie")]
     VA["CredentialVault<br/>WebCrypto AES-GCM"]
     SW["Service Worker<br/>app shell"]
   end
-  HOST["GitHub Pages<br/>(só ficheiros estáticos)"]
-  IPTV["Servidor IPTV do utilizador<br/>Xtream API · M3U · XMLTV · streams"]
-  PRX["Proxy self-hosted<br/>(opcional, pós-MVP)"]
+  HOST["GitHub Pages<br/>(static files only)"]
+  IPTV["User's IPTV server<br/>Xtream API · M3U · XMLTV · streams"]
+  PRX["Self-hosted proxy<br/>(optional, post-MVP)"]
 
   HOST -- "HTML/JS/CSS" --> SW
   UI <--> ST
@@ -33,29 +33,29 @@ flowchart LR
   PRX -.-> IPTV
 ```
 
-Não existe backend. O alojamento só serve a app; **nenhum dado do utilizador nem vídeo passa pelo alojamento**.
+There is no backend. The host only serves the app; **no user data and no video goes through the host**.
 
-## 2. Estrutura de diretórios proposta
+## 2. Proposed directory structure
 
 ```
 simple_iptv/
 ├─ index.html
-├─ public/                 # ícones, manifest assets, robots.txt
+├─ public/                 # icons, manifest assets, robots.txt
 ├─ src/
 │  ├─ app/                 # bootstrap, router, providers, layout (AppShell)
-│  ├─ ui/                  # design system: tema, tokens, componentes partilhados
-│  ├─ i18n/                # pt-PT/<feature>.ts + índice
+│  ├─ ui/                  # design system: theme, tokens, shared components
+│  ├─ i18n/                # en/<feature>.ts + pt-PT/<feature>.ts + index (ADR-015)
 │  ├─ core/
-│  │  ├─ db/               # Dexie schema, migrações, repositórios
-│  │  ├─ net/              # httpClient, classificação de erros, UrlRewriter
+│  │  ├─ db/               # Dexie schema, migrations, repositories
+│  │  ├─ net/              # httpClient, error classification, UrlRewriter
 │  │  ├─ crypto/           # CredentialVault
-│  │  ├─ log/              # logger com redação
-│  │  ├─ worker/           # data.worker.ts + API Comlink
-│  │  └─ platform/         # deteção de capacidades (MSE/MMS, codecs, iOS, standalone)
+│  │  ├─ log/              # logger with redaction
+│  │  ├─ worker/           # data.worker.ts + Comlink API
+│  │  └─ platform/         # capability detection (MSE/MMS, codecs, iOS, standalone)
 │  ├─ providers/
-│  │  ├─ xtream/           # cliente, schemas, mapeamento → modelo interno
-│  │  └─ m3u/              # parser streaming, heurísticas de classificação
-│  ├─ player/              # PlayerEngine, engines, selectEngine, PlayerView, controlos
+│  │  ├─ xtream/           # client, schemas, mapping → internal model
+│  │  └─ m3u/              # streaming parser, classification heuristics
+│  ├─ player/              # PlayerEngine, engines, selectEngine, PlayerView, controls
 │  ├─ features/
 │  │  ├─ onboarding/
 │  │  ├─ sources/
@@ -63,41 +63,41 @@ simple_iptv/
 │  │  ├─ movies/
 │  │  ├─ series/
 │  │  ├─ epg/
-│  │  ├─ favorites/        # favoritos + recentes + retomar
+│  │  ├─ favorites/        # favorites + recents + resume
 │  │  ├─ search/
 │  │  └─ settings/
-│  └─ test/                # utilitários e fixtures partilhados
+│  └─ test/                # shared utilities and fixtures
 ├─ e2e/                    # Playwright
-├─ fixtures/               # M3U/Xtream/XMLTV sintéticos (sem dados reais)
+├─ fixtures/               # synthetic M3U/Xtream/XMLTV (no real data)
 └─ docs/
 ```
 
-Regra de dependência: `features → (player, providers, core, ui)`; `providers → core`; `core` não importa nada de cima; features não importam umas das outras exceto via rotas ou `core/db` (verificável com `eslint-plugin-boundaries` ou regras `no-restricted-imports`).
+Dependency rule: `features → (player, providers, core, ui)`; `providers → core`; `core` imports nothing from above; features do not import from each other except via routes or `core/db` (enforceable with `eslint-plugin-boundaries` or `no-restricted-imports` rules).
 
-## 3. Módulos e responsabilidades
+## 3. Modules and responsibilities
 
-| Módulo | Responsabilidade | Não faz |
+| Module | Responsibility | Does not |
 |---|---|---|
-| `core/net` | `fetchJson/fetchText/fetchStream` com timeout, `AbortSignal`, classificação de erros, aplicação do `UrlRewriter` | Lógica de domínio |
-| `core/crypto` | Gerar/obter chave de dispositivo; `encrypt/decrypt`; `wipe()` | Guardar dados de domínio |
-| `core/db` | Schema Dexie, migrações, repositórios tipados, `wipeAll()` | Pedidos de rede |
-| `core/log` | `log.debug/info/warn/error` com redação automática; ring buffer de 500 entradas | Envio remoto |
-| `core/worker` | Operações pesadas (sync, parse, índice) com progresso e cancelamento | Acesso ao DOM |
-| `core/platform` | `capabilities()`: MSE/MMS, `isTypeSupported` para codecs comuns, iOS, standalone, PiP, fullscreen | — |
-| `providers/xtream` | Implementa `SourceProvider` para Xtream | UI |
-| `providers/m3u` | Parser M3U streaming + `SourceProvider` para M3U | UI |
-| `player` | Seleção de engine, ciclo de vida, eventos, UI do leitor | Saber de onde vem o stream |
-| `features/*` | Ecrãs e fluxos | Aceder a `fetch` diretamente |
+| `core/net` | `fetchJson/fetchText/fetchStream` with timeout, `AbortSignal`, error classification, applying the `UrlRewriter` | Domain logic |
+| `core/crypto` | Generate/get the device key; `encrypt/decrypt`; `wipe()` | Store domain data |
+| `core/db` | Dexie schema, migrations, typed repositories, `wipeAll()` | Network requests |
+| `core/log` | `log.debug/info/warn/error` with automatic redaction; 500-entry ring buffer | Remote sending |
+| `core/worker` | Heavy operations (sync, parse, index) with progress and cancellation | DOM access |
+| `core/platform` | `capabilities()`: MSE/MMS, `isTypeSupported` for common codecs, iOS, standalone, PiP, fullscreen | — |
+| `providers/xtream` | Implements `SourceProvider` for Xtream | UI |
+| `providers/m3u` | Streaming M3U parser + `SourceProvider` for M3U | UI |
+| `player` | Engine selection, lifecycle, events, player UI | Know where the stream comes from |
+| `features/*` | Screens and flows | Access `fetch` directly |
 
-## 4. Contratos entre módulos (TypeScript, indicativo)
+## 4. Contracts between modules (TypeScript, indicative)
 
 ```ts
 // core/net
 export type NetErrorKind =
   | 'offline' | 'timeout' | 'aborted'
-  | 'blocked'        // TypeError em fetch: CORS, mixed content ou DNS — o browser não distingue
+  | 'blocked'        // TypeError in fetch: CORS, mixed content or DNS — the browser does not distinguish
   | 'http'           // status != 2xx
-  | 'auth'           // 401/403 ou user_info.auth === 0
+  | 'auth'           // 401/403 or user_info.auth === 0
   | 'parse';
 export class NetError extends Error { kind: NetErrorKind; status?: number; hint?: 'mixed-content' | 'cors' }
 export interface UrlRewriter { rewrite(url: string, purpose: 'api' | 'playlist' | 'stream' | 'image' | 'epg'): string }
@@ -117,7 +117,7 @@ export interface SourceProvider {
   testConnection(signal?: AbortSignal): Promise<ConnectionReport>;
   sync(types: ContentType[], onProgress: (p: SyncProgress) => void, signal?: AbortSignal): Promise<SyncResult>;
   getMovieDetails?(movieId: string): Promise<MovieDetails>;
-  getSeriesDetails?(seriesId: string): Promise<SeriesDetails>;      // temporadas + episódios
+  getSeriesDetails?(seriesId: string): Promise<SeriesDetails>;      // seasons + episodes
   getNowNext?(channelId: string): Promise<EpgProgram[]>;
   resolveStream(item: PlayableRef, prefs: StreamPrefs): Promise<StreamDescriptor>;
 }
@@ -134,14 +134,14 @@ export interface StreamDescriptor {
   url: string;
   kind: 'live' | 'vod';
   container: 'hls' | 'ts' | 'mp4' | 'mkv' | 'webm' | 'flv' | 'unknown';
-  fallbacks?: StreamDescriptor[];       // ex.: .m3u8 como alternativa a .ts
+  fallbacks?: StreamDescriptor[];       // e.g. .m3u8 as an alternative to .ts
 }
 export interface PlayerEngine {
   readonly id: 'native' | 'hls' | 'mpegts';
   attach(video: HTMLVideoElement): void;
   load(stream: StreamDescriptor, startAt?: number): Promise<void>;
   destroy(): Promise<void>;
-  audioTracks(): Track[]; setAudioTrack(id: string): void;   // pós-MVP
+  audioTracks(): Track[]; setAudioTrack(id: string): void;   // post-MVP
   textTracks(): Track[];  setTextTrack(id: string | null): void;
   on(evt: 'error', cb: (e: PlaybackError) => void): () => void;
 }
@@ -155,46 +155,46 @@ export interface SearchApi {
 }
 ```
 
-## 5. Modelo de dados (IndexedDB / Dexie v1)
+## 5. Data model (IndexedDB / Dexie v1)
 
-Chaves de catálogo são compostas: `key = "${sourceId}:${type}:${externalId}"` — permite várias fontes sem colisões e apagar uma fonte por prefixo/índice.
+Catalog keys are composite: `key = "${sourceId}:${type}:${externalId}"` — allows several sources without collisions and deleting a source by prefix/index.
 
-| Tabela | Chave | Índices | Campos principais |
+| Table | Key | Indexes | Main fields |
 |---|---|---|---|
-| `sources` | `id` (uuid) | `createdAt` | `kind: 'xtream'|'m3u-url'|'m3u-file'`, `name`, `serverUrl?`, `username?`, `secretRef?` (→ vault; ausente em ficheiros M3U), `epgUrl?`, `prefs {liveFormat:'auto'|'ts'|'m3u8'}`, `lastSyncAt?`, `lastSyncStatus`, `stats {live, movies, series}` |
+| `sources` | `id` (uuid) | `createdAt` | `kind: 'xtream'|'m3u-url'|'m3u-file'`, `name`, `serverUrl?`, `username?`, `secretRef?` (→ vault; absent for M3U files), `epgUrl?`, `prefs {liveFormat:'auto'|'ts'|'m3u8'}`, `lastSyncAt?`, `lastSyncStatus`, `stats {live, movies, series}` |
 | `secrets` | `ref` | — | `iv`, `ciphertext` (AES-GCM) |
-| `keys` | `id` | — | `CryptoKey` não exportável |
+| `keys` | `id` | — | non-extractable `CryptoKey` |
 | `categories` | `key` | `[sourceId+type]`, `sourceId` | `name`, `order` |
 | `channels` | `key` | `[categoryKey+order]`, `sourceId`, `nameNorm` | `name`, `logo?`, `number?`, `epgId?`, `streamPath`*, `catchup?` |
 | `movies` | `key` | `[categoryKey+order]`, `sourceId`, `addedAt` | `name`, `poster?`, `rating?`, `year?`, `ext?`, `streamPath`* |
 | `series` | `key` | `[categoryKey+order]`, `sourceId` | `name`, `cover?`, `plot?`, `rating?`, `year?` |
-| `seriesDetails` | `seriesKey` | `fetchedAt` | temporadas + episódios (cache TTL 24 h) |
+| `seriesDetails` | `seriesKey` | `fetchedAt` | seasons + episodes (cache TTL 24 h) |
 | `favorites` | `itemKey` | `[sourceId+type]`, `addedAt` | `type` |
 | `history` | `itemKey` | `[sourceId+type]`, `lastWatchedAt` | `positionSec?`, `durationSec?`, `episodeKey?`, `completed` |
-| `epgPrograms` | `[channelEpgId+start]` | `end`, `sourceId` | `title`, `desc?` (pós-MVP, XMLTV) |
-| `settings` | `key` | — | `theme`, `activeSourceId`, `lastRoute`, `lastChannelKey`, `onboardingDone` |
-| `searchIndex` | `sourceId` | — | índice MiniSearch serializado (`toJSON`) |
+| `epgPrograms` | `[channelEpgId+start]` | `end`, `sourceId` | `title`, `desc?` (post-MVP, XMLTV) |
+| `settings` | `key` | — | `theme`, `locale` (ADR-015), `activeSourceId`, `lastRoute`, `lastChannelKey`, `onboardingDone` |
+| `searchIndex` | `sourceId` | — | serialized MiniSearch index (`toJSON`) |
 
-\* `streamPath`: para Xtream guarda-se apenas `id` + extensão; o URL completo é construído em memória com as credenciais (`resolveStream`). Para M3U, cifrar cada URL individualmente tem custo proibitivo em listas de 100k entradas; decisão: guardar o URL em claro na tabela `channels` e documentar (ver `SECURITY.md §2`); se a lista for do tipo `get.php` Xtream, propor conversão para fonte Xtream (credenciais cifradas, URLs construídos em memória).
+\* `streamPath`: for Xtream only `id` + extension are stored; the full URL is built in memory with the credentials (`resolveStream`). For M3U, encrypting each URL individually has a prohibitive cost on 100k-entry lists; decision: store the URL in plain text in the `channels` table and document it (see `SECURITY.md §2`); if the list is an Xtream `get.php` type, offer conversion to an Xtream source (encrypted credentials, URLs built in memory).
 
-Notas de implementação (FND-05):
-- Itens de catálogo têm `order` (ordem original da fonte) e `categoryKey?`; a paginação usa o índice `[categoryKey+order]` com `offset/limit` (só lê a página pedida).
-- `replaceForSource` deduplica por chave (o último vence) e devolve as contagens realmente gravadas + `duplicates`.
-- O cofre (`core/crypto`, SRC-01) acede às tabelas `secrets`/`keys` através de `vaultStore`, sem `db.table()`.
-- `DatabaseUnavailableError.reason` ∈ `unsupported|open-failed|timeout`; o texto para o utilizador vem de `t.db.errors[reason]` (`src/i18n/pt-PT/db.ts`).
-- `closeDatabase()` é assíncrono; `wipeAll()` fecha ligações e cancela aberturas pendentes antes de apagar.
+Implementation notes (FND-05):
+- Catalog items have `order` (the source's original order) and `categoryKey?`; pagination uses the `[categoryKey+order]` index with `offset/limit` (reads only the requested page).
+- `replaceForSource` deduplicates by key (last one wins) and returns the counts actually written + `duplicates`.
+- The vault (`core/crypto`, SRC-01) accesses the `secrets`/`keys` tables through `vaultStore`, without `db.table()`.
+- `DatabaseUnavailableError.reason` ∈ `unsupported|open-failed|timeout`; the user-facing text comes from `t.db.errors[reason]` (`src/i18n/<locale>/db.ts`, ADR-015).
+- `closeDatabase()` is asynchronous; `wipeAll()` closes connections and cancels pending opens before deleting.
 
-Migrações: `db.version(n).stores(...).upgrade(...)`; cada alteração de schema é uma story própria e passa por revisão (ficheiro partilhado — ver política de conflitos).
+Migrations: `db.version(n).stores(...).upgrade(...)`; each schema change is its own story and goes through review (shared file — see the conflict policy).
 
-## 6. Fluxos principais
+## 6. Main flows
 
-### 6.1 Sincronização de uma fonte Xtream
+### 6.1 Syncing an Xtream source
 ```mermaid
 sequenceDiagram
   participant UI
   participant W as Data Worker
   participant V as Vault
-  participant X as Servidor Xtream
+  participant X as Xtream server
   participant DB as IndexedDB
   UI->>W: sync(sourceId, ['live','movie','series'])
   W->>V: get(secretRef)
@@ -202,55 +202,55 @@ sequenceDiagram
   X-->>W: user_info / server_info
   loop live, movie, series
     W->>X: get_*_categories
-    W->>X: get_*_streams (JSON grande)
-    W->>W: validar (Valibot) + normalizar
-    W->>DB: transação: apagar antigos da fonte+tipo, bulkPut novos
-    W-->>UI: progresso
+    W->>X: get_*_streams (large JSON)
+    W->>W: validate (Valibot) + normalize
+    W->>DB: transaction: delete old items for source+type, bulkPut new ones
+    W-->>UI: progress
   end
-  W->>W: construir índice MiniSearch
-  W->>DB: guardar índice + stats + lastSyncAt
-  W-->>UI: concluído (preserva favoritos/histórico: chaves estáveis)
+  W->>W: build MiniSearch index
+  W->>DB: save index + stats + lastSyncAt
+  W-->>UI: done (keeps favorites/history: stable keys)
 ```
 
-### 6.2 Reprodução
+### 6.2 Playback
 ```mermaid
 flowchart TD
-  A[Utilizador escolhe item] --> B[provider.resolveStream]
+  A[User picks an item] --> B[provider.resolveStream]
   B --> C{selectEngine}
   C -- Safari + HLS --> N[NativeEngine]
   C -- HLS + MSE/MMS --> H[HlsEngine lazy import]
   C -- TS + MSE/MMS --> M[MpegtsEngine lazy import]
   C -- MP4/WebM/MKV --> N
-  C -- não suportado --> U[Mensagem: formato não suportado]
-  N & H & M --> P{Erro?}
-  P -- não --> OK[A reproduzir · guardar histórico]
-  P -- sim, há fallback --> C
-  P -- sim, sem fallback --> E[Classificar erro → mensagem acionável]
+  C -- not supported --> U[Message: unsupported format]
+  N & H & M --> P{Error?}
+  P -- no --> OK[Playing · save history]
+  P -- yes, fallback available --> C
+  P -- yes, no fallback --> E[Classify error → actionable message]
 ```
 
-## 7. Cache e sincronização
+## 7. Cache and sync
 
-| Dado | Onde | Política |
+| Data | Where | Policy |
 |---|---|---|
-| App shell (HTML/JS/CSS/fontes/ícones) | Precache do SW | Versão por build; atualização com prompt |
-| Catálogo (categorias, canais, filmes, séries) | IndexedDB | Atualização manual + automática se `lastSyncAt` > 24 h (configurável), em segundo plano com a app aberta |
-| Detalhe de filme / série | IndexedDB (`seriesDetails`) + TanStack Query | TTL 24 h |
-| EPG agora/seguinte (Xtream) | TanStack Query (memória) | `staleTime` 5 min; só para canais visíveis/selecionados |
-| EPG XMLTV (pós-MVP) | IndexedDB | Janela −2 h/+48 h; refresh 12 h; expurgo de programas terminados |
-| Logos/posters | Cache HTTP do browser | **Sem** cache no SW (respostas opacas) |
-| API Xtream e streams | Nunca no SW | `NetworkOnly`; URLs com credenciais nunca entram no Cache Storage |
+| App shell (HTML/JS/CSS/fonts/icons) | SW precache | Versioned per build; update with prompt |
+| Catalog (categories, channels, movies, series) | IndexedDB | Manual refresh + automatic if `lastSyncAt` > 24 h (configurable), in the background while the app is open |
+| Movie / series details | IndexedDB (`seriesDetails`) + TanStack Query | TTL 24 h |
+| EPG now/next (Xtream) | TanStack Query (memory) | `staleTime` 5 min; only for visible/selected channels |
+| XMLTV EPG (post-MVP) | IndexedDB | Window −2 h/+48 h; refresh 12 h; purge of finished programs |
+| Logos/posters | Browser HTTP cache | **No** SW cache (opaque responses) |
+| Xtream API and streams | Never in the SW | `NetworkOnly`; URLs with credentials never enter Cache Storage |
 
-## 8. Tratamento de erros e logging
-- Todos os erros de rede passam por `NetError` com `kind`; a UI mapeia `kind` → mensagem pt-PT com ação sugerida (ex.: `blocked` + servidor `http:` → "O servidor não usa HTTPS; browsers bloqueiam este acesso a partir de uma app segura. Ver opções.").
-- `log` aplica redação antes de qualquer saída: substitui `username=`, `password=`, segmentos `/live|movie|series/{u}/{p}/`, `token=`, e qualquer valor presente no vault por `***`.
-- `ErrorBoundary` por rota; nunca mostrar stack traces ao utilizador.
+## 8. Error handling and logging
+- All network errors go through `NetError` with a `kind`; the UI maps `kind` → a localized message (active locale, ADR-015) with a suggested action (e.g. `blocked` + `http:` server → "This server doesn't use HTTPS; browsers block this access from a secure app. See options.").
+- `log` applies redaction before any output: it replaces `username=`, `password=`, `/live|movie|series/{u}/{p}/` segments, `token=`, and any value present in the vault with `***`.
+- One `ErrorBoundary` per route; never show stack traces to the user.
 
-## 9. É possível o MVP sem backend?
-**Sim, para fornecedores com HTTPS + CORS, para listas M3U importadas de ficheiro com streams HTTPS, e para HLS no Safari (sem CORS).** Não, para fornecedores HTTP-only — nesses casos nenhum código client-side resolve o bloqueio do browser. A solução proposta (ADR-010) é um proxy **operado pelo próprio utilizador**, nunca um serviço central nosso, por três razões: (1) não ficamos com credenciais nem tráfego de terceiros; (2) custo zero mantém-se; (3) evita riscos de termos de serviço de CDNs que proíbem vídeo.
+## 9. Is the MVP possible without a backend?
+**Yes, for providers with HTTPS + CORS, for M3U lists imported from a file with HTTPS streams, and for HLS on Safari (no CORS needed).** No, for HTTP-only providers — in those cases no client-side code can get around the browser block. The proposed solution (ADR-010) is a proxy **operated by the user themselves**, never a central service of ours, for three reasons: (1) we do not hold third-party credentials or traffic; (2) zero cost is maintained; (3) it avoids the terms-of-service risks of CDNs that forbid video.
 
-## 10. Desempenho (decisões de desenho)
-- Listas sempre virtualizadas; imagens `loading="lazy"` + `decoding="async"` + dimensões fixas.
-- Nunca carregar o catálogo inteiro para memória da UI: consultas paginadas por categoria via índices Dexie.
-- hls.js (~120 KB gz) e mpegts.js (~60 KB gz) só no primeiro play.
-- Reutilizar o mesmo `<video>` ao fazer zapping; `destroy()` da engine anterior antes de `load()`.
-- Pesquisa no worker com debounce 120 ms.
+## 10. Performance (design decisions)
+- Lists are always virtualized; images with `loading="lazy"` + `decoding="async"` + fixed dimensions.
+- Never load the whole catalog into UI memory: paginated queries per category via Dexie indexes.
+- hls.js (~120 KB gz) and mpegts.js (~60 KB gz) only on first play.
+- Reuse the same `<video>` when zapping; `destroy()` the previous engine before `load()`.
+- Search in the worker with a 120 ms debounce.
