@@ -1,782 +1,795 @@
 # User stories
 
-Estado de cada story: ver **`BACKLOG.md`** (fonte única de verdade para estados). Este ficheiro contém o conteúdo; não editar estados aqui.
+Status of each story: see **`BACKLOG.md`** (single source of truth for statuses). This file holds the content; do not edit statuses here.
 
-## Convenções
-- **Prioridade:** `Must` (MVP) · `Should` (v1.1) · `Could` (experimental/posterior).
-- **Esforço:** pontos relativos 1 · 2 · 3 · 5 · 8 (8 = máximo; maior → dividir).
-- **Valor:** Alto / Médio / Baixo para o utilizador final.
-- **CA:** critérios de aceitação em Given/When/Then.
+## Conventions
+- **Priority:** `Must` (MVP) · `Should` (v1.1) · `Could` (experimental/later).
+- **Effort:** relative points 1 · 2 · 3 · 5 · 8 (8 = maximum; larger → split).
+- **Value:** High / Medium / Low for the end user.
+- **AC:** acceptance criteria in Given/When/Then.
 
-### Definição de Pronto (DoR) — para passar a `Ready`
-Dependências em `Done`; CA verificáveis; ficheiros/áreas previstas listadas; dúvidas resolvidas ou pressupostos registados.
+### Definition of Ready (DoR) — to move to `Ready`
+Dependencies `Done`; verifiable AC; expected files/areas listed; questions resolved or assumptions recorded.
 
-### Definição de Concluído (DoD) — aplica-se a todas as stories
-1. Todos os CA cumpridos e demonstrados por testes automáticos (ou, se impossível, verificação manual registada em `docs/progress/`).
-2. `npm run lint`, `npm run typecheck`, `npm test` e `npm run build` sem erros.
-3. Sem `console.log` com dados sensíveis; logger com redação usado.
-4. Strings de UI em `src/i18n/pt-PT/<feature>.ts`.
-5. Revisão independente (`/code-review`) para stories ≥ 3 pontos ou que toquem em `core/`, `player/`, segurança ou ficheiros partilhados; achados corrigidos ou justificados.
-6. Acessibilidade: componentes novos com nome acessível e foco visível; E2E com axe quando a story tem UI.
-7. `BACKLOG.md` atualizado; ADR criado se houve decisão arquitetural.
-8. Bundle inicial não ultrapassa o orçamento (após QA-03 existir).
+### Definition of Done (DoD) — applies to every story
+1. All AC met and demonstrated by automated tests (or, if impossible, manual verification recorded in `docs/progress/`).
+2. `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` without errors.
+3. No `console.log` with sensitive data; the redacting logger is used.
+4. UI strings in `src/i18n/en/<feature>.ts` with the pt-PT translation in `src/i18n/pt-PT/<feature>.ts` (ADR-015).
+5. Independent review (`/code-review`) for stories ≥ 3 points or that touch `core/`, `player/`, security or shared files; findings fixed or justified.
+6. Accessibility: new components have an accessible name and visible focus; E2E with axe when the story has UI.
+7. `BACKLOG.md` updated; ADR created if an architectural decision was made.
+8. Initial bundle does not exceed the budget (once QA-03 exists).
 
 ---
 
 ## Spike
 
-### S-00 — Validar compatibilidade do fornecedor IPTV real
-- **Épico:** E0 · **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto (decide ADR-010)
-- **História:** Como dono do produto, quero saber se o meu fornecedor funciona a partir de uma página HTTPS no browser, para decidir se o MVP precisa de proxy ou shell nativo.
-- **CA:**
-  1. Given credenciais reais fornecidas pelo utilizador em runtime (nunca em ficheiro), When se executa a página de spike servida por `https://localhost`/Pages de teste, Then o relatório indica: HTTPS disponível (sim/não, porta), CORS em `player_api.php` (sim/não), formatos permitidos (`allowed_output_formats`), redirecionamentos de stream (host destino e esquema).
-  2. Given um canal de teste, When se tenta reproduzir em `.ts` (mpegts.js) e `.m3u8` (hls.js e nativo), Then regista-se sucesso/falha por browser (Chrome desktop, Chrome Android, Safari iOS se disponível) e codecs detetados.
-  3. Given os resultados, Then ADR-010 passa a `Aceite` com a opção escolhida, e o backlog é ajustado (PRX-01/NAT-01 sobem para Must se necessário).
-- **Dependências:** nenhuma (pode correr em paralelo com FND-01).
-- **Tarefas:** página HTML isolada em `spikes/compat/` (descartável, fora de `src/`); testes manuais; relatório `docs/progress/S-00-report.md` **sem credenciais nem host completo** (host mascarado).
-- **Testes:** manuais, registados.
-- **Riscos:** o utilizador pode não ter dispositivo iOS; resultado depende da hora/servidor.
-- **DoD específico:** relatório + ADR-010 atualizado; código do spike não entra no build da app.
+### S-00 — Validate compatibility of the real IPTV provider
+- **Epic:** E0 · **Priority:** Must · **Effort:** 3 · **Value:** High (decides ADR-010)
+- **Story:** As the product owner, I want to know whether my provider works from an HTTPS page in the browser, so that I can decide whether the MVP needs a proxy or a native shell.
+- **AC:**
+  1. Given real credentials supplied by the user at runtime (never in a file), When the spike page served from `https://localhost`/test Pages is run, Then the report states: HTTPS available (yes/no, port), CORS on `player_api.php` (yes/no), allowed formats (`allowed_output_formats`), stream redirects (target host and scheme).
+  2. Given a test channel, When playback is attempted as `.ts` (mpegts.js) and `.m3u8` (hls.js and native), Then success/failure is recorded per browser (Chrome desktop, Chrome Android, Safari iOS if available) along with detected codecs.
+  3. Given the results, Then ADR-010 moves to `Accepted` with the chosen option, and the backlog is adjusted (PRX-01/NAT-01 move up to Must if needed).
+- **Dependencies:** none (can run in parallel with FND-01).
+- **Tasks:** isolated HTML page in `spikes/compat/` (throwaway, outside `src/`); manual tests; report `docs/progress/S-00-report.md` **without credentials or the full host** (host masked).
+- **Tests:** manual, recorded.
+- **Risks:** the user may not have an iOS device; results depend on time of day/server.
+- **Specific DoD:** report + ADR-010 updated; spike code does not enter the app build.
 
 ---
 
-## E0 — Fundações
+## E0 — Foundations
 
-### FND-01 — Scaffold do projeto
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Médio (habilitador)
-- **História:** Como programador, quero um projeto Vite + React + TS com lint, formatação e testes configurados, para que todas as stories partam de uma base consistente.
-- **CA:**
-  1. Given um clone limpo, When `npm ci && npm run dev`, Then a app abre em `localhost` com um ecrã placeholder.
-  2. Given o projeto, When `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, Then todos passam.
+### FND-01 — Project scaffold
+- **Priority:** Must · **Effort:** 3 · **Value:** Medium (enabler)
+- **Story:** As a developer, I want a Vite + React + TS project with lint, formatting and tests configured, so that every story starts from a consistent base.
+- **AC:**
+  1. Given a clean clone, When `npm ci && npm run dev`, Then the app opens on `localhost` with a placeholder screen.
+  2. Given the project, When `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, Then all pass.
   3. Given `tsconfig`, Then `strict: true`, `noUncheckedIndexedAccess: true`.
-  4. Given a estrutura de pastas de `ARCHITECTURE.md §2`, Then existe com `README` mínimo por módulo ou `index.ts`.
-  5. Given regras de fronteira, When um ficheiro de `core/` importa de `features/`, Then o lint falha.
-- **Dependências:** — (requer `git init` autorizado).
-- **Tarefas:** `git init`, `.gitignore`, `package.json` scripts, ESLint flat config (typescript-eslint, react-hooks, jsx-a11y, import boundaries), Prettier, Vitest + jsdom + Testing Library, `.nvmrc` (Node 24), `.editorconfig`, `CLAUDE.md` atualizado com comandos reais, `.claude/agents/*` (ver `AGENT_WORKFLOW.md`).
-- **Testes:** teste trivial de render; teste de lint de fronteiras (ficheiro fixture).
-- **Riscos:** versões major recentes (Vite 8, React 19.3, Vitest 5) com plugins desalinhados → fixar versões compatíveis.
+  4. Given the folder structure in `ARCHITECTURE.md §2`, Then it exists with a minimal `README` or `index.ts` per module.
+  5. Given boundary rules, When a file in `core/` imports from `features/`, Then lint fails.
+- **Dependencies:** — (requires authorized `git init`).
+- **Tasks:** `git init`, `.gitignore`, `package.json` scripts, ESLint flat config (typescript-eslint, react-hooks, jsx-a11y, import boundaries), Prettier, Vitest + jsdom + Testing Library, `.nvmrc` (Node 24), `.editorconfig`, `CLAUDE.md` updated with the real commands, `.claude/agents/*` (see `AGENT_WORKFLOW.md`).
+- **Tests:** trivial render test; boundary lint test (fixture file).
+- **Risks:** recent major versions (Vite 8, React 19.3, Vitest 5) with misaligned plugins → pin compatible versions.
 
-### FND-02 — Pipeline de CI
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio
-- **História:** Como mantenedor, quero que cada push e PR execute lint, typecheck, testes, build e auditoria, para detetar regressões cedo.
-- **CA:**
-  1. Given um PR, When o workflow corre, Then executa `lint`, `typecheck`, `test --coverage`, `build`, `npm audit --audit-level=high` e verificação de licenças (allowlist: MIT, ISC, BSD-2/3, Apache-2.0, OFL-1.1, 0BSD, CC0).
-  2. Given uma dependência com licença fora da allowlist, Then o job falha com o nome do pacote.
-  3. Given Dependabot/Renovate, Then está configurado semanalmente para npm e GitHub Actions (com actions fixadas por SHA).
-- **Dependências:** FND-01.
-- **Tarefas:** `.github/workflows/ci.yml`, `license-checker-rseidelsohn` ou script próprio, `dependabot.yml`.
-- **Testes:** execução do workflow num PR de teste.
-- **Riscos:** requer repositório GitHub (decisão D-2 do utilizador).
+### FND-02 — CI pipeline
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a maintainer, I want every push and PR to run lint, typecheck, tests, build and audit, so that regressions are caught early.
+- **AC:**
+  1. Given a PR, When the workflow runs, Then it executes `lint`, `typecheck`, `test --coverage`, `build`, `npm audit --audit-level=high` and a license check (allowlist: MIT, ISC, BSD-2/3, Apache-2.0, OFL-1.1, 0BSD, CC0).
+  2. Given a dependency with a license outside the allowlist, Then the job fails naming the package.
+  3. Given Dependabot/Renovate, Then it is configured weekly for npm and GitHub Actions (with actions pinned by SHA).
+- **Dependencies:** FND-01.
+- **Tasks:** `.github/workflows/ci.yml`, `license-checker-rseidelsohn` or a custom script, `dependabot.yml`.
+- **Tests:** workflow run on a test PR.
+- **Risks:** requires a GitHub repository (user decision D-2).
 
-### FND-03 — Design tokens, tema e AppShell
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto
-- **História:** Como utilizador, quero uma interface coerente em tema escuro e claro, adaptada ao meu ecrã, para navegar confortavelmente.
-- **CA:**
-  1. Given os tokens de `UX_UI.md §2`, When o tema MUI é criado, Then todos os componentes usam tokens (sem cores literais fora de `ui/theme`).
-  2. Given pares texto/fundo definidos, When o teste de contraste corre, Then todos cumprem ≥ 4,5:1 (texto) e ≥ 3:1 (UI); caso contrário os tokens são ajustados e documentados.
-  3. Given largura < 600 px, Then aparece barra inferior; 600–1199 px rail; ≥ 1200 px rail expandido.
-  4. Given a preferência "Sistema/Escuro/Claro", When muda, Then o tema muda sem recarregar e persiste.
-  5. Given `prefers-reduced-motion`, Then transições são desativadas.
-- **Dependências:** FND-01.
-- **Tarefas:** `ui/theme/tokens.ts`, `createTheme`, `CssBaseline`, fonte Inter auto-alojada, `AppShell` com `BottomNav`/`NavRail`, `TopBar`, ripple off.
-- **Testes:** unit de contraste (cálculo WCAG sobre tokens); componente AppShell em 3 viewports (Playwright, depois de QA-02) ou testes de render com `matchMedia` mock.
-- **Riscos:** peso do MUI — medir bundle no fim da story (alimenta ADR-003).
+### FND-03 — Design tokens, theme and AppShell
+- **Priority:** Must · **Effort:** 5 · **Value:** High
+- **Story:** As a user, I want a consistent interface in dark and light themes, adapted to my screen, so that I can navigate comfortably.
+- **AC:**
+  1. Given the tokens in `UX_UI.md §2`, When the MUI theme is created, Then every component uses tokens (no literal colors outside `ui/theme`).
+  2. Given the defined text/background pairs, When the contrast test runs, Then all meet ≥ 4.5:1 (text) and ≥ 3:1 (UI); otherwise the tokens are adjusted and documented.
+  3. Given width < 600 px, Then a bottom bar appears; 600–1199 px a rail; ≥ 1200 px an expanded rail.
+  4. Given the "System/Dark/Light" preference, When it changes, Then the theme switches without reload and persists.
+  5. Given `prefers-reduced-motion`, Then transitions are disabled.
+- **Dependencies:** FND-01.
+- **Tasks:** `ui/theme/tokens.ts`, `createTheme`, `CssBaseline`, self-hosted Inter font, `AppShell` with `BottomNav`/`NavRail`, `TopBar`, ripple off.
+- **Tests:** contrast unit test (WCAG calculation over tokens); AppShell component in 3 viewports (Playwright, after QA-02) or render tests with a `matchMedia` mock.
+- **Risks:** MUI weight — measure the bundle at the end of the story (feeds ADR-003).
 
-### FND-04 — Routing e esqueleto de ecrãs
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio
-- **História:** Como utilizador, quero navegar entre Início, Direto, Filmes, Séries, Favoritos, Pesquisa e Definições, e que os links profundos funcionem, para chegar rapidamente onde quero.
-- **CA:**
-  1. Given o hash router, When abro `/#/movies/category/123` diretamente, Then a rota correta é apresentada (sem 404 em GitHub Pages).
-  2. Given cada rota, Then é carregada com `lazy()` (chunk próprio).
-  3. Given rota desconhecida, Then mostra ecrã "Página não encontrada" com link para Início.
-  4. Given o botão "voltar" do Android/browser, Then volta ao ecrã anterior (não fecha a app desde o leitor).
-- **Dependências:** FND-03.
-- **Tarefas:** `app/router.tsx`, `ErrorBoundary` por rota, placeholders.
-- **Testes:** unit de rotas (memory router); E2E deep link.
+### FND-04 — Routing and screen skeleton
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want to navigate between Home, Live, Movies, Series, Favorites, Search and Settings, and have deep links work, so that I quickly get where I want.
+- **AC:**
+  1. Given the hash router, When I open `/#/movies/category/123` directly, Then the correct route is shown (no 404 on GitHub Pages).
+  2. Given each route, Then it is loaded with `lazy()` (own chunk).
+  3. Given an unknown route, Then a "Page not found" screen is shown with a link to Home.
+  4. Given the Android/browser "back" button, Then it returns to the previous screen (does not close the app from the player).
+- **Dependencies:** FND-03.
+- **Tasks:** `app/router.tsx`, per-route `ErrorBoundary`, placeholders.
+- **Tests:** route unit tests (memory router); deep-link E2E.
 
-### FND-05 — Camada de persistência (Dexie)
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto (habilitador)
-- **História:** Como utilizador, quero que as minhas fontes, favoritos e progresso fiquem guardados no dispositivo, para não ter de os reconfigurar.
-- **CA:**
-  1. Given o schema de `ARCHITECTURE.md §5`, When a app arranca, Then a base `simple-iptv` v1 é criada.
-  2. Given repositórios tipados (`sourcesRepo`, `catalogRepo`, `favoritesRepo`, `historyRepo`, `settingsRepo`), Then nenhuma feature usa `db.table()` diretamente.
-  3. Given 100 000 itens, When `catalogRepo.replaceForSource(sourceId, type, items)`, Then conclui numa única transação e itens antigos dessa fonte+tipo são removidos.
-  4. Given remoção de uma fonte, Then todos os registos com esse `sourceId` são apagados (catálogo, favoritos, histórico, índice, segredo).
-  5. Given IndexedDB indisponível (ex.: modo privado restrito), Then a app mostra erro claro e não fica em branco.
-- **Dependências:** FND-01.
-- **Tarefas:** `core/db/schema.ts`, `repos/*`, `wipeAll()`, helpers de chave composta.
-- **Testes:** unit com `fake-indexeddb`; teste de desempenho de bulkPut (marcado `@slow`).
-- **Riscos:** limites de quota em iOS; migrações futuras.
+### FND-05 — Persistence layer (Dexie)
+- **Priority:** Must · **Effort:** 5 · **Value:** High (enabler)
+- **Story:** As a user, I want my sources, favorites and progress saved on the device, so that I don't have to set them up again.
+- **AC:**
+  1. Given the schema in `ARCHITECTURE.md §5`, When the app starts, Then the `simple-iptv` v1 database is created.
+  2. Given typed repositories (`sourcesRepo`, `catalogRepo`, `favoritesRepo`, `historyRepo`, `settingsRepo`), Then no feature uses `db.table()` directly.
+  3. Given 100,000 items, When `catalogRepo.replaceForSource(sourceId, type, items)`, Then it completes in a single transaction and the old items for that source+type are removed.
+  4. Given removal of a source, Then every record with that `sourceId` is deleted (catalog, favorites, history, index, secret).
+  5. Given IndexedDB unavailable (e.g. restricted private mode), Then the app shows a clear error and does not stay blank.
+- **Dependencies:** FND-01.
+- **Tasks:** `core/db/schema.ts`, `repos/*`, `wipeAll()`, compound-key helpers.
+- **Tests:** unit with `fake-indexeddb`; bulkPut performance test (tagged `@slow`).
+- **Risks:** quota limits on iOS; future migrations.
 
-### FND-06 — Logger com redação e modelo de erros
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio (segurança)
-- **História:** Como utilizador, quero que as minhas credenciais nunca apareçam em logs ou mensagens de erro, para não as expor ao partilhar um problema.
-- **CA:**
-  1. Given uma string com `password=abc`, `username=joao`, `/live/joao/abc/1.ts` ou um segredo registado, When é registada, Then sai como `password=***`, `/live/***/***/1.ts`.
-  2. Given um `NetError`, Then contém `kind` e nunca o URL completo não redigido.
-  3. Given o buffer de logs, When o utilizador exporta "Relatório de diagnóstico", Then o ficheiro passa pelos mesmos filtros.
-- **Dependências:** FND-01.
-- **Tarefas:** `core/log`, `core/net/errors.ts`, função `redact()`.
-- **Testes:** unit com casos de URLs Xtream, M3U `get.php`, query strings, URL-encoded, base64.
+### FND-06 — Redacting logger and error model
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium (security)
+- **Story:** As a user, I want my credentials never to appear in logs or error messages, so that I don't expose them when sharing a problem.
+- **AC:**
+  1. Given a string with `password=abc`, `username=joao`, `/live/joao/abc/1.ts` or a registered secret, When it is logged, Then it comes out as `password=***`, `/live/***/***/1.ts`.
+  2. Given a `NetError`, Then it contains `kind` and never the full unredacted URL.
+  3. Given the log buffer, When the user exports the "Diagnostics report", Then the file goes through the same filters.
+- **Dependencies:** FND-01.
+- **Tasks:** `core/log`, `core/net/errors.ts`, `redact()` function.
+- **Tests:** unit with cases for Xtream URLs, M3U `get.php`, query strings, URL-encoded, base64.
 
-### FND-07 — Infraestrutura de Web Worker
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio (desempenho)
-- **História:** Como utilizador, quero que a app continue fluida enquanto carrega listas grandes, para não ficar com o ecrã congelado.
-- **CA:**
-  1. Given o worker de dados, When chamado via Comlink, Then suporta progresso (callback) e cancelamento (`AbortSignal` → flag).
-  2. Given um erro no worker, Then é propagado como `Error` serializado com `kind`, sem dados sensíveis.
-  3. Given build de produção, Then o worker é um chunk separado.
-- **Dependências:** FND-01.
-- **Testes:** unit da API (com worker simulado); E2E mede ausência de long tasks durante tarefa sintética.
-
----
-
-## E1 — Fontes IPTV
-
-### SRC-01 — Cofre de credenciais
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero que a palavra-passe do meu serviço IPTV fique cifrada no dispositivo, para reduzir o risco de exposição se alguém copiar os dados da app.
-- **CA:**
-  1. Given o primeiro uso, When o vault é inicializado, Then gera uma chave AES-GCM 256 **não exportável** e guarda-a em IndexedDB.
-  2. Given `put(ref, secret)`, Then a tabela `secrets` contém só `iv` + `ciphertext` (verificado por teste que lê a tabela crua).
-  3. Given `get(ref)`, Then devolve o segredo original; IV único por cifra.
-  4. Given `wipe()`, Then chave e segredos são apagados.
-  5. Given a página "Privacidade", Then explica em linguagem simples o que esta proteção cobre e não cobre (ADR-006).
-- **Dependências:** FND-05, FND-06.
-- **Testes:** unit (WebCrypto em Node 24 / jsdom), teste de não-exportabilidade.
-- **Riscos:** perda da chave (ex.: limpeza parcial pelo browser) → segredos ilegíveis → fluxo "Reintroduzir palavra-passe".
-
-### SRC-02 — Cliente Xtream: autenticação e conta
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero saber logo se os dados do meu fornecedor estão corretos e o estado da minha conta, para não perder tempo com configurações erradas.
-- **CA:**
-  1. Given um servidor introduzido como `exemplo.com:8080`, `http://exemplo.com:8080/`, ou com `/player_api.php`, Then é normalizado para `scheme://host:port`.
-  2. Given credenciais válidas, When `testConnection()`, Then devolve `account` (estado, expiração, ligações, formatos).
-  3. Given `user_info.auth = 0` ou 401/403, Then `NetError(kind='auth')` → mensagem "Utilizador ou palavra-passe incorretos".
-  4. Given `status` ≠ `Active` (Expired, Banned, Disabled), Then mensagem específica.
-  5. Given `TypeError` no fetch com página HTTPS e servidor `http:`, Then `kind='blocked', hint='mixed-content'`; com servidor `https:`, `hint='cors'`.
-  6. Given servidor `http:` e `server_info.https_port` presente, Then tenta automaticamente `https://host:https_port` e reporta o resultado.
-  7. Given timeout (15 s), Then `kind='timeout'`.
-- **Dependências:** FND-06.
-- **Tarefas:** `providers/xtream/client.ts`, `schemas.ts` (Valibot), `normalizeServerUrl`.
-- **Testes:** unit com MSW e fixtures (`fixtures/xtream/*.json`) incluindo variantes de painéis, números como string, campos nulos.
-
-### SRC-03 — Adicionar fonte Xtream (UI)
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero introduzir servidor, utilizador e palavra-passe num formulário simples e testar a ligação, para começar a ver TV.
-- **CA:**
-  1. Given campos vazios ou URL inválida, When submeto, Then vejo erros por campo, com foco no primeiro erro.
-  2. Given dados válidos, When "Testar e guardar", Then vejo as etapas do teste e, em sucesso, a fonte é guardada (palavra-passe no vault) e a sincronização inicia (SRC-07).
-  3. Given falha, Then a mensagem vem do mapa de erros com ação sugerida e os dados do formulário mantêm-se.
-  4. Given o campo palavra-passe, Then tem `autocomplete="current-password"`, botão mostrar/ocultar com `aria-pressed`.
-  5. Given aviso de HTTP-only, Then o utilizador pode guardar na mesma, depois de ver o aviso.
-- **Dependências:** SRC-01, SRC-02, FND-04, UX-02.
-- **Testes:** componente (Testing Library) + E2E com MSW.
-
-### SRC-04 — Parser M3U/M3U8 em streaming
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto
-- **História:** Como utilizador com uma lista M3U, quero que a lista seja lida corretamente, incluindo logos e grupos, para ver os canais organizados.
-- **CA:**
-  1. Given `#EXTINF` com `tvg-id`, `tvg-name`, `tvg-logo`, `group-title`, `tvg-chno`, `catchup*`, Then todos os atributos são extraídos (aspas simples/duplas, espaços, vírgulas no nome).
-  2. Given cabeçalho `#EXTM3U url-tvg="..."` ou `x-tvg-url`, Then o URL EPG é capturado.
-  3. Given linhas `#EXTVLCOPT`/`#KODIPROP`/`#EXTGRP`, Then são associadas à entrada seguinte (EXTGRP como grupo se não houver group-title) ou ignoradas sem erro.
-  4. Given BOM UTF-8, CRLF, linhas vazias, entradas sem `#EXTINF`, Then o parser é tolerante.
-  5. Given entradas com URL `javascript:`, `data:`, `file:` ou inválido, Then são descartadas e contadas como "ignoradas".
-  6. Given um stream de texto de 50 000 entradas, Then processa em chunks, emite progresso e não acumula o ficheiro inteiro duas vezes em memória.
-  7. Given entradas, Then cada uma é classificada `live|movie|series` (heurística VOD-04 — inicialmente tudo `live` exceto URLs com `/movie/` ou `/series/`).
-- **Dependências:** FND-07.
-- **Testes:** unit com fixtures sintéticas (válidas, mal formadas, enormes geradas), property-based (fast-check) para robustez; benchmark.
-
-### SRC-05 — Importar M3U por URL
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero colar o URL da minha lista M3U, para importar os canais sem descarregar ficheiros.
-- **CA:**
-  1. Given um URL `http(s)://`, When importo, Then é descarregado em streaming no worker com progresso (bytes e entradas).
-  2. Given um URL do tipo `get.php?username=…&password=…`, Then a app sugere "Este URL parece ser de um servidor Xtream — usar modo Xtream (recomendado)" e preenche o formulário Xtream.
-  3. Given CORS/mixed content bloqueado, Then mensagem acionável sugerindo descarregar o ficheiro e usar importação local (SRC-06).
-  4. Given resposta que não começa por `#EXTM3U` (ex.: HTML de erro), Then erro "O URL não devolveu uma lista M3U".
-  5. Given o URL, Then é guardado no vault (contém frequentemente credenciais).
-- **Dependências:** SRC-04, SRC-01, FND-05.
-- **Testes:** unit/integração com MSW; E2E.
-
-### SRC-06 — Importar ficheiro M3U local
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio
-- **História:** Como utilizador, quero escolher um ficheiro `.m3u`/`.m3u8` do meu dispositivo, para usar listas que não estão online ou cujo servidor bloqueia o browser.
-- **CA:**
-  1. Given o seletor de ficheiros (`accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl"`), When escolho um ficheiro, Then é lido via `file.stream()` no worker.
-  2. Given um ficheiro > 50 MB, Then aviso de tempo e confirmação.
-  3. Given fonte do tipo ficheiro, Then "Atualizar" pede novo ficheiro (não há URL).
-- **Dependências:** SRC-04, FND-05.
-- **Testes:** componente + E2E com `setInputFiles`.
-
-### SRC-07 — Sincronizar catálogo Xtream
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto
-- **História:** Como utilizador, quero que os canais, filmes e séries do meu fornecedor sejam carregados e guardados, para navegar rapidamente mesmo com milhares de itens.
-- **CA:**
-  1. Given uma fonte Xtream, When sincroniza, Then obtém categorias e itens de live, movie e series no worker e grava via `replaceForSource` (fluxo `ARCHITECTURE.md §6.1`).
-  2. Given respostas com itens inválidos, Then esses itens são ignorados e contados; o resto é gravado.
-  3. Given re-sincronização, Then favoritos e histórico mantêm-se (chaves estáveis por `stream_id`/`series_id`).
-  4. Given cancelamento, Then dados anteriores permanecem intactos (transação por tipo).
-  5. Given `lastSyncAt` > 24 h ao abrir a app com rede, Then sincronização em segundo plano com indicador discreto.
-  6. Given falha num tipo (ex.: séries 500), Then os outros tipos ficam disponíveis e o erro é mostrado na fonte.
-- **Dependências:** SRC-02, FND-05, FND-07.
-- **Testes:** integração com MSW + fake-indexeddb; fixture grande gerada (50k VOD).
-- **Riscos:** JSON de dezenas de MB → memória em dispositivos fracos (medir; plano B: carregar por categoria).
-
-### SRC-08 — Página "As minhas listas"
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero uma página com todas as minhas listas IPTV guardadas, onde as posso ver, editar, atualizar, remover e escolher qual usar, para gerir várias subscrições ou listas.
-- **CA:**
-  0. Given a página "As minhas listas" (`UX_UI.md §4.1b`), Then é acessível pelo seletor de lista na barra superior ("Gerir listas…"), por Definições e pelo rail em desktop; não há limite artificial ao número de listas.
-  1. Given a página, Then cada lista mostra nome, tipo (Xtream / M3U URL / M3U ficheiro), contagens, última sincronização, estado, indicação "ATIVA" e (Xtream) expiração da conta.
-  2. Given "Editar", When altero credenciais e guardo, Then testa a ligação antes de aplicar.
-  3. Given "Remover", When confirmo num diálogo, Then a fonte e todos os dados associados são apagados (FND-05 CA4).
-  4. Given várias fontes, When escolho outra no seletor da barra superior, Then todos os ecrãs passam a usar a fonte ativa em < 300 ms (sem rede).
-  5. Given "Atualizar", Then sincroniza (SRC-07/SRC-05) com progresso.
-- **Dependências:** SRC-03, SRC-05, SRC-07.
-- **Testes:** componente + E2E.
-
-### SRC-09 — Diagnóstico de compatibilidade
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero perceber porque é que uma fonte não funciona no browser e o que posso fazer, para não ficar sem saber se o problema é meu, do fornecedor ou do browser.
-- **CA:**
-  1. Given uma fonte, When abro "Diagnóstico", Then vejo checklist: HTTPS, acesso à API (CORS), formato live (TS/HLS), suporte do browser (MSE/MMS, HLS nativo), codecs testados (`isTypeSupported` H.264/HEVC/AAC/AC-3).
-  2. Given cada falha, Then há explicação e ações possíveis (usar HTTPS se o fornecedor tiver, ficheiro local, Safari, proxy pessoal quando existir).
-  3. Given "Copiar relatório", Then o texto não contém credenciais nem o host completo (mascarado).
-- **Dependências:** SRC-02, PLY-01.
-- **Testes:** unit dos verificadores; snapshot do relatório redigido.
-
-### SRC-10 — Apagar todos os dados locais
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Alto (privacidade)
-- **História:** Como utilizador, quero apagar todos os dados da app com uma ação, para vender/emprestar o dispositivo ou recomeçar.
-- **CA:**
-  1. Given Definições › Privacidade › "Apagar todos os dados", When confirmo escrevendo `APAGAR`, Then IndexedDB, Cache Storage e preferências são removidos e a app volta ao onboarding.
-  2. Given a operação, Then o service worker mantém-se (app continua instalada) mas sem dados.
-  3. Given falha parcial, Then a app informa e oferece repetir.
-- **Dependências:** FND-05, SRC-01, PWA-02.
-- **Testes:** E2E verifica `indexedDB.databases()` vazio e `caches.keys()` sem caches de dados.
+### FND-07 — Web Worker infrastructure
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium (performance)
+- **Story:** As a user, I want the app to stay smooth while large lists load, so that the screen doesn't freeze.
+- **AC:**
+  1. Given the data worker, When called via Comlink, Then it supports progress (callback) and cancellation (`AbortSignal` → flag).
+  2. Given an error in the worker, Then it is propagated as a serialized `Error` with `kind`, without sensitive data.
+  3. Given a production build, Then the worker is a separate chunk.
+- **Dependencies:** FND-01.
+- **Tests:** API unit tests (with a simulated worker); E2E measures absence of long tasks during a synthetic task.
 
 ---
 
-## E3 — Leitor
+## E1 — IPTV sources
 
-### PLY-01 — Motor de reprodução e seleção de engine
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto
-- **História:** Como utilizador, quero que a app escolha automaticamente a melhor forma de reproduzir cada stream, para não ter de perceber formatos.
-- **CA:**
-  1. Given `StreamDescriptor` e `Capabilities`, When `selectEngine`, Then segue a tabela de `RESEARCH.md §5.2` (testável com matriz de casos).
-  2. Given hls.js/mpegts.js, Then só são descarregados no primeiro uso (chunks separados; verificado no build).
-  3. Given troca de stream, Then a engine anterior é destruída (sem fugas: listeners, `MediaSource`, `ObjectURL` revogados).
-  4. Given falha com `fallbacks`, Then tenta o próximo descriptor uma vez antes de reportar erro.
-  5. Given `UrlRewriter`, Then todos os URLs passam por ele (identidade no MVP).
-- **Dependências:** FND-01, FND-06.
-- **Tarefas:** `player/engines/*`, `player/select.ts`, `core/platform/capabilities.ts`.
-- **Testes:** unit da matriz; integração em Playwright (Chromium + WebKit) com streams de teste locais (QA-01).
-- **Riscos:** diferenças MMS vs MSE no iOS (validar em S-00/DEP-02).
+### SRC-01 — Credential vault
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want the password of my IPTV service encrypted on the device, so that the risk of exposure is reduced if someone copies the app data.
+- **AC:**
+  1. Given first use, When the vault is initialized, Then it generates a **non-extractable** AES-GCM 256 key and stores it in IndexedDB.
+  2. Given `put(ref, secret)`, Then the `secrets` table contains only `iv` + `ciphertext` (verified by a test that reads the raw table).
+  3. Given `get(ref)`, Then it returns the original secret; unique IV per encryption.
+  4. Given `wipe()`, Then the key and secrets are deleted.
+  5. Given the "Privacy" page, Then it explains in plain language what this protection covers and does not cover (ADR-006).
+- **Dependencies:** FND-05, FND-06.
+- **Tests:** unit (WebCrypto in Node 24 / jsdom), non-extractability test.
+- **Risks:** loss of the key (e.g. partial clearing by the browser) → unreadable secrets → "Re-enter password" flow.
 
-### PLY-02 — UI do leitor e controlos
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto
-- **História:** Como utilizador, quero controlos claros (play/pausa, volume, progresso, direto), para controlar a reprodução facilmente em qualquer dispositivo.
-- **CA:**
-  1. Given um stream live, Then mostra indicador "Direto" e não mostra barra de seek (exceto se `seekable` > 30 s — DVR).
-  2. Given VOD, Then barra de progresso com tempo atual/total, seek por clique/toque/teclas ±10 s.
-  3. Given inatividade 3 s a reproduzir, Then controlos escondem-se; reaparecem com toque/rato/tecla.
-  4. Given atalhos de `UX_UI.md §4.5`, Then funcionam quando o leitor tem foco e não interferem com campos de texto.
-  5. Given estado de buffering, Then spinner após 500 ms (sem flash).
-  6. Given leitor de ecrã, Then todos os botões têm `aria-label` e a mudança de estado é anunciada.
-- **Dependências:** PLY-01, FND-03.
-- **Testes:** componente com `HTMLMediaElement` mock; E2E com stream de teste; axe.
+### SRC-02 — Xtream client: authentication and account
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to know right away whether my provider details are correct and the state of my account, so that I don't waste time on wrong settings.
+- **AC:**
+  1. Given a server entered as `example.com:8080`, `http://example.com:8080/`, or with `/player_api.php`, Then it is normalized to `scheme://host:port`.
+  2. Given valid credentials, When `testConnection()`, Then it returns `account` (status, expiry, connections, formats).
+  3. Given `user_info.auth = 0` or 401/403, Then `NetError(kind='auth')` → message "Incorrect username or password".
+  4. Given `status` ≠ `Active` (Expired, Banned, Disabled), Then a specific message.
+  5. Given a fetch `TypeError` with an HTTPS page and an `http:` server, Then `kind='blocked', hint='mixed-content'`; with an `https:` server, `hint='cors'`.
+  6. Given an `http:` server and `server_info.https_port` present, Then it automatically tries `https://host:https_port` and reports the result.
+  7. Given a timeout (15 s), Then `kind='timeout'`.
+- **Dependencies:** FND-06.
+- **Tasks:** `providers/xtream/client.ts`, `schemas.ts` (Valibot), `normalizeServerUrl`.
+- **Tests:** unit with MSW and fixtures (`fixtures/xtream/*.json`) including panel variants, numbers as strings, null fields.
 
-### PLY-03 — Ecrã inteiro, orientação e Picture-in-Picture
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero ver em ecrã inteiro e em PiP, para aproveitar o ecrã ou continuar a ver enquanto faço outra coisa.
-- **CA:**
-  1. Given Fullscreen API disponível, Then o contentor do leitor (com overlay próprio) entra em ecrã inteiro.
-  2. Given iPhone (sem Fullscreen API em elementos), Then usa `video.webkitEnterFullscreen()` e a UI informa que os controlos são os do sistema.
-  3. Given mobile em paisagem durante reprodução e opção ativa, Then entra em ecrã inteiro; `screen.orientation.lock` usado apenas onde suportado, sem erros onde não é.
-  4. Given PiP suportado (`document.pictureInPictureEnabled` ou `webkitSetPresentationMode`), Then botão PiP visível; caso contrário, oculto.
-- **Dependências:** PLY-02.
-- **Testes:** unit com feature detection mockada; manual em dispositivos (DEP-02).
+### SRC-03 — Add Xtream source (UI)
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to enter server, username and password in a simple form and test the connection, so that I can start watching TV.
+- **AC:**
+  1. Given empty fields or an invalid URL, When I submit, Then I see per-field errors, with focus on the first error.
+  2. Given valid data, When "Test and save", Then I see the test steps and, on success, the source is saved (password in the vault) and sync starts (SRC-07).
+  3. Given a failure, Then the message comes from the error map with a suggested action and the form data is kept.
+  4. Given the password field, Then it has `autocomplete="current-password"` and a show/hide button with `aria-pressed`.
+  5. Given an HTTP-only warning, Then the user can save anyway, after seeing the warning.
+- **Dependencies:** SRC-01, SRC-02, FND-04, UX-02.
+- **Tests:** component (Testing Library) + E2E with MSW.
 
-### PLY-04 — Erros de reprodução e recuperação
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero perceber porque é que um canal não abre e tentar de novo facilmente, para não ficar perante um ecrã preto.
-- **CA:**
-  1. Given erro de rede transitório em live, Then até 3 tentativas com backoff (1 s, 2 s, 4 s) antes de mostrar erro.
-  2. Given `MEDIA_ERR_SRC_NOT_SUPPORTED`/`bufferAddCodecError`/`isTypeSupported=false`, Then mensagem "formato/codec não suportado" com o codec quando conhecido.
-  3. Given vídeo a reproduzir mas faixa de áudio não suportada, Then aviso "sem som: áudio X não suportado neste browser".
-  4. Given 401/403/`max_connections` atingido (quando detetável), Then mensagem de conta/ligações.
-  5. Given `blocked`, Then mensagem de HTTPS/CORS com link para diagnóstico (SRC-09).
-  6. Given ecrã de erro, Then "Tentar novamente" e (live) "Canal seguinte".
-- **Dependências:** PLY-01, FND-06.
-- **Testes:** unit do mapeamento erro→mensagem; integração com streams de teste corrompidos/codec inválido.
+### SRC-04 — Streaming M3U/M3U8 parser
+- **Priority:** Must · **Effort:** 5 · **Value:** High
+- **Story:** As a user with an M3U list, I want the list read correctly, including logos and groups, so that I see the channels organized.
+- **AC:**
+  1. Given `#EXTINF` with `tvg-id`, `tvg-name`, `tvg-logo`, `group-title`, `tvg-chno`, `catchup*`, Then all attributes are extracted (single/double quotes, spaces, commas in the name).
+  2. Given a `#EXTM3U url-tvg="..."` or `x-tvg-url` header, Then the EPG URL is captured.
+  3. Given `#EXTVLCOPT`/`#KODIPROP`/`#EXTGRP` lines, Then they are attached to the next entry (EXTGRP as the group if there is no group-title) or ignored without error.
+  4. Given a UTF-8 BOM, CRLF, empty lines, entries without `#EXTINF`, Then the parser is tolerant.
+  5. Given entries with a `javascript:`, `data:`, `file:` or invalid URL, Then they are discarded and counted as "skipped".
+  6. Given a text stream of 50,000 entries, Then it processes in chunks, emits progress and does not hold the whole file twice in memory.
+  7. Given entries, Then each is classified `live|movie|series` (VOD-04 heuristic — initially everything `live` except URLs with `/movie/` or `/series/`).
+- **Dependencies:** FND-07.
+- **Tests:** unit with synthetic fixtures (valid, malformed, huge generated ones), property-based (fast-check) for robustness; benchmark.
 
-### PLY-05 — Faixas de áudio e legendas
-- **Prioridade:** Should · **Esforço:** 3 · **Valor:** Médio
-- **História:** Como utilizador, quero escolher o idioma do áudio e legendas quando o conteúdo os tiver, para ver no idioma que prefiro.
-- **CA:**
-  1. Given hls.js com múltiplas faixas, Then o menu lista-as com idioma/nome e permite trocar sem reiniciar.
-  2. Given nativo com `audioTracks`/`textTracks` (Safari), Then idem.
-  3. Given ausência de faixas alternativas, Then o menu não aparece.
-  4. Given preferência de idioma guardada, Then é aplicada automaticamente quando disponível.
-- **Dependências:** PLY-02.
-- **Testes:** stream HLS de teste com múltiplas faixas.
+### SRC-05 — Import M3U by URL
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to paste the URL of my M3U list, so that I can import the channels without downloading files.
+- **AC:**
+  1. Given an `http(s)://` URL, When I import, Then it is downloaded as a stream in the worker with progress (bytes and entries).
+  2. Given a URL of the form `get.php?username=…&password=…`, Then the app suggests "This URL looks like an Xtream server — use Xtream mode (recommended)" and pre-fills the Xtream form.
+  3. Given CORS/mixed content blocked, Then an actionable message suggests downloading the file and using local import (SRC-06).
+  4. Given a response that does not start with `#EXTM3U` (e.g. an HTML error page), Then the error "The URL did not return an M3U list".
+  5. Given the URL, Then it is stored in the vault (it often contains credentials).
+- **Dependencies:** SRC-04, SRC-01, FND-05.
+- **Tests:** unit/integration with MSW; E2E.
 
----
+### SRC-06 — Import local M3U file
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want to pick a `.m3u`/`.m3u8` file from my device, so that I can use lists that are not online or whose server blocks the browser.
+- **AC:**
+  1. Given the file picker (`accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl"`), When I choose a file, Then it is read via `file.stream()` in the worker.
+  2. Given a file > 50 MB, Then a time warning and confirmation.
+  3. Given a file-type source, Then "Refresh" asks for a new file (there is no URL).
+- **Dependencies:** SRC-04, FND-05.
+- **Tests:** component + E2E with `setInputFiles`.
 
-## E4 — TV em direto
+### SRC-07 — Sync Xtream catalog
+- **Priority:** Must · **Effort:** 5 · **Value:** High
+- **Story:** As a user, I want my provider's channels, movies and series loaded and saved, so that I can browse quickly even with thousands of items.
+- **AC:**
+  1. Given an Xtream source, When it syncs, Then it fetches live, movie and series categories and items in the worker and writes them via `replaceForSource` (flow in `ARCHITECTURE.md §6.1`).
+  2. Given responses with invalid items, Then those items are skipped and counted; the rest is written.
+  3. Given a re-sync, Then favorites and history are kept (stable keys by `stream_id`/`series_id`).
+  4. Given cancellation, Then previous data remains intact (one transaction per type).
+  5. Given `lastSyncAt` > 24 h when opening the app with network, Then a background sync with a discreet indicator.
+  6. Given a failure in one type (e.g. series 500), Then the other types remain available and the error is shown on the source.
+- **Dependencies:** SRC-02, FND-05, FND-07.
+- **Tests:** integration with MSW + fake-indexeddb; large generated fixture (50k VOD).
+- **Risks:** JSON of tens of MB → memory on weak devices (measure; plan B: load per category).
 
-### LIV-01 — Categorias e lista de canais
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto
-- **História:** Como utilizador, quero ver os canais organizados por categorias, com logos, para encontrar rapidamente o que quero ver.
-- **CA:**
-  1. Given a fonte ativa, Then a lista de categorias inclui "Favoritos", "Recentes", "Todos" + categorias da fonte pela ordem original.
-  2. Given 20 000 canais em "Todos", Then a lista é virtualizada e cumpre NFR-03.
-  3. Given logo indisponível ou falhado (incl. mixed content), Then mostra iniciais com cor derivada do nome.
-  4. Given navegação por teclado, Then setas movem seleção, `Enter` reproduz, `F`/`★` alterna favorito.
-  5. Given categoria vazia, Then estado vazio.
-- **Dependências:** FND-05, FND-04, UX-02, SRC-07 ou SRC-05 (dados).
-- **Testes:** componente com 20k itens sintéticos; E2E de desempenho (traço Playwright).
+### SRC-08 — "My lists" page
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want a page with all my saved IPTV lists, where I can view, edit, refresh, remove them and choose which one to use, so that I can manage several subscriptions or lists.
+- **AC:**
+  0. Given the "My lists" page (`UX_UI.md §4.1b`), Then it is reachable from the list selector in the top bar ("Manage lists…"), from Settings and from the rail on desktop; there is no artificial limit on the number of lists.
+  1. Given the page, Then each list shows name, type (Xtream / M3U URL / M3U file), counts, last sync, status, an "ACTIVE" indication and (Xtream) account expiry.
+  2. Given "Edit", When I change credentials and save, Then the connection is tested before applying.
+  3. Given "Remove", When I confirm in a dialog, Then the source and all associated data are deleted (FND-05 AC4).
+  4. Given several sources, When I choose another in the top-bar selector, Then every screen uses the active source in < 300 ms (no network).
+  5. Given "Refresh", Then it syncs (SRC-07/SRC-05) with progress.
+- **Dependencies:** SRC-03, SRC-05, SRC-07.
+- **Tests:** component + E2E.
 
-### LIV-02 — Reproduzir canal e zapping
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto
-- **História:** Como utilizador, quero tocar num canal e mudar rapidamente para o anterior/seguinte, para fazer zapping como numa TV.
-- **CA:**
-  1. Given um canal tocado, Then o leitor abre (mobile: topo; desktop: painel) e inicia a reprodução.
-  2. Given `↑/↓`, botões ⏮/⏭ ou swipe vertical em ecrã inteiro, Then muda para o canal anterior/seguinte **dentro da categoria atual**, com o nome mostrado imediatamente.
-  3. Given mudanças rápidas (5 em 2 s), Then só o último canal carrega (pedidos anteriores abortados).
-  4. Given o painel "Canais" em ecrã inteiro, Then permite escolher canal sem sair do ecrã inteiro.
-  5. Given a mudança de canal, Then é registada em "Recentes" (FAV-02).
-- **Dependências:** LIV-01, PLY-02.
-- **Testes:** E2E com 3 streams de teste; unit do controlador de zapping (abort/debounce).
+### SRC-09 — Compatibility diagnostics
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to understand why a source does not work in the browser and what I can do, so that I know whether the problem is mine, the provider's or the browser's.
+- **AC:**
+  1. Given a source, When I open "Diagnostics", Then I see a checklist: HTTPS, API access (CORS), live format (TS/HLS), browser support (MSE/MMS, native HLS), tested codecs (`isTypeSupported` H.264/HEVC/AAC/AC-3).
+  2. Given each failure, Then there is an explanation and possible actions (use HTTPS if the provider has it, local file, Safari, personal proxy when it exists).
+  3. Given "Copy report", Then the text contains neither credentials nor the full host (masked).
+- **Dependencies:** SRC-02, PLY-01.
+- **Tests:** unit tests of the checkers; snapshot of the redacted report.
 
-### LIV-03 — Lembrar último canal e estado de navegação
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio
-- **História:** Como utilizador, quero que a app abra onde a deixei, para retomar sem procurar outra vez.
-- **CA:**
-  1. Given saí da app no Direto › Desporto › canal X, When reabro, Then estou nessa categoria com o canal X selecionado e visível (scroll restaurado).
-  2. Given opção "Reproduzir último canal ao abrir" (desligada por omissão, por respeito a dados móveis e autoplay), When ligada, Then inicia mudo se o browser bloquear autoplay com som, com botão "Ativar som".
-  3. Given a fonte ativa foi removida, Then cai para Início sem erros.
-- **Dependências:** LIV-02, FND-05.
-- **Testes:** E2E (reload).
-
-### LIV-04 — Filtro rápido de canais
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Alto
-- **História:** Como utilizador, quero escrever parte do nome ou número de um canal e ver logo os resultados, para chegar a ele em segundos.
-- **CA:**
-  1. Given o campo de filtro na categoria atual, When escrevo "sport", Then a lista filtra em < 100 ms, ignorando maiúsculas e acentos.
-  2. Given um número ("101"), Then dá prioridade ao canal com esse número.
-  3. Given `Esc`, Then limpa o filtro.
-- **Dependências:** LIV-01.
-- **Testes:** unit da normalização; componente.
-
----
-
-## E5 — Filmes (VOD)
-
-### VOD-01 — Grelha de filmes por categoria
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero navegar pelos filmes por categoria com posters, para escolher o que ver.
-- **CA:**
-  1. Given a fonte ativa, Then categorias como chips/lista e grelha virtualizada de posters (2:3) com título e ano.
-  2. Given ordenação (Recentes adicionados · A–Z · Rating quando existir), Then a grelha ordena sem recarregar da rede.
-  3. Given posters em falta/falhados, Then placeholder tonal com título.
-  4. Given "Continuar a ver" para filmes com progresso, Then barra de progresso no cartão.
-- **Dependências:** FND-05, FND-04, UX-02, SRC-07.
-- **Testes:** componente com 10k itens; E2E.
-
-### VOD-02 — Detalhe do filme
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero ver sinopse, duração, ano, género e rating antes de reproduzir, para decidir se quero ver.
-- **CA:**
-  1. Given Xtream, When abro o detalhe, Then `get_vod_info` é pedido (cache 24 h) e os campos disponíveis são mostrados; os ausentes não deixam espaços vazios.
-  2. Given texto vindo do servidor, Then é renderizado como texto (nunca HTML).
-  3. Given "Reproduzir"/"Retomar a mm:ss", Then abre o leitor.
-  4. Given falha do `get_vod_info`, Then mostra os dados básicos da lista e permite reproduzir.
-- **Dependências:** VOD-01, PLY-02.
-- **Testes:** unit do mapeamento; componente; MSW.
-
-### VOD-03 — Reprodução VOD com retomar
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero continuar um filme onde parei, para não procurar o ponto manualmente.
-- **CA:**
-  1. Given reprodução VOD, Then a posição é guardada a cada 10 s, ao pausar, e ao sair (`pagehide`/`visibilitychange`).
-  2. Given posição guardada entre 1 min e 95 % da duração, Then o detalhe mostra "Retomar a mm:ss" e "Começar do início".
-  3. Given > 95 %, Then marca como visto e remove de "Continuar a ver".
-  4. Given o servidor não suporta *range requests* (seek falha), Then aviso e reprodução desde o início.
-- **Dependências:** VOD-02, FAV-02.
-- **Testes:** unit da política; E2E com MP4 de teste.
-
-### VOD-04 — Classificação de filmes/séries em fontes M3U
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Médio
-- **História:** Como utilizador de uma lista M3U, quero que filmes e séries apareçam nas secções certas quando a lista o permite, para não ter tudo misturado na TV em direto.
-- **CA:**
-  1. Given URLs com `/movie/` ou `/series/` (padrão Xtream), Then classificados como filme/série.
-  2. Given `group-title` com prefixos comuns ("VOD", "Movies", "Filmes", "Series", "Séries") ou extensões `.mp4/.mkv/.avi`, Then classificados com regras configuráveis.
-  3. Given séries M3U com padrão `S01E02`/`S01 E02`/`1x02` no nome, Then agrupadas por série e temporada.
-  4. Given classificação incerta, Then fica em Live (comportamento seguro) e a regra é documentada.
-- **Dependências:** SRC-04.
-- **Testes:** unit com tabela de exemplos (≥ 40 casos).
+### SRC-10 — Delete all local data
+- **Priority:** Must · **Effort:** 2 · **Value:** High (privacy)
+- **Story:** As a user, I want to delete all the app's data with one action, so that I can sell/lend the device or start over.
+- **AC:**
+  1. Given Settings › Privacy › "Delete all data", When I confirm by typing `DELETE`, Then IndexedDB, Cache Storage and preferences are removed and the app returns to onboarding.
+  2. Given the operation, Then the service worker remains (the app stays installed) but without data.
+  3. Given a partial failure, Then the app reports it and offers to retry.
+- **Dependencies:** FND-05, SRC-01, PWA-02.
+- **Tests:** E2E checks `indexedDB.databases()` is empty and `caches.keys()` has no data caches.
 
 ---
 
-## E6 — Séries
+## E3 — Player
 
-### SER-01 — Grelha de séries
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Alto
-- **História:** Como utilizador, quero navegar pelas séries por categoria, para encontrar o que seguir.
-- **CA:** iguais a VOD-01 (CA1–3) aplicados a séries; cartão mostra nº de temporadas quando conhecido.
-- **Dependências:** VOD-01 (reutiliza componentes de grelha).
-- **Testes:** componente; E2E.
+### PLY-01 — Playback engine and engine selection
+- **Priority:** Must · **Effort:** 5 · **Value:** High
+- **Story:** As a user, I want the app to automatically choose the best way to play each stream, so that I don't have to understand formats.
+- **AC:**
+  1. Given `StreamDescriptor` and `Capabilities`, When `selectEngine`, Then it follows the table in `RESEARCH.md §5.2` (testable with a case matrix).
+  2. Given hls.js/mpegts.js, Then they are only downloaded on first use (separate chunks; verified in the build).
+  3. Given a stream change, Then the previous engine is destroyed (no leaks: listeners, `MediaSource`, `ObjectURL` revoked).
+  4. Given a failure with `fallbacks`, Then it tries the next descriptor once before reporting an error.
+  5. Given `UrlRewriter`, Then every URL goes through it (identity in the MVP).
+- **Dependencies:** FND-01, FND-06.
+- **Tasks:** `player/engines/*`, `player/select.ts`, `core/platform/capabilities.ts`.
+- **Tests:** matrix unit tests; integration in Playwright (Chromium + WebKit) with local test streams (QA-01).
+- **Risks:** MMS vs MSE differences on iOS (validate in S-00/DEP-02).
 
-### SER-02 — Detalhe da série, temporadas e episódios
-- **Prioridade:** Must · **Esforço:** 5 · **Valor:** Alto
-- **História:** Como utilizador, quero ver os episódios organizados por temporada, para escolher o episódio certo.
-- **CA:**
-  1. Given Xtream, When abro a série, Then `get_series_info` é pedido (cache em `seriesDetails`, TTL 24 h) e mostra temporadas ordenadas e episódios por número.
-  2. Given temporadas sem metadados, Then nomes "Temporada N".
-  3. Given progresso de episódios, Then cada episódio mostra visto/em curso; a série mostra "Continuar T2 E5".
-  4. Given M3U agrupado (VOD-04 CA3), Then mesma UI com dados locais.
-  5. Given resposta malformada (episódios como objeto vs array — variação conhecida entre painéis), Then é normalizada.
-- **Dependências:** SER-01, PLY-02.
-- **Testes:** unit de normalização com fixtures de 3 variantes; componente.
+### PLY-02 — Player UI and controls
+- **Priority:** Must · **Effort:** 5 · **Value:** High
+- **Story:** As a user, I want clear controls (play/pause, volume, progress, live), so that I can easily control playback on any device.
+- **AC:**
+  1. Given a live stream, Then a "Live" indicator is shown and no seek bar (unless `seekable` > 30 s — DVR).
+  2. Given VOD, Then a progress bar with current/total time, seek by click/tap/keys ±10 s.
+  3. Given 3 s of inactivity while playing, Then controls hide; they reappear on touch/mouse/key.
+  4. Given the shortcuts in `UX_UI.md §4.5`, Then they work when the player has focus and do not interfere with text fields.
+  5. Given a buffering state, Then a spinner after 500 ms (no flash).
+  6. Given a screen reader, Then every button has an `aria-label` and state changes are announced.
+- **Dependencies:** PLY-01, FND-03.
+- **Tests:** component with an `HTMLMediaElement` mock; E2E with a test stream; axe.
 
-### SER-03 — Reproduzir episódio, retomar e próximo episódio
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero que o próximo episódio seja proposto no fim, para ver uma série sem interrupções.
-- **CA:**
-  1. Given um episódio, Then retomar segue as regras de VOD-03.
-  2. Given faltam ≤ 20 s (ou créditos não detetáveis: no `ended`), Then cartão "Próximo episódio em 10 s" com Cancelar; avança para a temporada seguinte quando aplicável.
-  3. Given último episódio, Then não propõe nada.
-- **Dependências:** SER-02, VOD-03.
-- **Testes:** unit da lógica de próximo episódio; E2E com MP4 curtos.
+### PLY-03 — Fullscreen, orientation and Picture-in-Picture
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to watch in fullscreen and in PiP, so that I can make the most of the screen or keep watching while doing something else.
+- **AC:**
+  1. Given the Fullscreen API available, Then the player container (with its own overlay) enters fullscreen.
+  2. Given iPhone (no Fullscreen API on elements), Then it uses `video.webkitEnterFullscreen()` and the UI states that the controls are the system's.
+  3. Given mobile in landscape during playback and the option enabled, Then it enters fullscreen; `screen.orientation.lock` is used only where supported, with no errors where it is not.
+  4. Given PiP supported (`document.pictureInPictureEnabled` or `webkitSetPresentationMode`), Then the PiP button is visible; otherwise hidden.
+- **Dependencies:** PLY-02.
+- **Tests:** unit with mocked feature detection; manual on devices (DEP-02).
 
----
+### PLY-04 — Playback errors and recovery
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to understand why a channel does not open and easily try again, so that I'm not left staring at a black screen.
+- **AC:**
+  1. Given a transient network error on live, Then up to 3 retries with backoff (1 s, 2 s, 4 s) before showing an error.
+  2. Given `MEDIA_ERR_SRC_NOT_SUPPORTED`/`bufferAddCodecError`/`isTypeSupported=false`, Then the message "format/codec not supported" with the codec when known.
+  3. Given video playing but an unsupported audio track, Then the warning "no sound: audio X not supported in this browser".
+  4. Given 401/403/`max_connections` reached (when detectable), Then an account/connections message.
+  5. Given `blocked`, Then an HTTPS/CORS message with a link to diagnostics (SRC-09).
+  6. Given the error screen, Then "Try again" and (live) "Next channel".
+- **Dependencies:** PLY-01, FND-06.
+- **Tests:** unit tests of the error→message mapping; integration with corrupted/invalid-codec test streams.
 
-## E7 — Guia de programação (EPG)
-
-### EPG-01 — Agora/seguinte via Xtream
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero ver o programa atual e o seguinte de cada canal, para decidir o que ver.
-- **CA:**
-  1. Given o canal a reproduzir, Then mostra "Agora" (título, horas, barra de progresso) e "Depois" via `get_short_epg` (títulos base64 descodificados em UTF-8).
-  2. Given a lista de canais, Then pede EPG apenas para linhas visíveis (máx. 6 pedidos concorrentes, debounce de scroll 300 ms, cache 5 min).
-  3. Given ausência de EPG, Then nada é mostrado (sem "N/D" em todas as linhas).
-  4. Given fusos, Then horas apresentadas no fuso do dispositivo (usar `start_timestamp`/`stop_timestamp`).
-- **Dependências:** LIV-01, SRC-02.
-- **Testes:** unit de descodificação/tempos; MSW.
-- **Riscos:** alguns painéis limitam pedidos → respeitar 429 com backoff.
-
-### EPG-02 — Importar EPG XMLTV
-- **Prioridade:** Should · **Esforço:** 5 · **Valor:** Médio
-- **História:** Como utilizador de M3U, quero que o EPG indicado na lista (ou um URL que eu forneça) seja carregado, para ver a programação.
-- **CA:**
-  1. Given `url-tvg` ou URL manual (`.xml` ou `.xml.gz`), Then descarrega em streaming, descomprime com `DecompressionStream` e faz parse SAX no worker.
-  2. Given janela configurada (−2 h a +48 h), Then só esses programas são guardados.
-  3. Given ficheiro de 100 MB descomprimido, Then UI responsiva e memória do worker < 200 MB (medido em desktop).
-  4. Given refresh 12 h, Then programas terminados são expurgados.
-  5. Given entidades XML e CDATA, Then texto correto; nunca interpretado como HTML.
-- **Dependências:** FND-07, FND-05, EPG-03 (pode ser feita em paralelo com contrato acordado).
-- **Testes:** unit do parser com fixtures; benchmark.
-
-### EPG-03 — Correspondência canal ↔ EPG
-- **Prioridade:** Should · **Esforço:** 3 · **Valor:** Médio
-- **História:** Como utilizador, quero que a programação apareça no canal certo, para confiar no guia.
-- **CA:**
-  1. Given `tvg-id` igual a `channel@id`, Then correspondência exata.
-  2. Given sem `tvg-id`, Then correspondência por nome normalizado (sem acentos, minúsculas, sem "HD/FHD/4K/+1", prefixos de país "PT:", "PT |").
-  3. Given correspondência ambígua, Then não associa (evitar falsos positivos) e conta como "sem EPG".
-  4. Given o diagnóstico, Then mostra % de canais com EPG.
-  5. Given correção manual (opcional, Could), Then o utilizador pode associar um canal a um id EPG.
-- **Dependências:** EPG-02 (interface), LIV-01.
-- **Testes:** unit com tabela ≥ 50 pares.
-
-### EPG-04 — Vista de grelha EPG
-- **Prioridade:** Could · **Esforço:** 8 · **Valor:** Médio
-- **História:** Como utilizador, quero uma grelha horária de vários canais, para planear o que ver.
-- **CA:** grelha virtualizada em 2 eixos; linha "agora"; navegação por teclado; desempenho ≥ 55 fps com 500 canais × 24 h.
-- **Dependências:** EPG-03.
-- **Riscos:** complexidade elevada; dividir em sub-stories antes de iniciar.
+### PLY-05 — Audio tracks and subtitles
+- **Priority:** Should · **Effort:** 3 · **Value:** Medium
+- **Story:** As a user, I want to choose the audio and subtitle language when the content has them, so that I watch in my preferred language.
+- **AC:**
+  1. Given hls.js with multiple tracks, Then the menu lists them with language/name and allows switching without restarting.
+  2. Given native with `audioTracks`/`textTracks` (Safari), Then the same.
+  3. Given no alternative tracks, Then the menu does not appear.
+  4. Given a saved language preference, Then it is applied automatically when available.
+- **Dependencies:** PLY-02.
+- **Tests:** HLS test stream with multiple tracks.
 
 ---
 
-## E8 — Pesquisa
+## E4 — Live TV
 
-### SCH-01 — Índice de pesquisa no worker
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero pesquisar entre milhares de itens instantaneamente, para encontrar qualquer canal, filme ou série.
-- **CA:**
-  1. Given o fim de uma sincronização, Then o índice MiniSearch (campos: nome normalizado; armazenados: key, type, categoria) é construído no worker e serializado em `searchIndex`.
-  2. Given app reaberta, Then o índice é carregado de IndexedDB (sem reconstrução) em < 1 s para 100k itens (desktop médio).
-  3. Given pesquisa por prefixo e com erro de 1 letra em termos ≥ 5 letras, Then encontra o item (fuzzy 0.2).
-  4. Given NFR-04, Then cumprido.
-- **Dependências:** FND-07, SRC-07/SRC-05.
-- **Testes:** unit + benchmark.
+### LIV-01 — Categories and channel list
+- **Priority:** Must · **Effort:** 5 · **Value:** High
+- **Story:** As a user, I want to see channels organized by category, with logos, so that I quickly find what I want to watch.
+- **AC:**
+  1. Given the active source, Then the category list includes "Favorites", "Recent", "All" + the source's categories in their original order.
+  2. Given 20,000 channels in "All", Then the list is virtualized and meets NFR-03.
+  3. Given an unavailable or failed logo (incl. mixed content), Then initials are shown with a color derived from the name.
+  4. Given keyboard navigation, Then arrows move the selection, `Enter` plays, `F`/`★` toggles favorite.
+  5. Given an empty category, Then an empty state.
+- **Dependencies:** FND-05, FND-04, UX-02, SRC-07 or SRC-05 (data).
+- **Tests:** component with 20k synthetic items; performance E2E (Playwright trace).
 
-### SCH-02 — Pesquisa global (UI)
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero um único campo de pesquisa que mostre canais, filmes e séries, para não ter de saber onde está o conteúdo.
-- **CA:**
-  1. Given `/` ou ícone 🔍, Then abre pesquisa com foco no campo.
-  2. Given ≥ 2 caracteres, Then resultados agrupados por tipo (máx. 20 por grupo + "ver todos"), atualização com debounce 120 ms.
-  3. Given um resultado, Then canal → reproduz; filme/série → detalhe.
-  4. Given pesquisas recentes, Then últimas 10 guardadas localmente, com opção limpar.
-  5. Given sem resultados, Then estado vazio.
-- **Dependências:** SCH-01, FND-04.
-- **Testes:** componente + E2E.
+### LIV-02 — Play channel and zapping
+- **Priority:** Must · **Effort:** 5 · **Value:** High
+- **Story:** As a user, I want to tap a channel and quickly switch to the previous/next one, so that I can zap like on a TV.
+- **AC:**
+  1. Given a tapped channel, Then the player opens (mobile: top; desktop: panel) and playback starts.
+  2. Given `↑/↓`, the ⏮/⏭ buttons or a vertical swipe in fullscreen, Then it switches to the previous/next channel **within the current category**, with the name shown immediately.
+  3. Given rapid changes (5 in 2 s), Then only the last channel loads (previous requests aborted).
+  4. Given the "Channels" panel in fullscreen, Then a channel can be chosen without leaving fullscreen.
+  5. Given a channel change, Then it is recorded in "Recent" (FAV-02).
+- **Dependencies:** LIV-01, PLY-02.
+- **Tests:** E2E with 3 test streams; unit tests of the zapping controller (abort/debounce).
+
+### LIV-03 — Remember last channel and navigation state
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want the app to open where I left it, so that I can resume without searching again.
+- **AC:**
+  1. Given I left the app on Live › Sports › channel X, When I reopen it, Then I am in that category with channel X selected and visible (scroll restored).
+  2. Given the option "Play last channel on open" (off by default, out of respect for mobile data and autoplay), When enabled, Then it starts muted if the browser blocks autoplay with sound, with an "Unmute" button.
+  3. Given the active source was removed, Then it falls back to Home without errors.
+- **Dependencies:** LIV-02, FND-05.
+- **Tests:** E2E (reload).
+
+### LIV-04 — Quick channel filter
+- **Priority:** Must · **Effort:** 2 · **Value:** High
+- **Story:** As a user, I want to type part of a channel's name or number and see results immediately, so that I reach it in seconds.
+- **AC:**
+  1. Given the filter field in the current category, When I type "sport", Then the list filters in < 100 ms, ignoring case and accents.
+  2. Given a number ("101"), Then the channel with that number is prioritized.
+  3. Given `Esc`, Then the filter is cleared.
+- **Dependencies:** LIV-01.
+- **Tests:** normalization unit tests; component.
 
 ---
 
-## E9 — Favoritos e histórico
+## E5 — Movies (VOD)
 
-### FAV-01 — Favoritos
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Alto
-- **História:** Como utilizador, quero marcar canais, filmes e séries como favoritos, para os encontrar rapidamente.
-- **CA:**
-  1. Given um item, When toco ★ (ou tecla `F`), Then alterna favorito com feedback imediato (otimista) e anúncio para leitores de ecrã.
-  2. Given re-sincronização, Then favoritos persistem; itens que deixaram de existir aparecem como "indisponível" com opção remover.
-  3. Given favoritos por fonte, Then só os da fonte ativa aparecem.
-- **Dependências:** FND-05.
-- **Testes:** unit repo; componente.
+### VOD-01 — Movie grid by category
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to browse movies by category with posters, so that I can choose what to watch.
+- **AC:**
+  1. Given the active source, Then categories as chips/list and a virtualized grid of posters (2:3) with title and year.
+  2. Given sorting (Recently added · A–Z · Rating when available), Then the grid sorts without reloading from the network.
+  3. Given missing/failed posters, Then a tonal placeholder with the title.
+  4. Given "Continue watching" for movies with progress, Then a progress bar on the card.
+- **Dependencies:** FND-05, FND-04, UX-02, SRC-07.
+- **Tests:** component with 10k items; E2E.
 
-### FAV-02 — Histórico e "continuar a ver"
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Alto
-- **História:** Como utilizador, quero ver os canais que vi recentemente e o que estava a ver, para voltar com um toque.
-- **CA:**
-  1. Given um canal reproduzido > 5 s, Then entra em "Recentes" (máx. 30, mais recente primeiro, sem duplicados).
-  2. Given VOD/episódios com progresso, Then aparecem em "Continuar a ver" (máx. 20).
-  3. Given "Limpar histórico", Then remove histórico (não favoritos).
-- **Dependências:** FND-05.
-- **Testes:** unit repo.
+### VOD-02 — Movie details
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to see synopsis, duration, year, genre and rating before playing, so that I can decide whether to watch.
+- **AC:**
+  1. Given Xtream, When I open the details, Then `get_vod_info` is requested (24 h cache) and the available fields are shown; missing ones leave no empty gaps.
+  2. Given text coming from the server, Then it is rendered as text (never HTML).
+  3. Given "Play"/"Resume at mm:ss", Then the player opens.
+  4. Given a `get_vod_info` failure, Then the basic data from the list is shown and playback is allowed.
+- **Dependencies:** VOD-01, PLY-02.
+- **Tests:** mapping unit tests; component; MSW.
 
-### FAV-03 — Ecrã Favoritos e Início
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero um ecrã inicial com o que continuo a ver, recentes e favoritos, para começar a ver em um toque.
-- **CA:**
-  1. Given dados, Then Início mostra secções "Continuar a ver", "Canais recentes", "Favoritos" (cada uma escondida se vazia).
-  2. Given ecrã Favoritos, Then separadores Canais/Filmes/Séries.
-  3. Given nenhum dado, Then estado vazio com atalhos.
-- **Dependências:** FAV-01, FAV-02, LIV-02, VOD-01, SER-01.
-- **Testes:** componente; E2E.
+### VOD-03 — VOD playback with resume
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to continue a movie where I stopped, so that I don't have to find the spot manually.
+- **AC:**
+  1. Given VOD playback, Then the position is saved every 10 s, on pause, and on exit (`pagehide`/`visibilitychange`).
+  2. Given a saved position between 1 min and 95 % of the duration, Then the details show "Resume at mm:ss" and "Start from the beginning".
+  3. Given > 95 %, Then it is marked as watched and removed from "Continue watching".
+  4. Given the server does not support *range requests* (seek fails), Then a warning and playback from the beginning.
+- **Dependencies:** VOD-02, FAV-02.
+- **Tests:** policy unit tests; E2E with a test MP4.
+
+### VOD-04 — Movie/series classification in M3U sources
+- **Priority:** Must · **Effort:** 3 · **Value:** Medium
+- **Story:** As a user of an M3U list, I want movies and series to appear in the right sections when the list allows it, so that everything isn't mixed into live TV.
+- **AC:**
+  1. Given URLs with `/movie/` or `/series/` (Xtream pattern), Then classified as movie/series.
+  2. Given a `group-title` with common prefixes ("VOD", "Movies", "Filmes", "Series", "Séries") or `.mp4/.mkv/.avi` extensions, Then classified with configurable rules.
+  3. Given M3U series with an `S01E02`/`S01 E02`/`1x02` pattern in the name, Then grouped by series and season.
+  4. Given uncertain classification, Then it stays in Live (safe behavior) and the rule is documented.
+- **Dependencies:** SRC-04.
+- **Tests:** unit with an examples table (≥ 40 cases).
+
+---
+
+## E6 — Series
+
+### SER-01 — Series grid
+- **Priority:** Must · **Effort:** 2 · **Value:** High
+- **Story:** As a user, I want to browse series by category, so that I find what to follow.
+- **AC:** same as VOD-01 (AC1–3) applied to series; the card shows the number of seasons when known.
+- **Dependencies:** VOD-01 (reuses grid components).
+- **Tests:** component; E2E.
+
+### SER-02 — Series details, seasons and episodes
+- **Priority:** Must · **Effort:** 5 · **Value:** High
+- **Story:** As a user, I want to see episodes organized by season, so that I choose the right episode.
+- **AC:**
+  1. Given Xtream, When I open the series, Then `get_series_info` is requested (cached in `seriesDetails`, TTL 24 h) and it shows seasons in order and episodes by number.
+  2. Given seasons without metadata, Then names "Season N".
+  3. Given episode progress, Then each episode shows watched/in progress; the series shows "Continue S2 E5".
+  4. Given grouped M3U (VOD-04 AC3), Then the same UI with local data.
+  5. Given a malformed response (episodes as object vs array — a known variation between panels), Then it is normalized.
+- **Dependencies:** SER-01, PLY-02.
+- **Tests:** normalization unit tests with fixtures of 3 variants; component.
+
+### SER-03 — Play episode, resume and next episode
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want the next episode offered at the end, so that I can watch a series without interruptions.
+- **AC:**
+  1. Given an episode, Then resume follows the VOD-03 rules.
+  2. Given ≤ 20 s remaining (or credits not detectable: on `ended`), Then a "Next episode in 10 s" card with Cancel; it moves on to the next season when applicable.
+  3. Given the last episode, Then nothing is offered.
+- **Dependencies:** SER-02, VOD-03.
+- **Tests:** next-episode logic unit tests; E2E with short MP4s.
+
+---
+
+## E7 — Program guide (EPG)
+
+### EPG-01 — Now/next via Xtream
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to see the current and next program of each channel, so that I can decide what to watch.
+- **AC:**
+  1. Given the channel being played, Then it shows "Now" (title, times, progress bar) and "Next" via `get_short_epg` (base64 titles decoded as UTF-8).
+  2. Given the channel list, Then EPG is requested only for visible rows (max. 6 concurrent requests, 300 ms scroll debounce, 5 min cache).
+  3. Given no EPG, Then nothing is shown (no "N/A" on every row).
+  4. Given time zones, Then times are shown in the device's time zone (use `start_timestamp`/`stop_timestamp`).
+- **Dependencies:** LIV-01, SRC-02.
+- **Tests:** decoding/time unit tests; MSW.
+- **Risks:** some panels rate-limit requests → honor 429 with backoff.
+
+### EPG-02 — Import XMLTV EPG
+- **Priority:** Should · **Effort:** 5 · **Value:** Medium
+- **Story:** As an M3U user, I want the EPG referenced by the list (or a URL I provide) to be loaded, so that I can see the schedule.
+- **AC:**
+  1. Given `url-tvg` or a manual URL (`.xml` or `.xml.gz`), Then it downloads as a stream, decompresses with `DecompressionStream` and SAX-parses in the worker.
+  2. Given the configured window (−2 h to +48 h), Then only those programs are stored.
+  3. Given a 100 MB decompressed file, Then the UI stays responsive and worker memory < 200 MB (measured on desktop).
+  4. Given a 12 h refresh, Then finished programs are purged.
+  5. Given XML entities and CDATA, Then the text is correct; never interpreted as HTML.
+- **Dependencies:** FND-07, FND-05, EPG-03 (can be done in parallel with an agreed contract).
+- **Tests:** parser unit tests with fixtures; benchmark.
+
+### EPG-03 — Channel ↔ EPG matching
+- **Priority:** Should · **Effort:** 3 · **Value:** Medium
+- **Story:** As a user, I want the schedule to appear on the right channel, so that I can trust the guide.
+- **AC:**
+  1. Given `tvg-id` equal to `channel@id`, Then exact match.
+  2. Given no `tvg-id`, Then match by normalized name (no accents, lowercase, without "HD/FHD/4K/+1", country prefixes "PT:", "PT |").
+  3. Given an ambiguous match, Then it does not associate (avoid false positives) and counts as "no EPG".
+  4. Given the diagnostics, Then it shows the % of channels with EPG.
+  5. Given manual correction (optional, Could), Then the user can associate a channel with an EPG id.
+- **Dependencies:** EPG-02 (interface), LIV-01.
+- **Tests:** unit with a table of ≥ 50 pairs.
+
+### EPG-04 — EPG grid view
+- **Priority:** Could · **Effort:** 8 · **Value:** Medium
+- **Story:** As a user, I want a time grid of several channels, so that I can plan what to watch.
+- **AC:** grid virtualized on 2 axes; "now" line; keyboard navigation; performance ≥ 55 fps with 500 channels × 24 h.
+- **Dependencies:** EPG-03.
+- **Risks:** high complexity; split into sub-stories before starting.
+
+---
+
+## E8 — Search
+
+### SCH-01 — Search index in the worker
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to search across thousands of items instantly, so that I find any channel, movie or series.
+- **AC:**
+  1. Given the end of a sync, Then the MiniSearch index (fields: normalized name; stored: key, type, category) is built in the worker and serialized into `searchIndex`.
+  2. Given the app reopened, Then the index is loaded from IndexedDB (no rebuild) in < 1 s for 100k items (average desktop).
+  3. Given a prefix search and a 1-letter typo in terms ≥ 5 letters, Then the item is found (fuzzy 0.2).
+  4. Given NFR-04, Then it is met.
+- **Dependencies:** FND-07, SRC-07/SRC-05.
+- **Tests:** unit + benchmark.
+
+### SCH-02 — Global search (UI)
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want a single search field that shows channels, movies and series, so that I don't need to know where the content is.
+- **AC:**
+  1. Given `/` or the 🔍 icon, Then search opens with focus on the field.
+  2. Given ≥ 2 characters, Then results grouped by type (max. 20 per group + "see all"), updated with a 120 ms debounce.
+  3. Given a result, Then channel → plays; movie/series → details.
+  4. Given recent searches, Then the last 10 are stored locally, with a clear option.
+  5. Given no results, Then an empty state.
+- **Dependencies:** SCH-01, FND-04.
+- **Tests:** component + E2E.
+
+---
+
+## E9 — Favorites and history
+
+### FAV-01 — Favorites
+- **Priority:** Must · **Effort:** 2 · **Value:** High
+- **Story:** As a user, I want to mark channels, movies and series as favorites, so that I find them quickly.
+- **AC:**
+  1. Given an item, When I tap ★ (or the `F` key), Then the favorite toggles with immediate (optimistic) feedback and an announcement for screen readers.
+  2. Given a re-sync, Then favorites persist; items that no longer exist appear as "unavailable" with a remove option.
+  3. Given favorites per source, Then only those of the active source appear.
+- **Dependencies:** FND-05.
+- **Tests:** repo unit tests; component.
+
+### FAV-02 — History and "Continue watching"
+- **Priority:** Must · **Effort:** 2 · **Value:** High
+- **Story:** As a user, I want to see the channels I watched recently and what I was watching, so that I can return with one tap.
+- **AC:**
+  1. Given a channel played for > 5 s, Then it enters "Recent" (max. 30, most recent first, no duplicates).
+  2. Given VOD/episodes with progress, Then they appear in "Continue watching" (max. 20).
+  3. Given "Clear history", Then history is removed (not favorites).
+- **Dependencies:** FND-05.
+- **Tests:** repo unit tests.
+
+### FAV-03 — Favorites and Home screens
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want a home screen with what I'm watching, recents and favorites, so that I can start watching in one tap.
+- **AC:**
+  1. Given data, Then Home shows the sections "Continue watching", "Recent channels", "Favorites" (each hidden if empty).
+  2. Given the Favorites screen, Then tabs Channels/Movies/Series.
+  3. Given no data, Then an empty state with shortcuts.
+- **Dependencies:** FAV-01, FAV-02, LIV-02, VOD-01, SER-01.
+- **Tests:** component; E2E.
 
 ---
 
 ## E10 — PWA
 
-### PWA-01 — Manifesto, ícones e instalabilidade
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Alto
-- **História:** Como utilizador, quero instalar a app no ecrã inicial, para a abrir como uma app normal.
-- **CA:**
-  1. Given o manifesto, Then tem `name`, `short_name`, `start_url` e `scope` coerentes com o `base` do Pages, `display: standalone`, `theme_color`/`background_color` dos tokens, ícones 192/512 + `maskable`, `screenshots` (mobile e desktop).
-  2. Given iOS, Then `apple-touch-icon`, `apple-mobile-web-app-*` meta e splash razoável.
-  3. Given Chrome/Edge, When elegível, Then botão "Instalar app" em Definições usa `beforeinstallprompt`; em iOS mostra instruções "Partilhar → Adicionar ao ecrã principal".
-  4. Given Lighthouse, Then critérios de instalabilidade cumpridos.
-- **Dependências:** FND-01.
-- **Testes:** Lighthouse CI (QA-03); manual iOS/Android.
+### PWA-01 — Manifest, icons and installability
+- **Priority:** Must · **Effort:** 2 · **Value:** High
+- **Story:** As a user, I want to install the app on my home screen, so that I can open it like a normal app.
+- **AC:**
+  1. Given the manifest, Then it has `name`, `short_name`, `start_url` and `scope` consistent with the Pages `base`, `display: standalone`, `theme_color`/`background_color` from the tokens, 192/512 icons + `maskable`, `screenshots` (mobile and desktop).
+  2. Given iOS, Then `apple-touch-icon`, `apple-mobile-web-app-*` meta and a reasonable splash.
+  3. Given Chrome/Edge, When eligible, Then an "Install app" button in Settings uses `beforeinstallprompt`; on iOS it shows the instructions "Share → Add to Home Screen".
+  4. Given Lighthouse, Then the installability criteria are met.
+- **Dependencies:** FND-01.
+- **Tests:** Lighthouse CI (QA-03); manual iOS/Android.
 
-### PWA-02 — Service worker e estratégia de cache
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero que a app abra rapidamente mesmo sem rede, para consultar favoritos e definições.
-- **CA:**
-  1. Given o build, Then o SW (vite-plugin-pwa, `generateSW`) faz precache do app shell (HTML, JS, CSS, fontes, ícones).
-  2. Given pedidos para outros hosts (API, streams, imagens, EPG), Then `NetworkOnly`/sem interceção — **nenhum URL com credenciais entra no Cache Storage** (teste automatizado lista `caches` após sessão E2E).
-  3. Given navegação offline, Then a app abre e mostra dados do IndexedDB.
-- **Dependências:** PWA-01.
-- **Testes:** E2E Playwright com `context.setOffline(true)`; inspeção de caches.
+### PWA-02 — Service worker and caching strategy
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want the app to open quickly even without network, so that I can check favorites and settings.
+- **AC:**
+  1. Given the build, Then the SW (vite-plugin-pwa, `generateSW`) precaches the app shell (HTML, JS, CSS, fonts, icons).
+  2. Given requests to other hosts (API, streams, images, EPG), Then `NetworkOnly`/no interception — **no URL with credentials enters Cache Storage** (an automated test lists `caches` after an E2E session).
+  3. Given offline navigation, Then the app opens and shows data from IndexedDB.
+- **Dependencies:** PWA-01.
+- **Tests:** Playwright E2E with `context.setOffline(true)`; cache inspection.
 
-### PWA-03 — Atualizações previsíveis
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio
-- **História:** Como utilizador, quero ser avisado quando há uma nova versão e escolher quando atualizar, para não perder a reprodução em curso.
-- **CA:**
-  1. Given nova versão detetada, Then snackbar "Nova versão disponível — Atualizar".
-  2. Given reprodução em curso, Then a atualização nunca é aplicada automaticamente.
-  3. Given "Atualizar", Then `skipWaiting` + reload, preservando a rota.
-  4. Given migração de IndexedDB numa nova versão, Then corre antes da UI e com indicador.
-- **Dependências:** PWA-02.
-- **Testes:** E2E com dois builds (versões simuladas).
+### PWA-03 — Predictable updates
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want to be notified when there is a new version and choose when to update, so that I don't lose ongoing playback.
+- **AC:**
+  1. Given a new version detected, Then a snackbar "New version available — Update".
+  2. Given ongoing playback, Then the update is never applied automatically.
+  3. Given "Update", Then `skipWaiting` + reload, preserving the route.
+  4. Given an IndexedDB migration in a new version, Then it runs before the UI and with an indicator.
+- **Dependencies:** PWA-02.
+- **Tests:** E2E with two builds (simulated versions).
 
-### PWA-04 — Estado offline e erros de rede
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio
-- **História:** Como utilizador, quero saber quando estou sem ligação, para perceber porque não consigo reproduzir.
-- **CA:**
-  1. Given `navigator.onLine=false` ou falhas consecutivas, Then faixa "Sem ligação" persistente; ações de rede desativadas com explicação.
-  2. Given regresso da ligação, Then faixa desaparece e tarefas pendentes (sync agendada) retomam.
-  3. Given a app, Then nunca promete reprodução offline.
-- **Dependências:** UX-02.
-- **Testes:** E2E offline.
+### PWA-04 — Offline state and network errors
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want to know when I'm offline, so that I understand why I can't play.
+- **AC:**
+  1. Given `navigator.onLine=false` or consecutive failures, Then a persistent "No connection" banner; network actions disabled with an explanation.
+  2. Given the connection returns, Then the banner disappears and pending tasks (scheduled sync) resume.
+  3. Given the app, Then it never promises offline playback.
+- **Dependencies:** UX-02.
+- **Tests:** offline E2E.
 
-### PWA-05 — Armazenamento persistente e quota
-- **Prioridade:** Must · **Esforço:** 1 · **Valor:** Médio
-- **História:** Como utilizador, quero que o browser não apague os meus dados, para não ter de reconfigurar a app.
-- **CA:**
-  1. Given a primeira fonte adicionada, Then `navigator.storage.persist()` é pedido e o resultado mostrado em Definições › Armazenamento, com espaço usado (`estimate()`).
-  2. Given iOS não instalado, Then aviso "Instala a app para evitar que o Safari apague os dados após 7 dias sem uso".
-- **Dependências:** FND-05.
-- **Testes:** unit com APIs mockadas.
-
----
-
-## E11 — UX transversal e acessibilidade
-
-### UX-01 — Onboarding de primeiro uso
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Alto
-- **História:** Como novo utilizador, quero ser guiado para adicionar a minha primeira fonte, para começar sem ler instruções.
-- **CA:**
-  1. Given nenhuma fonte, Then qualquer rota principal redireciona para onboarding (exceto Definições/Privacidade).
-  2. Given o ecrã, Then mostra as 3 opções de `UX_UI.md §4.1` e a nota "não incluímos canais / dados ficam no dispositivo".
-  3. Given conclusão, Then `onboardingDone` e redireciona para Início.
-- **Dependências:** FND-04.
-- **Testes:** E2E.
-
-### UX-02 — Componentes de estado e feedback
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero sempre perceber o que a app está a fazer, para confiar nela.
-- **CA:**
-  1. Given `StateView` (loading/skeleton, empty, error, offline) e `Toast`, Then usados por todas as features (sem variantes ad hoc).
-  2. Given loading < 300 ms, Then nada pisca.
-  3. Given erro, Then mensagem + ação + "Detalhes" (redigidos).
-- **Dependências:** FND-03.
-- **Testes:** componente + axe.
-
-### UX-03 — Navegação por teclado e auditoria de acessibilidade
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador de teclado ou leitor de ecrã, quero usar todas as funções principais, para não depender do rato ou toque.
-- **CA:**
-  1. Given os fluxos adicionar fonte → ver canal → mudar canal → abrir filme → pesquisar, Then completáveis só com teclado (teste E2E).
-  2. Given axe em todas as rotas, Then 0 violações serious/critical.
-  3. Given skip link "Saltar para conteúdo", Then presente.
-  4. Given NVDA/VoiceOver (manual), Then fluxo de zapping anunciado corretamente.
-- **Dependências:** LIV-02, VOD-02, SCH-02, SRC-03.
-- **Testes:** E2E axe; checklist manual.
-
-### UX-04 — Definições, privacidade e "sobre"
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio
-- **História:** Como utilizador, quero um ecrã de definições simples, para ajustar tema, comportamento e consultar privacidade.
-- **CA:**
-  1. Given Definições, Then secções: Fontes · Aparência (tema) · Reprodução (ecrã inteiro em paisagem, reproduzir último canal, formato live preferido Auto/TS/HLS) · Armazenamento · Privacidade (o que guardamos, apagar dados) · Sobre (versão, licenças open source, aviso legal).
-  2. Given "Licenças", Then lista gerada no build a partir das dependências.
-  3. Given aviso legal, Then "A app não fornece conteúdos; usa apenas fontes que tens autorização para aceder".
-- **Dependências:** FND-04, SRC-08.
-- **Testes:** componente.
-
-### UX-05 — Navegação D-pad / comando de TV
-- **Prioridade:** Should · **Esforço:** 5 · **Valor:** Médio
-- **História:** Como utilizador numa TV ou box Android, quero navegar com as setas do comando, para usar a app no sofá.
-- **CA:** foco espacial em grelhas e listas; tecla "voltar" do comando; foco nunca se perde; teclas de canal (`ChannelUp/ChannelDown`) suportadas.
-- **Dependências:** UX-03.
+### PWA-05 — Persistent storage and quota
+- **Priority:** Must · **Effort:** 1 · **Value:** Medium
+- **Story:** As a user, I want the browser not to delete my data, so that I don't have to set the app up again.
+- **AC:**
+  1. Given the first source added, Then `navigator.storage.persist()` is requested and the result shown in Settings › Storage, with the space used (`estimate()`).
+  2. Given iOS not installed, Then the warning "Install the app to prevent Safari from deleting your data after 7 days without use".
+- **Dependencies:** FND-05.
+- **Tests:** unit with mocked APIs.
 
 ---
 
-## E12 — Segurança e privacidade
+## E11 — Cross-cutting UX and accessibility
 
-### SEC-01 — CSP, validação de URLs e sanitização
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como utilizador, quero que listas ou metadados maliciosos não consigam executar código na app, para proteger as minhas credenciais.
-- **CA:**
-  1. Given `index.html`, Then `<meta http-equiv="Content-Security-Policy">` com `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'` (Emotion), `img-src * data: blob:`, `media-src * blob:`, `connect-src *` (necessário: servidores do utilizador), `worker-src 'self' blob:`, `object-src 'none'`, `base-uri 'self'`, `form-action 'none'`.
-  2. Given qualquer URL externo (fonte, logo, stream, EPG), Then validado: só `http:`/`https:`; rejeita credenciais em `userinfo` exceto quando necessário e nunca mostra-as.
-  3. Given metadados (nomes, sinopses), Then renderizados como texto; lint proíbe `dangerouslySetInnerHTML` (regra ESLint).
-  4. Given links externos (ex.: trailer YouTube em VOD info), Then `rel="noopener noreferrer"` e confirmação.
-  5. Given `Referrer-Policy`, Then `<meta name="referrer" content="no-referrer">` para não vazar a origem da app para servidores IPTV.
-- **Dependências:** FND-01.
-- **Testes:** unit de validação; E2E com M3U contendo payloads XSS (`<img onerror>`, `javascript:`).
+### UX-01 — First-run onboarding
+- **Priority:** Must · **Effort:** 2 · **Value:** High
+- **Story:** As a new user, I want to be guided to add my first source, so that I can start without reading instructions.
+- **AC:**
+  1. Given no source, Then any main route redirects to onboarding (except Settings/Privacy).
+  2. Given the screen, Then it shows the 3 options from `UX_UI.md §4.1` and the note "we don't include channels / data stays on the device".
+  3. Given completion, Then `onboardingDone` and redirect to Home.
+- **Dependencies:** FND-04.
+- **Tests:** E2E.
 
-### SEC-02 — Palavra-passe mestra (bloqueio)
-- **Prioridade:** Should · **Esforço:** 5 · **Valor:** Médio
-- **História:** Como utilizador preocupado com privacidade, quero proteger as credenciais com uma palavra-passe que só eu sei, para que quem pegue no dispositivo não as possa usar.
-- **CA:** PBKDF2-SHA-256 ≥ 600k iterações + salt; chave nunca persistida; re-cifra de todos os segredos ao ativar/desativar; bloqueio ao abrir e após N min em segundo plano; sem recuperação (aviso explícito).
-- **Dependências:** SRC-01.
+### UX-02 — State and feedback components
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want to always understand what the app is doing, so that I can trust it.
+- **AC:**
+  1. Given `StateView` (loading/skeleton, empty, error, offline) and `Toast`, Then they are used by every feature (no ad hoc variants).
+  2. Given loading < 300 ms, Then nothing flashes.
+  3. Given an error, Then message + action + "Details" (redacted).
+- **Dependencies:** FND-03.
+- **Tests:** component + axe.
 
-### SEC-03 — Controlo parental com PIN
-- **Prioridade:** Could · **Esforço:** 3 · **Valor:** Baixo
-- **História:** Como pai/mãe, quero ocultar categorias com PIN, para limitar o acesso de crianças.
-- **CA:** categorias marcadas exigem PIN; PIN guardado como hash; aviso de que é um dissuasor, não uma proteção forte.
-- **Dependências:** LIV-01, VOD-01.
+### UX-03 — Keyboard navigation and accessibility audit
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a keyboard or screen reader user, I want to use all the main functions, so that I don't depend on mouse or touch.
+- **AC:**
+  1. Given the flows add source → watch channel → change channel → open movie → search, Then they can be completed with the keyboard only (E2E test).
+  2. Given axe on every route, Then 0 serious/critical violations.
+  3. Given a "Skip to content" skip link, Then it is present.
+  4. Given NVDA/VoiceOver (manual), Then the zapping flow is announced correctly.
+- **Dependencies:** LIV-02, VOD-02, SCH-02, SRC-03.
+- **Tests:** axe E2E; manual checklist.
 
----
+### UX-04 — Settings, privacy and "about"
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want a simple settings screen, so that I can adjust theme and behavior and read about privacy.
+- **AC:**
+  1. Given Settings, Then sections: Sources · Appearance (theme) · Playback (fullscreen in landscape, play last channel, preferred live format Auto/TS/HLS) · Storage · Privacy (what we store, delete data) · About (version, open source licenses, legal notice).
+  2. Given "Licenses", Then a list generated at build time from the dependencies.
+  3. Given the legal notice, Then "The app does not provide content; it only uses sources you are authorized to access".
+- **Dependencies:** FND-04, SRC-08.
+- **Tests:** component.
 
-## E13 — Qualidade e publicação
+### UX-06 — Interface language (English / Português)
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want to use the app in English or Portuguese, so that I understand every screen.
+- **AC:**
+  1. Given first launch, When the browser language starts with `pt`, Then the UI is pt-PT, otherwise English.
+  2. Given Settings › Language (System / English / Português), When I change it, Then all visible text switches immediately without reload and the choice persists (`settingsRepo`).
+  3. Given the active locale, Then `<html lang>` is `en` or `pt-PT`.
+  4. Given the pt-PT messages, Then the TypeScript type check fails if any key from `en` is missing.
+  5. Given dates/times (EPG, expiry), Then they are formatted with `Intl` for the active locale.
+- **Dependencies:** FND-04, FND-05.
+- **Tests:** unit for locale detection and switching; component test switching language; type-level completeness check.
+- **Risks:** longer pt-PT strings truncating layouts.
 
-### QA-01 — Fixtures, mocks e streams de teste
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Médio (habilitador)
-- **História:** Como programador, quero dados e streams de teste sintéticos e legais, para testar sem depender de fornecedores reais.
-- **CA:**
-  1. Given `fixtures/`, Then: respostas Xtream (3 variantes de painel), M3U (pequena, malformada, 50k gerada), XMLTV (pequeno, gz), payloads maliciosos.
-  2. Given streams de teste, Then gerados localmente (ffmpeg em CI ou ficheiros pequenos commitados < 2 MB): HLS H.264/AAC, HLS multi-áudio, TS H.264/AAC, TS com AC-3 (para testar erro), MP4 curto; servidos por servidor local com CORS configurável (ligado/desligado).
-  3. Given handlers MSW, Then partilhados entre Vitest e Playwright.
-  4. Given nenhuma fixture, Then contém dados reais de fornecedores.
-- **Dependências:** FND-01.
-- **Riscos:** ffmpeg não instalado localmente (verificar; alternativa: gerar em CI ou commitar ficheiros pequenos com licença própria).
-
-### QA-02 — E2E Playwright + axe
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como mantenedor, quero testes de ponta a ponta nos fluxos críticos em Chromium, WebKit e Firefox, para garantir que nada parte entre versões.
-- **CA:**
-  1. Given o CI, Then corre smoke E2E (onboarding Xtream mock → live → zapping → filme → pesquisa → favoritos → apagar dados) em Chromium, WebKit e Firefox, viewports mobile e desktop.
-  2. Given cada rota, Then axe sem violações serious/critical.
-  3. Given falha, Then traços e vídeos guardados como artefactos.
-- **Dependências:** FND-02, QA-01 (fluxos completos dependem das features — a suite cresce com elas).
-
-### QA-03 — Orçamentos de desempenho (Lighthouse CI)
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Médio
-- **História:** Como utilizador, quero uma app que abre depressa no telemóvel, para não esperar.
-- **CA:**
-  1. Given Lighthouse CI (mobile), Then Performance ≥ 90, A11y ≥ 95, Best Practices ≥ 95; falha o CI abaixo disso.
-  2. Given `size-limit` (ou equivalente), Then JS inicial ≤ 200 KB gz; chunk hls ≤ 150 KB gz; mpegts ≤ 80 KB gz.
-  3. Given relatório, Then publicado como artefacto do CI.
-- **Dependências:** FND-02, FND-03.
-
-### DEP-01 — Deploy para GitHub Pages
-- **Prioridade:** Must · **Esforço:** 2 · **Valor:** Alto
-- **História:** Como utilizador, quero aceder à app por um endereço HTTPS público, para a usar e instalar em qualquer dispositivo.
-- **CA:**
-  1. Given push para `main` com CI verde, Then workflow publica `dist/` via `actions/deploy-pages`.
-  2. Given o URL `https://<user>.github.io/<repo>/`, Then app, SW e manifesto funcionam com o `base` correto.
-  3. Given falha no deploy, Then versão anterior mantém-se.
-- **Dependências:** FND-02, PWA-01. **Requer aprovação explícita do utilizador (publicação).**
-- **Testes:** smoke E2E contra o URL publicado (job separado).
-
-### DEP-02 — Validação manual em dispositivos
-- **Prioridade:** Must · **Esforço:** 3 · **Valor:** Alto
-- **História:** Como dono do produto, quero confirmar o comportamento real em Android, iOS e desktop, para não declarar compatibilidade sem prova.
-- **CA:**
-  1. Given a checklist de `TEST_PLAN.md §5`, Then executada em: Android (Chrome), iPhone (Safari + PWA instalada), desktop (Chrome, Firefox, Safari se disponível).
-  2. Given resultados, Then `docs/progress/compatibility-matrix.md` atualizado com data, versão do SO/browser e resultado.
-- **Dependências:** release candidate do MVP.
+### UX-05 — D-pad / TV remote navigation
+- **Priority:** Should · **Effort:** 5 · **Value:** Medium
+- **Story:** As a user on a TV or Android box, I want to navigate with the remote's arrow keys, so that I can use the app from the couch.
+- **AC:** spatial focus in grids and lists; remote "back" key; focus is never lost; channel keys (`ChannelUp/ChannelDown`) supported.
+- **Dependencies:** UX-03.
 
 ---
 
-## E14 — Pós-MVP / experimental
+## E12 — Security and privacy
 
-### EXP-01 — Exportar/importar configurações
-- **Prioridade:** Should · **Esforço:** 3 · **Valor:** Médio
-- **História:** Como utilizador com vários dispositivos, quero exportar fontes, favoritos e definições para um ficheiro e importá-lo noutro dispositivo, para não reconfigurar tudo.
-- **CA:** ficheiro JSON versionado; segredos incluídos só se o utilizador definir uma palavra-passe de exportação (AES-GCM + PBKDF2); importação com pré-visualização e fusão/substituição; validação de schema (ficheiro não confiável).
-- **Dependências:** SRC-08, FAV-03.
+### SEC-01 — CSP, URL validation and sanitization
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a user, I want malicious lists or metadata to be unable to execute code in the app, so that my credentials are protected.
+- **AC:**
+  1. Given `index.html`, Then `<meta http-equiv="Content-Security-Policy">` with `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'` (Emotion), `img-src * data: blob:`, `media-src * blob:`, `connect-src *` (required: the user's servers), `worker-src 'self' blob:`, `object-src 'none'`, `base-uri 'self'`, `form-action 'none'`.
+  2. Given any external URL (source, logo, stream, EPG), Then it is validated: only `http:`/`https:`; credentials in `userinfo` are rejected except when necessary and are never displayed.
+  3. Given metadata (names, synopses), Then rendered as text; lint forbids `dangerouslySetInnerHTML` (ESLint rule).
+  4. Given external links (e.g. YouTube trailer in VOD info), Then `rel="noopener noreferrer"` and confirmation.
+  5. Given `Referrer-Policy`, Then `<meta name="referrer" content="no-referrer">` so that the app's origin does not leak to IPTV servers.
+- **Dependencies:** FND-01.
+- **Tests:** validation unit tests; E2E with an M3U containing XSS payloads (`<img onerror>`, `javascript:`).
 
-### PRX-01 — Proxy self-hosted de referência
-- **Prioridade:** Could (pode subir para Must — ADR-010) · **Esforço:** 5 · **Valor:** Alto se o fornecedor for HTTP-only
-- **História:** Como utilizador cujo fornecedor só tem HTTP, quero indicar o meu próprio proxy, para conseguir reproduzir no browser.
-- **CA:**
-  1. Given Definições › Proxy pessoal (URL HTTPS + token), Then `UrlRewriter` reescreve pedidos (API, playlists, segmentos, streams) para o proxy.
-  2. Given o projeto, Then inclui `proxy/` com implementação mínima (Node, sem dependências) com: allowlist de hosts configurada pelo dono, token obrigatório, sem logs de URLs, streaming sem buffer, reescrita de playlists HLS.
-  3. Given documentação, Then guia para expor via HTTPS (ex.: Tailscale Serve) e avisos de segurança (SSRF, abertura à internet).
-- **Dependências:** PLY-01, SRC-02, ADR-010.
+### SEC-02 — Master password (lock)
+- **Priority:** Should · **Effort:** 5 · **Value:** Medium
+- **Story:** As a privacy-conscious user, I want to protect the credentials with a password only I know, so that whoever picks up the device cannot use them.
+- **AC:** PBKDF2-SHA-256 ≥ 600k iterations + salt; key never persisted; re-encryption of all secrets when enabling/disabling; lock on open and after N min in the background; no recovery (explicit warning).
+- **Dependencies:** SRC-01.
 
-### NAT-01 — Shell Android (Capacitor) — experimental
-- **Prioridade:** Could · **Esforço:** 8 (dividir antes de iniciar) · **Valor:** Alto para utilizadores Android com fornecedores HTTP-only
-- **História:** Como utilizador Android, quero uma APK que use a mesma app sem as restrições do browser, para reproduzir fornecedores HTTP-only.
-- **CA:** mesma base de código; `CapacitorHttp` para API; cleartext permitido apenas para hosts do utilizador; build APK via GitHub Actions; sem Play Store no início.
-- **Dependências:** MVP completo.
+### SEC-03 — Parental control with PIN
+- **Priority:** Could · **Effort:** 3 · **Value:** Low
+- **Story:** As a parent, I want to hide categories behind a PIN, so that I can limit children's access.
+- **AC:** marked categories require a PIN; PIN stored as a hash; warning that it is a deterrent, not strong protection.
+- **Dependencies:** LIV-01, VOD-01.
 
-### PRF-01 — Perfis múltiplos
-- **Prioridade:** Could · **Esforço:** 5 · **Valor:** Baixo/Médio
-- **CA:** favoritos, histórico e preferências por perfil; fontes partilhadas; seleção de perfil ao abrir (opcional).
+---
+
+## E13 — Quality and release
+
+### QA-01 — Fixtures, mocks and test streams
+- **Priority:** Must · **Effort:** 3 · **Value:** Medium (enabler)
+- **Story:** As a developer, I want synthetic, legal test data and streams, so that I can test without depending on real providers.
+- **AC:**
+  1. Given `fixtures/`, Then: Xtream responses (3 panel variants), M3U (small, malformed, 50k generated), XMLTV (small, gz), malicious payloads.
+  2. Given test streams, Then generated locally (ffmpeg in CI or small committed files < 2 MB): HLS H.264/AAC, multi-audio HLS, TS H.264/AAC, TS with AC-3 (to test the error), short MP4; served by a local server with configurable CORS (on/off).
+  3. Given MSW handlers, Then shared between Vitest and Playwright.
+  4. Given no fixture, Then contains real provider data.
+- **Dependencies:** FND-01.
+- **Risks:** ffmpeg not installed locally (check; alternative: generate in CI or commit small files with their own license).
+
+### QA-02 — Playwright E2E + axe
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As a maintainer, I want end-to-end tests of the critical flows in Chromium, WebKit and Firefox, so that nothing breaks between versions.
+- **AC:**
+  1. Given CI, Then it runs smoke E2E (mock Xtream onboarding → live → zapping → movie → search → favorites → delete data) in Chromium, WebKit and Firefox, mobile and desktop viewports.
+  2. Given each route, Then axe with no serious/critical violations.
+  3. Given a failure, Then traces and videos are saved as artifacts.
+- **Dependencies:** FND-02, QA-01 (full flows depend on the features — the suite grows with them).
+
+### QA-03 — Performance budgets (Lighthouse CI)
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want an app that opens quickly on my phone, so that I don't wait.
+- **AC:**
+  1. Given Lighthouse CI (mobile), Then Performance ≥ 90, A11y ≥ 95, Best Practices ≥ 95; CI fails below that.
+  2. Given `size-limit` (or equivalent), Then initial JS ≤ 200 KB gz; hls chunk ≤ 150 KB gz; mpegts ≤ 80 KB gz.
+  3. Given the report, Then it is published as a CI artifact.
+- **Dependencies:** FND-02, FND-03.
+
+### DEP-01 — Deploy to GitHub Pages
+- **Priority:** Must · **Effort:** 2 · **Value:** High
+- **Story:** As a user, I want to access the app at a public HTTPS address, so that I can use and install it on any device.
+- **AC:**
+  1. Given a push to `main` with green CI, Then the workflow publishes `dist/` via `actions/deploy-pages`.
+  2. Given the URL `https://<user>.github.io/<repo>/`, Then app, SW and manifest work with the correct `base`.
+  3. Given a deploy failure, Then the previous version remains.
+- **Dependencies:** FND-02, PWA-01. **Requires explicit user approval (publication).**
+- **Tests:** smoke E2E against the published URL (separate job).
+
+### DEP-02 — Manual validation on devices
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Story:** As the product owner, I want to confirm the real behavior on Android, iOS and desktop, so that compatibility is not claimed without proof.
+- **AC:**
+  1. Given the checklist in `TEST_PLAN.md §5`, Then it is executed on: Android (Chrome), iPhone (Safari + installed PWA), desktop (Chrome, Firefox, Safari if available).
+  2. Given the results, Then `docs/progress/compatibility-matrix.md` is updated with date, OS/browser version and result.
+- **Dependencies:** MVP release candidate.
+
+---
+
+## E14 — Post-MVP / experimental
+
+### EXP-01 — Export/import settings
+- **Priority:** Should · **Effort:** 3 · **Value:** Medium
+- **Story:** As a user with several devices, I want to export sources, favorites and settings to a file and import it on another device, so that I don't have to set everything up again.
+- **AC:** versioned JSON file; secrets included only if the user sets an export password (AES-GCM + PBKDF2); import with preview and merge/replace; schema validation (untrusted file).
+- **Dependencies:** SRC-08, FAV-03.
+
+### PRX-01 — Reference self-hosted proxy
+- **Priority:** Could (may move up to Must — ADR-010) · **Effort:** 5 · **Value:** High if the provider is HTTP-only
+- **Story:** As a user whose provider only has HTTP, I want to specify my own proxy, so that I can play in the browser.
+- **AC:**
+  1. Given Settings › Personal proxy (HTTPS URL + token), Then `UrlRewriter` rewrites requests (API, playlists, segments, streams) to the proxy.
+  2. Given the project, Then it includes `proxy/` with a minimal implementation (Node, no dependencies) with: host allowlist configured by the owner, mandatory token, no URL logging, unbuffered streaming, HLS playlist rewriting.
+  3. Given documentation, Then a guide to expose it via HTTPS (e.g. Tailscale Serve) and security warnings (SSRF, exposure to the internet).
+- **Dependencies:** PLY-01, SRC-02, ADR-010.
+
+### NAT-01 — Android shell (Capacitor) — experimental
+- **Priority:** Could · **Effort:** 8 (split before starting) · **Value:** High for Android users with HTTP-only providers
+- **Story:** As an Android user, I want an APK that uses the same app without the browser's restrictions, so that I can play HTTP-only providers.
+- **AC:** same codebase; `CapacitorHttp` for the API; cleartext allowed only for the user's hosts; APK build via GitHub Actions; no Play Store initially.
+- **Dependencies:** complete MVP.
+
+### PRF-01 — Multiple profiles
+- **Priority:** Could · **Effort:** 5 · **Value:** Low/Medium
+- **AC:** favorites, history and preferences per profile; shared sources; profile selection on open (optional).
 
 ### CST-01 — Remote Playback / Cast — experimental
-- **Prioridade:** Could · **Esforço:** 5 · **Valor:** Médio
-- **CA:** botão AirPlay (Safari, engine nativa) e Remote Playback API onde suportado; Cast SDK só após avaliação de requisitos (streams têm de ser acessíveis pelo recetor).
+- **Priority:** Could · **Effort:** 5 · **Value:** Medium
+- **AC:** AirPlay button (Safari, native engine) and Remote Playback API where supported; Cast SDK only after evaluating requirements (streams must be reachable by the receiver).
 
 ### MSS-01 — Media Session
-- **Prioridade:** Should · **Esforço:** 1 · **Valor:** Baixo
-- **CA:** título/artwork no ecrã de bloqueio e controlos play/pausa/anterior/seguinte onde suportado.
+- **Priority:** Should · **Effort:** 1 · **Value:** Low
+- **AC:** title/artwork on the lock screen and play/pause/previous/next controls where supported.
