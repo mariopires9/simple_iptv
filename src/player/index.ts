@@ -1,2 +1,2 @@
-// Módulo player — ver docs/ARCHITECTURE.md §3. Preenchido pelas stories correspondentes.
+// Module player — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
 export {};

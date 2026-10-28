@@ -1,2 +1,2 @@
-// Módulo core/crypto — ver docs/ARCHITECTURE.md §3. Preenchido pelas stories correspondentes.
+// Module core/crypto — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
 export {};

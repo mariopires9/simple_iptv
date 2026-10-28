@@ -1,5 +1,5 @@
-// Módulo core/db — persistência IndexedDB (Dexie), docs/ARCHITECTURE.md §5.
-// API pública: repositórios tipados, tipos e helpers. As features nunca acedem a `db.table()`.
+// core/db module — IndexedDB persistence (Dexie), docs/ARCHITECTURE.md §5.
+// Public API: typed repositories, types and helpers. Features never access `db.table()`.
 export {
   openDatabase,
   closeDatabase,

@@ -1,5 +1,5 @@
-// Logger com redação e buffer circular para o "Relatório de diagnóstico" (FND-06).
-// Único ponto da app autorizado a escrever na consola (eslint.config.js).
+// Logger with redaction and a ring buffer for the "Diagnostics report" (FND-06).
+// The only place in the app allowed to write to the console (eslint.config.js).
 import { redact } from './redact';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -8,7 +8,7 @@ export interface LogEntry {
   at: number;
   level: LogLevel;
   message: string;
-  /** Contexto já serializado em JSON e redigido. */
+  /** Context already serialized to JSON and redacted. */
   context?: string;
 }
 
@@ -19,8 +19,8 @@ const buffer: LogEntry[] = [];
 const MAX_DEPTH = 12;
 
 /**
- * Converte um valor arbitrário numa árvore serializável em JSON. Só os antepassados contam como
- * ciclo (`{a: s, b: s}` serializa `s` duas vezes); `Error` entra no mesmo controlo (`e.cause = e`).
+ * Converts an arbitrary value into a JSON-serializable tree. Only ancestors count as a cycle
+ * (`{a: s, b: s}` serializes `s` twice); `Error` goes through the same check (`e.cause = e`).
  */
 function toPlain(value: unknown, ancestors: object[]): unknown {
   if (typeof value === 'bigint') return value.toString();
@@ -54,12 +54,12 @@ function toPlain(value: unknown, ancestors: object[]): unknown {
   }
 }
 
-/** JSON redigido de qualquer valor (contexto de log, causas de erro). Nunca lança. */
+/** Redacted JSON of any value (log context, error causes). Never throws. */
 export function toLogJson(value: unknown): string {
   try {
     return redact(JSON.stringify(toPlain(value, [])) ?? String(value));
   } catch {
-    return '[contexto não serializável]';
+    return '[unserializable context]';
   }
 }
 
@@ -83,7 +83,7 @@ export const log = {
   error: (message: string, context?: Record<string, unknown>) => write('error', message, context),
 } as const;
 
-/** Cópia das entradas do buffer (mais antiga primeiro). */
+/** Copy of the buffer entries (oldest first). */
 export function getLogEntries(): LogEntry[] {
   return buffer.map((e) => ({ ...e }));
 }
@@ -93,21 +93,21 @@ export function clearLogBuffer(): void {
 }
 
 /**
- * Relatório de diagnóstico em texto simples. É redigido de novo no momento da exportação,
- * para remover também segredos registados depois de a entrada ter sido escrita.
+ * Plain-text diagnostics report. It is redacted again at export time, to also remove secrets
+ * registered after the entry was written.
  */
 export function exportDiagnostics(): string {
-  // O cabeçalho é texto fixo da app: não é redigido, para um segredo curto (ex.: "IPTV") não o estragar.
+  // The header is fixed app text: it is not redacted, so a short secret (e.g. "IPTV") cannot mangle it.
   const header = [
-    'Relatório de diagnóstico — Simple IPTV',
-    `Gerado em: ${new Date().toISOString()}`,
-    `Entradas: ${buffer.length}`,
+    'Diagnostics report — Simple IPTV',
+    `Generated at: ${new Date().toISOString()}`,
+    `Entries: ${buffer.length}`,
     '',
   ];
   const lines: string[] = [];
   for (const e of buffer) {
     lines.push(`${new Date(e.at).toISOString()} ${e.level.toUpperCase().padEnd(5)} ${e.message}`);
-    if (e.context !== undefined) lines.push(`    contexto: ${e.context}`);
+    if (e.context !== undefined) lines.push(`    context: ${e.context}`);
   }
   return [...header, ...lines.map(redact)].join('\n') + '\n';
 }

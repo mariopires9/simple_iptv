@@ -1,5 +1,5 @@
-// Ponto de entrada do worker de dados — FND-07 (ADR-009). Carregado por client.ts como chunk próprio.
-// Não aceder ao DOM nem importar módulos de UI: tudo o que corre aqui vem de api.ts/tasks.ts.
+// Data worker entry point — FND-07 (ADR-009). Loaded by client.ts as its own chunk.
+// Do not access the DOM or import UI modules: everything that runs here comes from api.ts/tasks.ts.
 import { expose } from 'comlink';
 import { createDataWorkerApi } from './api';
 

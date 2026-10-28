@@ -1,24 +1,24 @@
-// Erros das tarefas do worker de dados — FND-07 CA2.
-// Só name/kind/message atravessam a fronteira do worker: nunca stack, cause ou propriedades extra,
-// que podem conter URLs com credenciais ou dados das listas do utilizador.
-// A mensagem é diagnóstica (como em NetError), não texto de UI: a UI traduz `kind` para pt-PT
-// a partir de src/i18n.
+// Data worker task errors — FND-07 AC2.
+// Only name/kind/message cross the worker boundary: never stack, cause or extra properties,
+// which may contain URLs with credentials or data from the user's lists.
+// The message is diagnostic (as in NetError), not UI text: the UI maps `kind` to a localized
+// message from src/i18n (en base locale, ADR-015).
 
 export type WorkerTaskErrorKind = 'cancelled' | 'failed';
 
-/** Forma exata que viaja do worker para a thread principal (clonável por structured clone). */
+/** Exact shape that travels from the worker to the main thread (structured-clone cloneable). */
 export interface SerializedTaskError {
   name: 'WorkerTaskError';
   kind: WorkerTaskErrorKind;
   message: string;
 }
 
-export const CANCELLED_MESSAGE = 'Tarefa cancelada';
-export const FAILED_MESSAGE = 'Falha na tarefa do worker';
+export const CANCELLED_MESSAGE = 'Task cancelled';
+export const FAILED_MESSAGE = 'Worker task failed';
 
 /**
- * Nomes de erro nativos que podem ser indicados (só o nome, nunca a mensagem): ajudam no
- * diagnóstico sem revelar dados. Ex.: a mensagem de um SyntaxError do JSON.parse ecoa o input.
+ * Native error names that may be reported (only the name, never the message): they help
+ * diagnostics without revealing data. E.g. the message of a JSON.parse SyntaxError echoes the input.
  */
 const SAFE_ERROR_NAMES = new Set([
   'SyntaxError',
@@ -38,9 +38,9 @@ export class WorkerTaskError extends Error {
 }
 
 /**
- * Reduz qualquer valor lançado a {name, kind, message}. Usado dentro do worker.
- * Só a mensagem de um `WorkerTaskError` (escrita pela própria tarefa) atravessa a fronteira;
- * qualquer outro erro (JSON.parse, DOMException, Dexie…) fica com uma mensagem genérica.
+ * Reduces any thrown value to {name, kind, message}. Used inside the worker.
+ * Only the message of a `WorkerTaskError` (written by the task itself) crosses the boundary;
+ * any other error (JSON.parse, DOMException, Dexie…) gets a generic message.
  */
 export function serializeTaskError(err: unknown): SerializedTaskError {
   if (err instanceof WorkerTaskError) {
@@ -55,7 +55,7 @@ export function serializeTaskError(err: unknown): SerializedTaskError {
   return { name: 'WorkerTaskError', kind: 'failed', message };
 }
 
-/** Recria o erro do lado do cliente; tolera formas inesperadas (o worker é outra fronteira). */
+/** Recreates the error on the client side; tolerates unexpected shapes (the worker is another boundary). */
 export function deserializeTaskError(data: unknown): WorkerTaskError {
   const obj = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {};
   const kind: WorkerTaskErrorKind = obj['kind'] === 'cancelled' ? 'cancelled' : 'failed';

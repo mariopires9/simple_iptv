@@ -1,2 +1,2 @@
-// Módulo features/movies — ver docs/ARCHITECTURE.md §3. Preenchido pelas stories correspondentes.
+// Module features/movies — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
 export {};

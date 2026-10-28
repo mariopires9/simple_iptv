@@ -1,12 +1,12 @@
-// Redação central de credenciais (FND-06, docs/ARCHITECTURE.md §8, docs/SECURITY.md).
-// Tudo o que sai para a consola, mensagens de erro ou relatórios de diagnóstico passa por aqui.
+// Central credential redaction (FND-06, docs/ARCHITECTURE.md §8, docs/SECURITY.md).
+// Everything that goes to the console, error messages or diagnostics reports passes through here.
 
 export const MASK = '***';
 
-/** Segredos com menos caracteres do que isto são ignorados para não destruir texto comum. */
+/** Secrets shorter than this are ignored so as not to destroy ordinary text. */
 const MIN_SECRET_LENGTH = 3;
 
-/** Palavras sensíveis; casam como nome completo ou sufixo (`api_key`, `access-token`, `accessToken`). */
+/** Sensitive words; they match as the full name or a suffix (`api_key`, `access-token`, `accessToken`). */
 const SENSITIVE_WORDS = ['authorization', 'username', 'password', 'token', 'pass', 'auth', 'key'];
 
 function isUpper(ch: string): boolean {
@@ -14,9 +14,9 @@ function isUpper(ch: string): boolean {
 }
 
 /**
- * Decide se um nome de parâmetro/campo é sensível: termina numa palavra sensível que começa numa
- * fronteira — início do nome, depois de `_`/`-`, ou início de palavra camelCase (`apiKey`).
- * Assim `passport`, `bypass`, `monkey` e `keyboard` não casam; `APIKEY` (sem fronteira) também não.
+ * Decides whether a parameter/field name is sensitive: it ends in a sensitive word that starts at a
+ * boundary — start of the name, after `_`/`-`, or the start of a camelCase word (`apiKey`).
+ * So `passport`, `bypass`, `monkey` and `keyboard` do not match; neither does `APIKEY` (no boundary).
  */
 function isSensitiveName(name: string): boolean {
   const lower = name.toLowerCase();
@@ -32,13 +32,13 @@ function isSensitiveName(name: string): boolean {
 }
 
 /**
- * Nome de parâmetro seguido de `=` ou `%3D`. O lookbehind faz a pesquisa arrancar só no início de
- * cada nome (custo linear). `%26password` aparece como nome `26password` precedido de `%`.
+ * Parameter name followed by `=` or `%3D`. The lookbehind makes the search start only at the
+ * beginning of each name (linear cost). `%26password` shows up as name `26password` preceded by `%`.
  */
 const PARAM_NAME = /(?<![A-Za-z0-9_-])([A-Za-z0-9_-]+)(=|%3D)/gi;
-/** Valor após `=`: termina em `&`, `#`, espaço, aspas ou fim de texto. */
+/** Value after `=`: ends at `&`, `#`, whitespace, quotes or end of text. */
 const PLAIN_VALUE = /[^&#\s"'<>]*/y;
-/** Valor após `%3D` (URL dentro de outro parâmetro): termina também em `%26`. */
+/** Value after `%3D` (URL inside another parameter): also ends at `%26`. */
 const ENCODED_VALUE = /(?:(?!%26)[^&#\s"'<>])*/y;
 
 function redactParams(text: string): string {
@@ -60,11 +60,11 @@ function redactParams(text: string): string {
   return out + text.slice(last);
 }
 
-/** Chave JSON `"nome":` — o valor (string, número, literal, objeto ou array) é delimitado à mão. */
+/** JSON key `"name":` — the value (string, number, literal, object or array) is delimited by hand. */
 const JSON_KEY = /"([A-Za-z0-9_-]+)"\s*:\s*/g;
 const JSON_PRIMITIVE = /[^,}\]\s]*/y;
 
-/** Fim do valor JSON que começa em `start` (tolerante: texto truncado vai até ao fim). */
+/** End of the JSON value starting at `start` (lenient: truncated text runs to the end). */
 function jsonValueEnd(text: string, start: number): number {
   const c = text.charAt(start);
   if (c === '"') {
@@ -93,7 +93,7 @@ function jsonValueEnd(text: string, start: number): number {
   return JSON_PRIMITIVE.lastIndex;
 }
 
-/** `"password":"abc"`, `"pin":1234`, `"apiKey":{…}` → o valor inteiro passa a `"***"`. */
+/** `"password":"abc"`, `"pin":1234`, `"apiKey":{…}` → the whole value becomes `"***"`. */
 function redactJsonFields(text: string): string {
   let out = '';
   let last = 0;
@@ -110,29 +110,29 @@ function redactJsonFields(text: string): string {
   return out + text.slice(last);
 }
 
-/** Cabeçalho `Authorization: Basic …` em texto livre e tokens `Bearer …`. */
+/** `Authorization: Basic …` header in free text and `Bearer …` tokens. */
 const AUTH_HEADER =
   /(?<![A-Za-z0-9_-])((?:proxy-)?authorization\s*:\s*)(?:(basic|bearer|digest|token)\s+)?[^\s"'<>,;]+/gi;
 const BEARER = /(?<![A-Za-z0-9_-])(bearer\s+)[A-Za-z0-9._~+/=-]+/gi;
 
-/** Caminhos de stream Xtream: `/live/<user>/<pass>/` (e a forma com `%2F`). */
+/** Xtream stream paths: `/live/<user>/<pass>/` (and the `%2F` form). */
 const XTREAM_PATH = /\/(live|movie|series|timeshift)\/[^/\s?#"'<>]+\/[^/\s?#"'<>]+\//gi;
 const XTREAM_PATH_ENCODED =
   /%2F(live|movie|series|timeshift)%2F(?:(?!%2F)[^/\s?#&"'<>])+%2F(?:(?!%2F)[^/\s?#&"'<>])+%2F/gi;
 
 /**
- * Caminho Xtream "nu" (saída típica de get.php): `scheme://host/<user>/<pass>/<id>.<ext>`, com o
- * caminho exatamente nesta forma. Pode redigir URLs inócuos com a mesma forma — aceitável em logs.
+ * "Bare" Xtream path (typical get.php output): `scheme://host/<user>/<pass>/<id>.<ext>`, with the
+ * path in exactly this shape. May redact harmless URLs with the same shape — acceptable in logs.
  */
 const XTREAM_BARE =
   /((?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/[^\s/?#"'<>]+)\/[^/\s?#"'<>]+\/[^/\s?#"'<>]+\/(\d+(?:\.[A-Za-z0-9]+)?)(?=[\s?#"'<>]|$)/gi;
 const XTREAM_BARE_ENCODED =
   /(%3A%2F%2F(?:(?!%2F)[^/\s?#&"'<>])+)%2F(?:(?!%2F)[^/\s?#&"'<>])+%2F(?:(?!%2F)[^/\s?#&"'<>])+%2F(\d+(?:\.[A-Za-z0-9]+)?)(?=%26|%3F|%23|[\s&?#"'<>]|$)/gi;
 
-/** Userinfo em URLs: `scheme://user:pass@host`. */
+/** Userinfo in URLs: `scheme://user:pass@host`. */
 const USERINFO = /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@"'<>]+@/gi;
 
-/** Segredo registado → todas as formas em que pode aparecer (texto, URL-encoded, base64). */
+/** Registered secret → every form in which it may appear (plain, URL-encoded, base64). */
 const secrets = new Map<string, string[]>();
 let sortedForms: string[] | null = null;
 
@@ -150,14 +150,14 @@ function formsOf(value: string): string[] {
     encoded,
     encoded.replace(/%20/g, '+'),
     new URLSearchParams({ x: value }).toString().slice(2), // application/x-www-form-urlencoded
-    encodeURIComponent(encoded), // duplamente codificado (URL dentro de URL)
+    encodeURIComponent(encoded), // double-encoded (URL inside a URL)
     base64,
     base64.replace(/=+$/, ''),
     base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), // base64url
   ];
 }
 
-/** Regista um valor sensível (ex.: palavra-passe) para ser removido de qualquer texto. */
+/** Registers a sensitive value (e.g. a password) so it is removed from any text. */
 export function registerSecret(value: string): void {
   if (typeof value !== 'string' || value.length < MIN_SECRET_LENGTH) return;
   secrets.set(value, formsOf(value));
@@ -179,13 +179,13 @@ function secretForms(): string[] {
     for (const forms of secrets.values()) {
       for (const form of forms) if (form.length >= MIN_SECRET_LENGTH) all.add(form);
     }
-    // Mais longos primeiro, para que um segredo contido noutro não deixe restos.
+    // Longest first, so a secret contained in another one leaves no leftovers.
     sortedForms = [...all].sort((a, b) => b.length - a.length);
   }
   return sortedForms;
 }
 
-/** Substitui credenciais conhecidas e padrões de credenciais por `***`. Idempotente. */
+/** Replaces known credentials and credential patterns with `***`. Idempotent. */
 export function redact(text: string): string {
   let out = String(text);
   for (const form of secretForms()) {

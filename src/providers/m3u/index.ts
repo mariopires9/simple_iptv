@@ -1,2 +1,2 @@
-// Módulo providers/m3u — ver docs/ARCHITECTURE.md §3. Preenchido pelas stories correspondentes.
+// Module providers/m3u — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
 export {};

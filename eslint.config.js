@@ -4,14 +4,14 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 
-// Fronteiras entre módulos (docs/ARCHITECTURE.md §2): features → player/providers/core/ui; core não importa nada acima.
+// Module boundaries (docs/ARCHITECTURE.md §2): features → player/providers/core/ui; core imports nothing above it.
 const forbid = (...groups) => ({
   'no-restricted-imports': [
     'error',
     {
       patterns: groups.map((g) => ({
         group: [`@/${g}`, `@/${g}/**`],
-        message: `Importação proibida pelas fronteiras de módulos (ver docs/ARCHITECTURE.md §2): ${g}`,
+        message: `Import forbidden by module boundaries (see docs/ARCHITECTURE.md §2): ${g}`,
       })),
     },
   ],
@@ -33,7 +33,7 @@ export default tseslint.config(
         'error',
         {
           selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
-          message: 'Metadados externos são renderizados só como texto (SEC-01).',
+          message: 'External metadata is rendered as text only (SEC-01).',
         },
       ],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
@@ -44,7 +44,7 @@ export default tseslint.config(
   { files: ['src/player/**'], rules: forbid('app', 'features', 'providers') },
   { files: ['src/ui/**'], rules: forbid('app', 'features') },
   { files: ['src/features/**'], rules: forbid('app', 'features') },
-  // O logger (core/log) é o único ponto autorizado a escrever na consola.
+  // The logger (core/log) is the only place allowed to write to the console.
   { files: ['src/core/log/**'], rules: { 'no-console': 'off' } },
   {
     files: ['*.config.{js,ts}', 'e2e/**', 'scripts/**'],

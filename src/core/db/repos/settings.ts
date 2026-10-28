@@ -1,4 +1,4 @@
-// Repositório de definições: valores tipados por chave (ver `SettingsMap`).
+// Settings repository: typed values per key (see `SettingsMap`).
 import { getDb } from '../database';
 import type { SettingsEntry, SettingsKey, SettingsMap } from '../types';
 

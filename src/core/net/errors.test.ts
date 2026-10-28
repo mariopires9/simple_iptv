@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { clearSecrets, registerSecret } from '@/core/log';
 import { NetError, isNetError, shortenUrl } from './errors';
 
-// Dados fictícios: nunca usar credenciais reais em testes (CLAUDE.md).
-const HOST = 'iptv.exemplo.test';
-const USER = 'joao';
+// Fictitious data: never use real credentials in tests (CLAUDE.md).
+const HOST = 'iptv.example.test';
+const USER = 'jdoe';
 const PASS = 'abc123';
 const URLS = [
   `http://${HOST}:8080/player_api.php?username=${USER}&password=${PASS}&action=get_vod_streams`,
@@ -22,7 +22,7 @@ function exposed(e: NetError): string {
 }
 
 describe('NetError', () => {
-  it.each(URLS)('nunca expõe host, utilizador, palavra-passe ou query: %s', (url) => {
+  it.each(URLS)('never exposes host, username, password or query: %s', (url) => {
     const e = new NetError({ kind: 'http', status: 500, url });
     const text = exposed(e);
     expect(text).not.toContain(HOST);
@@ -33,7 +33,7 @@ describe('NetError', () => {
     expect(text).not.toContain(url);
   });
 
-  it('guarda kind, status e hint e mostra um URL encurtado', () => {
+  it('stores kind, status and hint and shows a shortened URL', () => {
     const e = new NetError({
       kind: 'blocked',
       hint: 'mixed-content',
@@ -46,11 +46,11 @@ describe('NetError', () => {
     expect(e.status).toBeUndefined();
     expect(e.target).toBe('http://***/player_api.php');
     expect(e.message).toBe(
-      'Pedido bloqueado pelo browser (blocked, mixed-content): http://***/player_api.php',
+      'Request blocked by the browser (blocked, mixed-content): http://***/player_api.php',
     );
   });
 
-  it('redige credenciais no caminho do URL encurtado', () => {
+  it('redacts credentials in the path of the shortened URL', () => {
     const e = new NetError({
       kind: 'auth',
       status: 401,
@@ -60,7 +60,7 @@ describe('NetError', () => {
     expect(e.message).toContain('(auth, HTTP 401)');
   });
 
-  // Regressão (revisão): só o primeiro segmento conhecido e a extensão final ficam visíveis.
+  // Regression (review): only the known first segment and the final extension stay visible.
   it.each([
     [`http://${HOST}/${USER}/${PASS}/1.ts`, 'http://***/***/***/***.ts'],
     [`http://${HOST}/player_api.php?username=${USER}`, 'http://***/player_api.php'],
@@ -70,7 +70,7 @@ describe('NetError', () => {
       `http://${HOST}/timeshift/${USER}/${PASS}/60/x/5.ts`,
       'http://***/timeshift/***/***/***/***/***.ts',
     ],
-    [`http://${HOST}/painel/${USER}/conta`, 'http://***/***/***/***'],
+    [`http://${HOST}/panel/${USER}/account`, 'http://***/***/***/***'],
     [`http://${HOST}/a/${USER}.php`, 'http://***/***/***.php'],
     [`http://${HOST}/`, 'http://***/'],
     [`http://${HOST}/x/`, 'http://***/***/'],
@@ -78,18 +78,18 @@ describe('NetError', () => {
     expect(shortenUrl(url)).toBe(expected);
   });
 
-  it('não mantém segmentos desconhecidos mesmo sem segredo registado', () => {
+  it('does not keep unknown segments even without a registered secret', () => {
     const e = new NetError({ kind: 'http', url: `http://${HOST}/${USER}/${PASS}/1.ts` });
     expect(exposed(e)).not.toMatch(new RegExp(`${USER}|${PASS}`));
   });
 
-  it('sem URL ou com URL inválido não tem target', () => {
+  it('has no target without a URL or with an invalid URL', () => {
     expect(new NetError({ kind: 'offline' }).target).toBeUndefined();
-    expect(new NetError({ kind: 'parse', url: 'não é um url' }).target).toBeUndefined();
-    expect(new NetError({ kind: 'offline' }).message).toBe('Sem ligação à rede (offline)');
+    expect(new NetError({ kind: 'parse', url: 'not a url' }).target).toBeUndefined();
+    expect(new NetError({ kind: 'offline' }).message).toBe('No network connection (offline)');
   });
 
-  it('guarda a causa só em forma redigida', () => {
+  it('stores the cause only in redacted form', () => {
     registerSecret(PASS);
     const cause = new TypeError(`Failed to fetch http://${HOST}/get.php?password=${PASS}`);
     const e = new NetError({ kind: 'blocked', hint: 'cors', cause });
@@ -100,33 +100,33 @@ describe('NetError', () => {
     expect(new NetError({ kind: 'parse', cause: `password=${PASS}` }).cause).toBe('password=***');
   });
 
-  // Regressão (revisão): a cadeia de causas é preservada (redigida) até 3 níveis.
-  it('mantém a cadeia de causas redigida, limitada a 3 níveis', () => {
-    const l4 = new Error(`nível 4 password=${PASS}`);
-    const l3 = new Error(`nível 3 password=${PASS}`, { cause: l4 });
-    const l2 = new RangeError(`nível 2 /live/${USER}/${PASS}/1.ts`, { cause: l3 });
-    const l1 = new TypeError(`nível 1 token=${PASS}`, { cause: l2 });
+  // Regression (review): the cause chain is preserved (redacted) up to 3 levels.
+  it('keeps the redacted cause chain, limited to 3 levels', () => {
+    const l4 = new Error(`level 4 password=${PASS}`);
+    const l3 = new Error(`level 3 password=${PASS}`, { cause: l4 });
+    const l2 = new RangeError(`level 2 /live/${USER}/${PASS}/1.ts`, { cause: l3 });
+    const l1 = new TypeError(`level 1 token=${PASS}`, { cause: l2 });
     const e = new NetError({ kind: 'blocked', cause: l1 });
 
     const c1 = e.cause as Error;
     const c2 = c1.cause as Error;
     const c3 = c2.cause as Error;
     expect([c1.name, c2.name, c3.name]).toEqual(['TypeError', 'RangeError', 'Error']);
-    expect(c1.message).toBe('nível 1 token=***');
-    expect(c2.message).toBe('nível 2 /live/***/***/1.ts');
-    expect(c3.message).toBe('nível 3 password=***');
+    expect(c1.message).toBe('level 1 token=***');
+    expect(c2.message).toBe('level 2 /live/***/***/1.ts');
+    expect(c3.message).toBe('level 3 password=***');
     expect(c3.cause).toBeUndefined();
   });
 
-  it('não entra em ciclo com causas circulares', () => {
+  it('does not loop on circular causes', () => {
     const a = new Error('a');
     (a as { cause?: unknown }).cause = a;
     const e = new NetError({ kind: 'parse', cause: a });
     expect((e.cause as Error).message).toBe('a');
   });
 
-  // Regressão (revisão): causa objeto vira JSON redigido, não "[object Object]".
-  it('serializa causas objeto como JSON redigido', () => {
+  // Regression (review): an object cause becomes redacted JSON, not "[object Object]".
+  it('serializes object causes as redacted JSON', () => {
     const e = new NetError({
       kind: 'http',
       cause: { status: 500, url: `http://${HOST}/get.php?username=${USER}&password=${PASS}` },
@@ -136,7 +136,7 @@ describe('NetError', () => {
 });
 
 describe('isNetError', () => {
-  it('distingue NetError de outros erros', () => {
+  it('distinguishes NetError from other errors', () => {
     expect(isNetError(new NetError({ kind: 'timeout' }))).toBe(true);
     expect(isNetError(new Error('x'))).toBe(false);
     expect(isNetError({ name: 'NetError', kind: 'timeout' })).toBe(false);

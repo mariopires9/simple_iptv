@@ -1,5 +1,5 @@
-// Spike S-00 — descartável, fora do build da app (docs/USER_STORIES.md#s-00).
-// Mede: HTTPS, CORS na API Xtream, formatos permitidos, redirecionamentos e reprodução HLS/TS no browser atual.
+// Spike S-00 — throwaway, outside the app build (docs/USER_STORIES.md#s-00).
+// Measures: HTTPS, CORS on the Xtream API, allowed formats, redirects and HLS/TS playback in the current browser.
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
 
@@ -15,7 +15,7 @@ let creds: Creds | undefined;
 let liveId: string | undefined;
 let cleanup: (() => void) | undefined;
 
-// ---------- relatório com redação ----------
+// ---------- report with redaction ----------
 function mask(text: string): string {
   if (!creds) return text;
   const secrets = [creds.base.hostname, creds.username, creds.password]
@@ -33,7 +33,7 @@ function log(line: string, cls?: 'ok' | 'fail' | 'warn') {
   reportEl.append(span);
 }
 
-// ---------- ambiente ----------
+// ---------- environment ----------
 function environment() {
   const mms = 'ManagedMediaSource' in window;
   const mse = 'MediaSource' in window;
@@ -46,16 +46,16 @@ function environment() {
     'E-AC-3': 'audio/mp4; codecs="ec-3"',
     'MP3': 'audio/mpeg',
   };
-  log(`== Ambiente (${new Date().toISOString()}) ==`);
+  log(`== Environment (${new Date().toISOString()}) ==`);
   log(`Browser: ${navigator.userAgent}`);
-  log(`Página: ${location.protocol} · contexto seguro: ${window.isSecureContext}`);
-  log(`MSE: ${mse} · ManagedMediaSource: ${mms} · HLS nativo (canPlayType): "${video.canPlayType('application/vnd.apple.mpegurl') || 'não'}"`);
-  log(`hls.js suportado: ${Hls.isSupported()} · mpegts.js suportado: ${mpegts.isSupported()}`);
-  const support = Object.entries(codecs).map(([name, type]) => `${name}=${MS?.isTypeSupported(type) ? 'sim' : 'não'}`);
+  log(`Page: ${location.protocol} · secure context: ${window.isSecureContext}`);
+  log(`MSE: ${mse} · ManagedMediaSource: ${mms} · native HLS (canPlayType): "${video.canPlayType('application/vnd.apple.mpegurl') || 'no'}"`);
+  log(`hls.js supported: ${Hls.isSupported()} · mpegts.js supported: ${mpegts.isSupported()}`);
+  const support = Object.entries(codecs).map(([name, type]) => `${name}=${MS?.isTypeSupported(type) ? 'yes' : 'no'}`);
   log(`Codecs (isTypeSupported): ${support.join(' · ')}`);
 }
 
-// ---------- rede ----------
+// ---------- network ----------
 function normalizeBase(input: string): URL {
   let s = input.trim();
   if (!/^https?:\/\//i.test(s)) s = `http://${s}`;
@@ -82,11 +82,11 @@ async function fetchJson(url: string): Promise<{ ok: true; data: unknown } | { o
     try {
       return { ok: true, data: JSON.parse(text) };
     } catch {
-      return { ok: false, reason: `resposta não é JSON (começa por: ${JSON.stringify(text.slice(0, 40))})` };
+      return { ok: false, reason: `response is not JSON (starts with: ${JSON.stringify(text.slice(0, 40))})` };
     }
   } catch (e) {
     if (ctrl.signal.aborted) return { ok: false, reason: 'timeout (15 s)' };
-    return { ok: false, reason: `bloqueado pelo browser (${(e as Error).name}) — CORS, mixed content ou DNS` };
+    return { ok: false, reason: `blocked by the browser (${(e as Error).name}) — CORS, mixed content or DNS` };
   } finally {
     clearTimeout(timer);
   }
@@ -97,47 +97,47 @@ async function testApi() {
   environment();
   const c = creds!;
   log(`\n== API Xtream ==`);
-  log(`Servidor configurado: ${c.base.protocol}//***:${c.base.port || (c.base.protocol === 'https:' ? 443 : 80)}`);
+  log(`Configured server: ${c.base.protocol}//***:${c.base.port || (c.base.protocol === 'https:' ? 443 : 80)}`);
   if (location.protocol === 'https:' && c.base.protocol === 'http:') {
-    log('Página HTTPS + servidor HTTP: o browser bloqueia como mixed content.', 'warn');
+    log('HTTPS page + HTTP server: the browser blocks it as mixed content.', 'warn');
   }
   if (location.protocol === 'http:' && c.base.protocol === 'http:') {
-    log('Nota: esta página está em http://localhost, por isso não há bloqueio de mixed content aqui. Na app publicada (HTTPS) um servidor HTTP será bloqueado.', 'warn');
+    log('Note: this page is on http://localhost, so there is no mixed-content blocking here. In the published app (HTTPS) an HTTP server will be blocked.', 'warn');
   }
 
   const auth = await fetchJson(apiUrl(c.base));
   if (!auth.ok) {
-    log(`Autenticação/CORS: ${auth.reason}`, 'fail');
+    log(`Authentication/CORS: ${auth.reason}`, 'fail');
     return;
   }
-  log('API acessível a partir do browser (CORS ok)', 'ok');
+  log('API reachable from the browser (CORS ok)', 'ok');
   const data = auth.data as { user_info?: Record<string, unknown>; server_info?: Record<string, unknown> };
   const ui = data.user_info ?? {};
   const si = data.server_info ?? {};
   if (String(ui.auth) !== '1') {
-    log('Credenciais rejeitadas (user_info.auth != 1)', 'fail');
+    log('Credentials rejected (user_info.auth != 1)', 'fail');
     return;
   }
-  const exp = Number(ui.exp_date) ? new Date(Number(ui.exp_date) * 1000).toISOString().slice(0, 10) : 'sem data';
-  log(`Conta: estado=${ui.status} · expira=${exp} · ligações=${ui.active_cons}/${ui.max_connections}`, 'ok');
-  log(`Formatos permitidos: ${JSON.stringify(ui.allowed_output_formats ?? 'não indicado')}`);
-  log(`server_info: protocolo=${si.server_protocol} · porta=${si.port} · https_port=${si.https_port || 'nenhuma'} · fuso=${si.timezone}`);
+  const exp = Number(ui.exp_date) ? new Date(Number(ui.exp_date) * 1000).toISOString().slice(0, 10) : 'no date';
+  log(`Account: status=${ui.status} · expires=${exp} · connections=${ui.active_cons}/${ui.max_connections}`, 'ok');
+  log(`Allowed formats: ${JSON.stringify(ui.allowed_output_formats ?? 'not stated')}`);
+  log(`server_info: protocol=${si.server_protocol} · port=${si.port} · https_port=${si.https_port || 'none'} · timezone=${si.timezone}`);
 
-  // Tentar HTTPS se o servidor anunciar uma porta HTTPS.
+  // Try HTTPS if the server advertises an HTTPS port.
   if (c.base.protocol === 'http:' && si.https_port) {
     const httpsBase = new URL(c.base);
     httpsBase.protocol = 'https:';
     httpsBase.port = String(si.https_port);
     const r = await fetchJson(apiUrl(httpsBase));
     if (r.ok) {
-      log(`HTTPS disponível na porta ${si.https_port} e acessível (CORS ok) → usar HTTPS resolve o mixed content`, 'ok');
+      log(`HTTPS available on port ${si.https_port} and reachable (CORS ok) → using HTTPS solves mixed content`, 'ok');
       c.base = httpsBase;
-    } else log(`HTTPS anunciado na porta ${si.https_port} mas falhou: ${r.reason}`, 'fail');
+    } else log(`HTTPS advertised on port ${si.https_port} but failed: ${r.reason}`, 'fail');
   } else if (c.base.protocol === 'http:') {
-    log('O servidor não anuncia porta HTTPS → numa página HTTPS será bloqueado (decisivo para ADR-010)', 'fail');
+    log('The server advertises no HTTPS port → it will be blocked on an HTTPS page (decisive for ADR-010)', 'fail');
   }
 
-  // Um canal para testar a reprodução.
+  // A channel to test playback.
   liveId = c.streamId;
   if (!liveId) {
     const cats = await fetchJson(apiUrl(c.base, { action: 'get_live_categories' }));
@@ -147,8 +147,8 @@ async function testApi() {
     );
     if (streams.ok && Array.isArray(streams.data) && streams.data.length) {
       liveId = String((streams.data[0] as { stream_id: unknown }).stream_id);
-      log(`Canal de teste: stream_id=${liveId} (primeiro da primeira categoria)`);
-    } else log(`Não foi possível obter canais: ${streams.ok ? 'lista vazia' : streams.reason}`, 'fail');
+      log(`Test channel: stream_id=${liveId} (first of the first category)`);
+    } else log(`Could not fetch channels: ${streams.ok ? 'empty list' : streams.reason}`, 'fail');
   }
   if (liveId) {
     await probeRedirect('m3u8');
@@ -171,21 +171,21 @@ async function probeRedirect(ext: 'm3u8' | 'ts') {
     const final = new URL(res.url);
     const sameHost = final.host === new URL(url).host;
     log(
-      `Stream .${ext}: HTTP ${res.status} · tipo=${res.headers.get('content-type')} · ` +
-        (res.redirected ? `redireciona para ${final.protocol}//${sameHost ? 'mesmo host' : 'OUTRO host'}` : 'sem redirecionamento') +
+      `Stream .${ext}: HTTP ${res.status} · type=${res.headers.get('content-type')} · ` +
+        (res.redirected ? `redirects to ${final.protocol}//${sameHost ? 'same host' : 'ANOTHER host'}` : 'no redirect') +
         ' · CORS ok',
       res.ok ? 'ok' : 'fail',
     );
-    ctrl.abort(); // não descarregar o stream
+    ctrl.abort(); // do not download the stream
   } catch (e) {
-    if ((e as Error).name !== 'AbortError') log(`Stream .${ext}: bloqueado pelo browser (CORS/mixed content) — hls.js/mpegts.js não funcionarão em modo direto`, 'fail');
-    else log(`Stream .${ext}: sem resposta em 10 s`, 'warn');
+    if ((e as Error).name !== 'AbortError') log(`Stream .${ext}: blocked by the browser (CORS/mixed content) — hls.js/mpegts.js will not work in direct mode`, 'fail');
+    else log(`Stream .${ext}: no response within 10 s`, 'warn');
   } finally {
     clearTimeout(timer);
   }
 }
 
-// ---------- reprodução ----------
+// ---------- playback ----------
 function resetPlayer() {
   cleanup?.();
   cleanup = undefined;
@@ -194,21 +194,21 @@ function resetPlayer() {
 }
 function watchPlayback(label: string) {
   const t0 = performance.now();
-  const timeout = setTimeout(() => log(`${label}: sem imagem após 20 s`, 'fail'), 20000);
+  const timeout = setTimeout(() => log(`${label}: no picture after 20 s`, 'fail'), 20000);
   const onPlaying = () => {
     clearTimeout(timeout);
     const ms = Math.round(performance.now() - t0);
     const v = video as HTMLVideoElement & { webkitAudioDecodedByteCount?: number; mozHasAudio?: boolean; audioTracks?: { length: number } };
-    log(`${label}: a reproduzir · primeiro frame em ${ms} ms · ${video.videoWidth}×${video.videoHeight}`, 'ok');
+    log(`${label}: playing · first frame in ${ms} ms · ${video.videoWidth}×${video.videoHeight}`, 'ok');
     setTimeout(() => {
       const audio = v.webkitAudioDecodedByteCount ?? (v.mozHasAudio === undefined ? undefined : Number(v.mozHasAudio));
-      if (audio === undefined) log(`${label}: deteção de áudio indisponível neste browser — confirma se ouves som (ativa o som no leitor)`, 'warn');
-      else log(`${label}: áudio descodificado: ${audio > 0 ? 'sim' : 'NÃO (codec de áudio provavelmente não suportado)'}`, audio > 0 ? 'ok' : 'fail');
+      if (audio === undefined) log(`${label}: audio detection unavailable in this browser — check whether you hear sound (unmute the player)`, 'warn');
+      else log(`${label}: audio decoded: ${audio > 0 ? 'yes' : 'NO (audio codec probably unsupported)'}`, audio > 0 ? 'ok' : 'fail');
     }, 3000);
   };
   const onError = () => {
     clearTimeout(timeout);
-    log(`${label}: erro do elemento <video> code=${video.error?.code} ${video.error?.message ?? ''}`, 'fail');
+    log(`${label}: <video> element error code=${video.error?.code} ${video.error?.message ?? ''}`, 'fail');
   };
   video.addEventListener('playing', onPlaying, { once: true });
   video.addEventListener('error', onError, { once: true });
@@ -221,15 +221,15 @@ function watchPlayback(label: string) {
 
 function playHls() {
   resetPlayer();
-  if (!Hls.isSupported()) return log('hls.js: não suportado neste browser', 'fail');
+  if (!Hls.isSupported()) return log('hls.js: not supported in this browser', 'fail');
   const stop = watchPlayback('hls.js (.m3u8)');
   const hls = new Hls({ enableWorker: true });
   hls.on(Hls.Events.MANIFEST_PARSED, (_e, d) => {
     const l = d.levels[0];
-    log(`hls.js: manifesto ok · ${d.levels.length} qualidade(s) · vídeo=${l?.videoCodec ?? '?'} · áudio=${l?.audioCodec ?? '?'}`);
+    log(`hls.js: manifest ok · ${d.levels.length} quality level(s) · video=${l?.videoCodec ?? '?'} · audio=${l?.audioCodec ?? '?'}`);
   });
   hls.on(Hls.Events.ERROR, (_e, d) => {
-    if (d.fatal) log(`hls.js: erro fatal ${d.type}/${d.details}${d.response ? ` HTTP ${d.response.code}` : ''}`, 'fail');
+    if (d.fatal) log(`hls.js: fatal error ${d.type}/${d.details}${d.response ? ` HTTP ${d.response.code}` : ''}`, 'fail');
   });
   hls.loadSource(streamUrl('m3u8'));
   hls.attachMedia(video);
@@ -242,8 +242,8 @@ function playHls() {
 
 function playNative() {
   resetPlayer();
-  if (!video.canPlayType('application/vnd.apple.mpegurl')) log('HLS nativo: o browser diz que não suporta (a tentar mesmo assim)', 'warn');
-  const stop = watchPlayback('HLS nativo (.m3u8)');
+  if (!video.canPlayType('application/vnd.apple.mpegurl')) log('Native HLS: the browser says it is not supported (trying anyway)', 'warn');
+  const stop = watchPlayback('Native HLS (.m3u8)');
   video.src = streamUrl('m3u8');
   void video.play().catch(() => undefined);
   cleanup = stop;
@@ -251,14 +251,14 @@ function playNative() {
 
 function playTs() {
   resetPlayer();
-  if (!mpegts.isSupported()) return log('mpegts.js: não suportado neste browser', 'fail');
+  if (!mpegts.isSupported()) return log('mpegts.js: not supported in this browser', 'fail');
   const stop = watchPlayback('mpegts.js (.ts)');
   const player = mpegts.createPlayer({ type: 'mpegts', isLive: true, url: streamUrl('ts') }, { enableWorker: true, lazyLoad: false });
   player.on(mpegts.Events.MEDIA_INFO, (info: { videoCodec?: string; audioCodec?: string }) => {
-    log(`mpegts.js: vídeo=${info.videoCodec ?? '?'} · áudio=${info.audioCodec ?? '?'}`);
+    log(`mpegts.js: video=${info.videoCodec ?? '?'} · audio=${info.audioCodec ?? '?'}`);
   });
   player.on(mpegts.Events.ERROR, (type: string, detail: string, info: { msg?: string; code?: number }) => {
-    log(`mpegts.js: erro ${type}/${detail} ${info?.code ?? ''} ${info?.msg ?? ''}`, 'fail');
+    log(`mpegts.js: error ${type}/${detail} ${info?.code ?? ''} ${info?.msg ?? ''}`, 'fail');
   });
   player.attachMediaElement(video);
   player.load();
@@ -269,7 +269,7 @@ function playTs() {
   };
 }
 
-// ---------- ligações ----------
+// ---------- wiring ----------
 form.addEventListener('submit', (e) => {
   e.preventDefault();
   const fd = new FormData(form);
@@ -284,7 +284,7 @@ form.addEventListener('submit', (e) => {
     };
     void testApi();
   } catch {
-    log('Endereço do servidor inválido', 'fail');
+    log('Invalid server address', 'fail');
   }
 });
 $<HTMLButtonElement>('play-hls').addEventListener('click', playHls);

@@ -1,4 +1,4 @@
-// Favoritos, histórico, definições e cofre (FND-05 CA2).
+// Favorites, history, settings and vault (FND-05 CA2).
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { closeDatabase } from '../database';
 import { openFreshDatabase } from '../test-utils';
@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe('favoritesRepo', () => {
-  it('add/has/remove/toggle e list por fonte+tipo (mais recentes primeiro)', async () => {
+  it('add/has/remove/toggle and list by source+type (most recent first)', async () => {
     await favoritesRepo.add('s1:live:1', 100);
     await favoritesRepo.add('s1:live:2', 200);
     await favoritesRepo.add('s1:movie:1', 300);
@@ -39,28 +39,28 @@ describe('favoritesRepo', () => {
     expect(await favoritesRepo.has('s1:series:9')).toBe(false);
   });
 
-  it('rejeita chaves inválidas e chaves de categoria', async () => {
-    await expect(favoritesRepo.add('invalida')).rejects.toThrow(TypeError);
+  it('rejects invalid keys and category keys', async () => {
+    await expect(favoritesRepo.add('invalid')).rejects.toThrow(TypeError);
     await expect(favoritesRepo.add('s1:live:cat:3')).rejects.toThrow(TypeError);
     await expect(favoritesRepo.toggle('s1:live:cat:3')).rejects.toThrow(TypeError);
   });
 
-  it('sobrevive a uma re-sincronização do catálogo (chaves estáveis)', async () => {
+  it('survives a catalog re-sync (stable keys)', async () => {
     const data = {
       categories: [],
-      items: [{ externalId: '7', name: 'Canal', streamPath: '7.ts' }],
+      items: [{ externalId: '7', name: 'Channel', streamPath: '7.ts' }],
     };
     await catalogRepo.replaceForSource('s1', 'live', data);
     await favoritesRepo.add('s1:live:7');
     await catalogRepo.replaceForSource('s1', 'live', data);
     const [fav] = await favoritesRepo.list('s1', 'live');
     expect(fav).toBeDefined();
-    expect(await catalogRepo.get('live', fav!.itemKey)).toMatchObject({ name: 'Canal' });
+    expect(await catalogRepo.get('live', fav!.itemKey)).toMatchObject({ name: 'Channel' });
   });
 });
 
 describe('historyRepo', () => {
-  it('upsert cria e atualiza uma entrada por item', async () => {
+  it('upsert creates and updates one entry per item', async () => {
     await historyRepo.upsert({
       itemKey: 's1:movie:1',
       positionSec: 10,
@@ -87,7 +87,7 @@ describe('historyRepo', () => {
     expect(await historyRepo.get('s1:movie:1')).toEqual(updated);
   });
 
-  it('listRecent ordena por lastWatchedAt descendente, filtra fonte+tipo e respeita o limite', async () => {
+  it('listRecent sorts by descending lastWatchedAt, filters source+type and respects the limit', async () => {
     for (const [key, at] of [
       ['s1:movie:1', 10],
       ['s1:movie:2', 30],
@@ -108,7 +108,7 @@ describe('historyRepo', () => {
     ]);
   });
 
-  it('upsert parcial mantém os campos guardados e atualiza lastWatchedAt', async () => {
+  it('partial upsert keeps the stored fields and updates lastWatchedAt', async () => {
     await historyRepo.upsert({
       itemKey: 's1:series:5',
       positionSec: 120,
@@ -138,15 +138,15 @@ describe('historyRepo', () => {
     expect(await historyRepo.get('s1:series:5')).toEqual(done);
   });
 
-  it('entrada nova sem completed fica completed=false', async () => {
+  it('a new entry without completed gets completed=false', async () => {
     expect((await historyRepo.upsert({ itemKey: 's1:movie:9' })).completed).toBe(false);
   });
 
-  it('rejeita chaves de categoria', async () => {
+  it('rejects category keys', async () => {
     await expect(historyRepo.upsert({ itemKey: 's1:movie:cat:1' })).rejects.toThrow(TypeError);
   });
 
-  it('guarda episodeKey e usa Date.now() por omissão', async () => {
+  it('stores episodeKey and defaults to Date.now()', async () => {
     const before = Date.now();
     const e = await historyRepo.upsert({
       itemKey: 's1:series:5',
@@ -162,7 +162,7 @@ describe('historyRepo', () => {
 });
 
 describe('settingsRepo', () => {
-  it('get/set/remove com valores tipados', async () => {
+  it('get/set/remove with typed values', async () => {
     expect(await settingsRepo.get('onboardingDone')).toBeUndefined();
     await settingsRepo.set('onboardingDone', true);
     await settingsRepo.set('theme', 'light');
@@ -175,7 +175,7 @@ describe('settingsRepo', () => {
 });
 
 describe('vaultStore', () => {
-  it('guarda segredos cifrados e chaves; clear apaga tudo', async () => {
+  it('stores encrypted secrets and keys; clear deletes everything', async () => {
     await vaultStore.putSecret({
       ref: 'r1',
       iv: new Uint8Array([1, 2]),
@@ -183,7 +183,7 @@ describe('vaultStore', () => {
     });
     await vaultStore.putKey({ id: 'device', key: {} as CryptoKey });
     const secret = await vaultStore.getSecret('r1');
-    expect(Array.from(secret?.iv ?? [])).toEqual([1, 2]); // structured clone muda o realm
+    expect(Array.from(secret?.iv ?? [])).toEqual([1, 2]); // structured clone changes the realm
     expect(await vaultStore.getKey('device')).toBeDefined();
     await vaultStore.deleteSecret('r1');
     expect(await vaultStore.getSecret('r1')).toBeUndefined();

@@ -1,6 +1,6 @@
 // @vitest-environment node
-// Testes ponta a ponta do worker de dados através do Comlink, com um MessageChannel real em vez de
-// um Worker (FND-07 CA1 e CA2). O CA3 (chunk separado) verifica-se no `npm run build`.
+// End-to-end tests of the data worker through Comlink, with a real MessageChannel instead of
+// a Worker (FND-07 AC1 and AC2). AC3 (separate chunk) is verified by `npm run build`.
 import { expose, wrap } from 'comlink';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDataWorkerApi, type DataWorkerApiOptions, type DataWorkerApi } from './api';
@@ -40,8 +40,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('worker de dados — progresso (CA1)', () => {
-  it('selfTest devolve o resultado e reporta progresso até ao passo final', async () => {
+describe('data worker — progress (AC1)', () => {
+  it('selfTest returns the result and reports progress up to the final step', async () => {
     const api = connect();
     const seen: TaskProgress[] = [];
     const out = await runTaskOn(api, 'selfTest', { steps: 5 }, { onProgress: (p) => seen.push(p) });
@@ -52,35 +52,35 @@ describe('worker de dados — progresso (CA1)', () => {
     expect(seen.every((p) => p.phase === 'selfTest' && p.total === 5)).toBe(true);
   });
 
-  it('funciona sem callback de progresso', async () => {
+  it('works without a progress callback', async () => {
     expect(await runTaskOn(connect(), 'selfTest', { steps: 3 })).toEqual({ steps: 3 });
   });
 
-  it('limita o progresso a ~1 mensagem por 50 ms e entrega sempre a final', async () => {
+  it('throttles progress to ~1 message per 50 ms and always delivers the final one', async () => {
     const api = connect({
       tasks: {
-        rajada: async (_input: unknown, ctx) => {
-          for (let i = 1; i <= 1000; i++) ctx.progress({ phase: 'rajada', done: i, total: 1000 });
+        burst: async (_input: unknown, ctx) => {
+          for (let i = 1; i <= 1000; i++) ctx.progress({ phase: 'burst', done: i, total: 1000 });
           return 'ok';
         },
       },
     });
     const seen: TaskProgress[] = [];
-    await runTaskOn(api, 'rajada' as TaskName, { steps: 0 }, { onProgress: (p) => seen.push(p) });
+    await runTaskOn(api, 'burst' as TaskName, { steps: 0 }, { onProgress: (p) => seen.push(p) });
 
-    // 1000 chamadas síncronas → a primeira sai logo, o resto fica pendente até ao flush final.
+    // 1000 synchronous calls → the first goes out at once, the rest stays pending until the final flush.
     expect(seen).toEqual([
-      { phase: 'rajada', done: 1, total: 1000 },
-      { phase: 'rajada', done: 1000, total: 1000 },
+      { phase: 'burst', done: 1, total: 1000 },
+      { phase: 'burst', done: 1000, total: 1000 },
     ]);
   });
 
-  it('em tarefas longas espaça as mensagens ao longo do tempo', async () => {
+  it('spreads messages over time in long tasks', async () => {
     const api = connect({
       tasks: {
-        lenta: async (_input: unknown, ctx) => {
+        slow: async (_input: unknown, ctx) => {
           for (let i = 1; i <= 30; i++) {
-            ctx.progress({ phase: 'lenta', done: i });
+            ctx.progress({ phase: 'slow', done: i });
             await pause(10);
           }
           return 'ok';
@@ -89,22 +89,22 @@ describe('worker de dados — progresso (CA1)', () => {
     });
     const seen: TaskProgress[] = [];
     const start = Date.now();
-    await runTaskOn(api, 'lenta' as TaskName, { steps: 0 }, { onProgress: (p) => seen.push(p) });
+    await runTaskOn(api, 'slow' as TaskName, { steps: 0 }, { onProgress: (p) => seen.push(p) });
     const elapsed = Date.now() - start;
 
-    // ≥ 300 ms de trabalho com 30 atualizações → no máximo 1 mensagem por 50 ms (+1 inicial e
-    // +1 final); o limite é relativo ao tempo real para não falhar em máquinas lentas.
+    // ≥ 300 ms of work with 30 updates → at most 1 message per 50 ms (+1 initial and
+    // +1 final); the limit is relative to real time so it does not fail on slow machines.
     expect(seen.length).toBeGreaterThanOrEqual(3);
     expect(seen.length).toBeLessThan(30);
     expect(seen.length).toBeLessThanOrEqual(Math.floor(elapsed / 50) + 2);
-    expect(seen.at(-1)).toEqual({ phase: 'lenta', done: 30 });
+    expect(seen.at(-1)).toEqual({ phase: 'slow', done: 30 });
     const dones = seen.map((p) => p.done);
     expect([...dones].sort((a, b) => a - b)).toEqual(dones);
   });
 });
 
-describe('worker de dados — cancelamento (CA1)', () => {
-  it('abortar o AbortSignal cancela a tarefa com kind "cancelled"', async () => {
+describe('data worker — cancellation (AC1)', () => {
+  it('aborting the AbortSignal cancels the task with kind "cancelled"', async () => {
     const api = connect();
     const ctrl = new AbortController();
     const seen: TaskProgress[] = [];
@@ -127,7 +127,7 @@ describe('worker de dados — cancelamento (CA1)', () => {
     expect(seen.at(-1)?.done ?? 0).toBeLessThan(100);
   });
 
-  it('um signal já abortado rejeita sem chamar o worker', async () => {
+  it('an already aborted signal rejects without calling the worker', async () => {
     const run = vi.fn();
     const api = { run, cancel: vi.fn() } as unknown as DataWorkerRemote;
     const err = await rejection(
@@ -137,22 +137,22 @@ describe('worker de dados — cancelamento (CA1)', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it('uma tarefa que ignora o cancelamento tem o resultado descartado', async () => {
+  it('a task that ignores cancellation has its result discarded', async () => {
     const api = connect({
       tasks: {
-        surda: async () => {
+        deaf: async () => {
           await pause(30);
-          return 'feito';
+          return 'done';
         },
       },
     });
     const ctrl = new AbortController();
-    const run = runTaskOn(api, 'surda' as TaskName, { steps: 0 }, { signal: ctrl.signal });
+    const run = runTaskOn(api, 'deaf' as TaskName, { steps: 0 }, { signal: ctrl.signal });
     ctrl.abort();
     expect((await rejection(run)).kind).toBe('cancelled');
   });
 
-  it('tarefas concorrentes não interferem (cancelar uma não afeta a outra)', async () => {
+  it('concurrent tasks do not interfere (cancelling one does not affect the other)', async () => {
     const api = connect();
     const ctrlA = new AbortController();
     const seenA: TaskProgress[] = [];
@@ -182,155 +182,155 @@ describe('worker de dados — cancelamento (CA1)', () => {
   });
 });
 
-describe('worker de dados — erros (CA2)', () => {
-  it('um erro na tarefa chega como WorkerTaskError kind "failed" com a mensagem', async () => {
+describe('data worker — errors (AC2)', () => {
+  it('an error in the task arrives as WorkerTaskError kind "failed" with the message', async () => {
     const err = await rejection(runTaskOn(connect(), 'selfTest', { steps: 5, failAt: 2 }));
     expect(err.kind).toBe('failed');
-    expect(err.message).toBe('Falha simulada no passo 2');
+    expect(err.message).toBe('Simulated failure at step 2');
   });
 
-  it('só name/kind/message atravessam a fronteira (sem stack, cause ou propriedades extra)', async () => {
-    function tarefaQueRebenta(): never {
-      const e = new Error('http://u:SEGREDO-123@exemplo.com recusou');
-      Object.assign(e, { password: 'SEGREDO-123' });
-      const err = new WorkerTaskError('failed', 'servidor recusou');
-      Object.assign(err, { cause: e, url: 'http://u:SEGREDO-123@exemplo.com' });
+  it('only name/kind/message cross the boundary (no stack, cause or extra properties)', async () => {
+    function explodingTask(): never {
+      const e = new Error('http://u:SECRET-123@example.com refused');
+      Object.assign(e, { password: 'SECRET-123' });
+      const err = new WorkerTaskError('failed', 'server refused');
+      Object.assign(err, { cause: e, url: 'http://u:SECRET-123@example.com' });
       throw err;
     }
-    const api = connect({ tasks: { boom: async () => tarefaQueRebenta() } });
+    const api = connect({ tasks: { boom: async () => explodingTask() } });
 
-    // Envelope tal como chega pelo canal.
+    // Envelope as it arrives over the channel.
     const raw = await api.run(1, 'boom', null);
     expect(raw).toEqual({
       ok: false,
-      error: { name: 'WorkerTaskError', kind: 'failed', message: 'servidor recusou' },
+      error: { name: 'WorkerTaskError', kind: 'failed', message: 'server refused' },
     });
     expect(Object.keys(raw.ok ? {} : raw.error).sort()).toEqual(['kind', 'message', 'name']);
-    expect(JSON.stringify(raw)).not.toMatch(/SEGREDO|tarefaQueRebenta|api\.ts|at /);
+    expect(JSON.stringify(raw)).not.toMatch(/SECRET|explodingTask|api\.ts|at /);
 
-    // Erro recriado no cliente.
+    // Error recreated on the client.
     const err = await rejection(runTaskOn(api, 'boom' as TaskName, { steps: 0 }));
     expect(err.kind).toBe('failed');
-    expect(err.message).toBe('servidor recusou');
+    expect(err.message).toBe('server refused');
     expect(err.cause).toBeUndefined();
     expect(Object.keys(err).sort()).toEqual(['kind', 'name']);
-    expect(err.stack ?? '').not.toContain('tarefaQueRebenta');
+    expect(err.stack ?? '').not.toContain('explodingTask');
   });
 
-  it('a mensagem de erros que não são WorkerTaskError nunca atravessa (revisão #1)', async () => {
+  it('the message of errors that are not WorkerTaskError never crosses (review #1)', async () => {
     const api = connect({
       tasks: {
-        json: async () => JSON.parse('{"password":"SEGREDO-123"') as unknown,
-        comum: async () => {
-          throw new Error('GET http://u:SEGREDO-123@exemplo.com falhou');
+        json: async () => JSON.parse('{"password":"SECRET-123"') as unknown,
+        plain: async () => {
+          throw new Error('GET http://u:SECRET-123@example.com failed');
         },
         dom: async () => {
-          throw new DOMException('chave SEGREDO-123 em falta', 'NotFoundError');
+          throw new DOMException('key SECRET-123 missing', 'NotFoundError');
         },
       },
     });
 
     const json = await rejection(runTaskOn(api, 'json' as TaskName, { steps: 0 }));
     expect(json.kind).toBe('failed');
-    expect(json.message).toBe('Falha na tarefa do worker (SyntaxError)');
+    expect(json.message).toBe('Worker task failed (SyntaxError)');
 
-    const comum = await rejection(runTaskOn(api, 'comum' as TaskName, { steps: 0 }));
-    expect(comum.message).toBe('Falha na tarefa do worker');
+    const plain = await rejection(runTaskOn(api, 'plain' as TaskName, { steps: 0 }));
+    expect(plain.message).toBe('Worker task failed');
 
-    // Nome fora da lista branca: nem o nome passa.
+    // Name not on the allowlist: not even the name passes.
     const dom = await rejection(runTaskOn(api, 'dom' as TaskName, { steps: 0 }));
-    expect(dom.message).toBe('Falha na tarefa do worker');
+    expect(dom.message).toBe('Worker task failed');
 
-    expect(serializeTaskError(new DOMException('x SEGREDO', 'QuotaExceededError'))).toEqual({
+    expect(serializeTaskError(new DOMException('x SECRET', 'QuotaExceededError'))).toEqual({
       name: 'WorkerTaskError',
       kind: 'failed',
-      message: 'Falha na tarefa do worker (QuotaExceededError)',
+      message: 'Worker task failed (QuotaExceededError)',
     });
   });
 
-  it('valores lançados que não são Error resultam numa mensagem genérica', async () => {
+  it('thrown values that are not Error result in a generic message', async () => {
     const api = connect({
       tasks: {
-        estranha: async () => {
-          throw { password: 'SEGREDO', name: 'SEGREDO' };
+        weird: async () => {
+          throw { password: 'SECRET', name: 'SECRET' };
         },
       },
     });
-    const err = await rejection(runTaskOn(api, 'estranha' as TaskName, { steps: 0 }));
+    const err = await rejection(runTaskOn(api, 'weird' as TaskName, { steps: 0 }));
     expect(err.kind).toBe('failed');
-    expect(err.message).toBe('Falha na tarefa do worker');
+    expect(err.message).toBe('Worker task failed');
   });
 
-  it('tarefa desconhecida falha com kind "failed"', async () => {
-    const err = await rejection(runTaskOn(connect(), 'naoExiste' as TaskName, { steps: 0 }));
+  it('unknown task fails with kind "failed"', async () => {
+    const err = await rejection(runTaskOn(connect(), 'doesNotExist' as TaskName, { steps: 0 }));
     expect(err.kind).toBe('failed');
-    expect(err.message).toBe('Tarefa desconhecida: naoExiste');
+    expect(err.message).toBe('Unknown task: doesNotExist');
   });
 
-  it('input não clonável falha com kind "failed" sem expor o erro original', async () => {
+  it('non-cloneable input fails with kind "failed" without exposing the original error', async () => {
     const input = { steps: 1, f: () => 'x' } as unknown as { steps: number };
     const err = await rejection(runTaskOn(connect(), 'selfTest', input));
     expect(err.kind).toBe('failed');
-    expect(err.message).toBe('Dados da tarefa não são transferíveis para o worker');
+    expect(err.message).toBe('Task data cannot be transferred to the worker');
   });
 
-  it('serialização e desserialização toleram formas inesperadas', () => {
+  it('serialization and deserialization tolerate unexpected shapes', () => {
     expect(serializeTaskError(new WorkerTaskError('cancelled'))).toEqual({
       name: 'WorkerTaskError',
       kind: 'cancelled',
-      message: 'Tarefa cancelada',
+      message: 'Task cancelled',
     });
     expect(serializeTaskError(new Error(''))).toMatchObject({ kind: 'failed' });
-    const d = deserializeTaskError({ kind: 'outro', message: 42, stack: 'x' });
+    const d = deserializeTaskError({ kind: 'other', message: 42, stack: 'x' });
     expect(d).toBeInstanceOf(WorkerTaskError);
     expect(d.kind).toBe('failed');
-    expect(d.message).toBe('Falha na tarefa do worker');
+    expect(d.message).toBe('Worker task failed');
     expect(deserializeTaskError(null).kind).toBe('failed');
   });
 });
 
-describe('worker de dados — cancelamento no worker (revisão #7)', () => {
-  it('um erro lançado depois do cancelamento é reportado como "cancelled"', async () => {
+describe('data worker — cancellation in the worker (review #7)', () => {
+  it('an error thrown after cancellation is reported as "cancelled"', async () => {
     let release = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));
     const api = createDataWorkerApi({
       tasks: {
-        teimosa: async () => {
+        stubborn: async () => {
           await gate;
-          throw new Error('rebentou ao limpar');
+          throw new Error('blew up while cleaning up');
         },
       },
     });
-    const run = api.run(7, 'teimosa', null);
+    const run = api.run(7, 'stubborn', null);
     api.cancel(7);
     release();
     expect(await run).toEqual({
       ok: false,
-      error: { name: 'WorkerTaskError', kind: 'cancelled', message: 'Tarefa cancelada' },
+      error: { name: 'WorkerTaskError', kind: 'cancelled', message: 'Task cancelled' },
     });
   });
 
-  it('um AbortError (ex.: fetch interno abortado) é reportado como "cancelled"', async () => {
+  it('an AbortError (e.g. aborted inner fetch) is reported as "cancelled"', async () => {
     const api = createDataWorkerApi({
       tasks: {
-        rede: async () => {
+        network: async () => {
           throw new DOMException('The operation was aborted.', 'AbortError');
         },
       },
     });
-    expect(await api.run(8, 'rede', null)).toMatchObject({
+    expect(await api.run(8, 'network', null)).toMatchObject({
       ok: false,
       error: { kind: 'cancelled' },
     });
   });
 });
 
-describe('worker de dados — progresso final limitado no tempo (revisão #6)', () => {
-  it('run responde mesmo que o cliente nunca confirme o progresso final', async () => {
+describe('data worker — time-bounded final progress (review #6)', () => {
+  it('run responds even if the client never acknowledges the final progress', async () => {
     const api = createDataWorkerApi({ throttleMs: 1000, flushTimeoutMs: 30 });
     const { port1, port2 } = new MessageChannel();
     ports.push(port1, port2);
-    // Ninguém escuta port1: a confirmação do callback nunca chega.
+    // Nobody listens on port1: the callback acknowledgement never arrives.
     const start = Date.now();
     const result = await api.run(9, 'selfTest', { steps: 3 }, port2);
     expect(result).toEqual({ ok: true, value: { steps: 3 } });
@@ -338,17 +338,17 @@ describe('worker de dados — progresso final limitado no tempo (revisão #6)', 
   });
 });
 
-describe('cliente — abort imediato (revisão #3 e #4)', () => {
-  it('abortar rejeita de imediato, envia cancel ao worker e corta o progresso', async () => {
+describe('client — immediate abort (review #3 and #4)', () => {
+  it('aborting rejects immediately, sends cancel to the worker and cuts off progress', async () => {
     const api = connect({
       tasks: {
-        surda: async (_input: unknown, ctx) => {
-          // Ignora o cancelamento e continua a emitir progresso durante ~300 ms.
+        deaf: async (_input: unknown, ctx) => {
+          // Ignores cancellation and keeps emitting progress for ~300 ms.
           for (let i = 1; i <= 30; i++) {
-            ctx.progress({ phase: 'surda', done: i });
+            ctx.progress({ phase: 'deaf', done: i });
             await pause(10);
           }
-          return 'feito';
+          return 'done';
         },
       },
       throttleMs: 0,
@@ -357,7 +357,7 @@ describe('cliente — abort imediato (revisão #3 e #4)', () => {
     const seen: TaskProgress[] = [];
     const run = runTaskOn(
       api,
-      'surda' as TaskName,
+      'deaf' as TaskName,
       { steps: 0 },
       { signal: ctrl.signal, onProgress: (p) => seen.push(p) },
     );
@@ -372,7 +372,7 @@ describe('cliente — abort imediato (revisão #3 e #4)', () => {
     expect(seen.length).toBe(before);
   });
 
-  it('envia api.cancel(taskId) ao worker mesmo rejeitando logo', async () => {
+  it('sends api.cancel(taskId) to the worker even when rejecting immediately', async () => {
     const cancel = vi.fn(async (_id: number) => undefined);
     const run = vi.fn((_id: number) => new Promise<never>(() => {}));
     const api = { run, cancel } as unknown as DataWorkerRemote;
@@ -383,7 +383,7 @@ describe('cliente — abort imediato (revisão #3 e #4)', () => {
     expect(cancel).toHaveBeenCalledWith(run.mock.calls[0]?.[0]);
   });
 
-  it('se o utilizador abortou, prevalece "cancelled" sobre uma falha da tarefa', async () => {
+  it('if the user aborted, "cancelled" wins over a task failure', async () => {
     const ctrl = new AbortController();
     const api = {
       run: vi.fn(async () => {
@@ -397,7 +397,7 @@ describe('cliente — abort imediato (revisão #3 e #4)', () => {
   });
 });
 
-describe('cliente — porta de progresso fechada sempre (revisão #5)', () => {
+describe('client — progress port always closed (review #5)', () => {
   function trackChannels() {
     const Real = MessageChannel;
     const closed: boolean[] = [];
@@ -416,7 +416,7 @@ describe('cliente — porta de progresso fechada sempre (revisão #5)', () => {
     return closed;
   }
 
-  it('fecha a porta quando o input não é clonável', async () => {
+  it('closes the port when the input is not cloneable', async () => {
     const api = connect();
     const closed = trackChannels();
     const input = { steps: 1, f: () => 'x' } as unknown as { steps: number };
@@ -424,25 +424,25 @@ describe('cliente — porta de progresso fechada sempre (revisão #5)', () => {
     expect(closed).toEqual([true]);
   });
 
-  it('fecha a porta no sucesso e quando o transporte falha', async () => {
+  it('closes the port on success and when the transport fails', async () => {
     const api = connect();
     const closed = trackChannels();
     await runTaskOn(api, 'selfTest', { steps: 2 }, { onProgress: () => {} });
     const broken = {
       run: vi.fn(async () => {
-        throw new Error('canal partido');
+        throw new Error('broken channel');
       }),
       cancel: vi.fn(),
     } as unknown as DataWorkerRemote;
     const err = await rejection(
       runTaskOn(broken, 'selfTest', { steps: 1 }, { onProgress: () => {} }),
     );
-    expect(err.message).toBe('Falha na comunicação com o worker');
+    expect(err.message).toBe('Communication with the worker failed');
     expect(closed).toEqual([true, true]);
   });
 });
 
-describe('cliente do worker de dados', () => {
+describe('data worker client', () => {
   const created: Array<{ url: string; options: WorkerOptions | undefined; worker: EventTarget }> =
     [];
   const terminate = vi.fn();
@@ -451,7 +451,7 @@ describe('cliente do worker de dados', () => {
       super();
       created.push({ url: String(url), options, worker: this });
     }
-    // Nunca responde: as chamadas ficam em curso até o worker falhar ou ser terminado.
+    // Never replies: calls stay in flight until the worker fails or is terminated.
     postMessage() {}
     terminate = terminate;
   }
@@ -462,7 +462,7 @@ describe('cliente do worker de dados', () => {
     vi.stubGlobal('Worker', FakeWorker);
   }
 
-  it('cria um único Worker módulo de forma preguiçosa e termina-o', () => {
+  it('lazily creates a single module Worker and terminates it', () => {
     stubWorker();
     expect(created).toHaveLength(0);
     const a = getDataWorker();
@@ -479,7 +479,7 @@ describe('cliente do worker de dados', () => {
   });
 
   it.each(['error', 'messageerror'])(
-    'um evento "%s" rejeita as chamadas em curso e recria o worker (revisão #2)',
+    'a "%s" event rejects in-flight calls and recreates the worker (review #2)',
     async (type) => {
       stubWorker();
       const a = runTask('selfTest', { steps: 1 });
@@ -488,7 +488,7 @@ describe('cliente do worker de dados', () => {
 
       for (const err of [await rejection(a), await rejection(b)]) {
         expect(err.kind).toBe('failed');
-        expect(err.message).toBe('O worker de dados falhou');
+        expect(err.message).toBe('The data worker failed');
       }
       expect(terminate).toHaveBeenCalledOnce();
       getDataWorker();
@@ -496,12 +496,12 @@ describe('cliente do worker de dados', () => {
     },
   );
 
-  it('terminateDataWorker rejeita as chamadas em curso (revisão #2)', async () => {
+  it('terminateDataWorker rejects in-flight calls (review #2)', async () => {
     stubWorker();
     const a = runTask('selfTest', { steps: 1 });
     terminateDataWorker();
     const err = await rejection(a);
     expect(err.kind).toBe('failed');
-    expect(err.message).toBe('O worker de dados foi terminado');
+    expect(err.message).toBe('The data worker was terminated');
   });
 });

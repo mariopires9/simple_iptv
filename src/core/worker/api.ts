@@ -1,14 +1,14 @@
-// API exposta pelo worker de dados via Comlink — FND-07 (ADR-009).
-// Separada de data.worker.ts para ser testável sem um Worker real (ex.: com MessageChannel).
+// API exposed by the data worker via Comlink — FND-07 (ADR-009).
+// Kept separate from data.worker.ts so it is testable without a real Worker (e.g. with MessageChannel).
 //
-// Erros: em vez de deixar o Comlink serializar a exceção (o handler "throw" por omissão envia
-// também `stack`), `run` nunca rejeita — devolve um envelope `{ ok: false, error }` só com
-// name/kind/message, e o cliente recria o `WorkerTaskError`. Assim não se mexe no registo global
-// `Comlink.transferHandlers` e a fronteira fica explícita no tipo de retorno.
+// Errors: instead of letting Comlink serialize the exception (the default "throw" handler also
+// sends `stack`), `run` never rejects — it returns an envelope `{ ok: false, error }` with only
+// name/kind/message, and the client recreates the `WorkerTaskError`. This leaves the global
+// `Comlink.transferHandlers` registry untouched and makes the boundary explicit in the return type.
 //
-// Progresso: o cliente cria um MessageChannel, expõe o callback numa porta e transfere a outra;
-// aqui essa porta é embrulhada com `wrap`. Como o cliente é dono do canal, fecha-o sempre no fim
-// (mesmo se o worker morrer ou o input não for clonável) e a porta nunca fica pendurada.
+// Progress: the client creates a MessageChannel, exposes the callback on one port and transfers the
+// other; here that port is wrapped with `wrap`. Since the client owns the channel, it always closes
+// it at the end (even if the worker dies or the input is not cloneable) and the port never dangles.
 
 import { releaseProxy, wrap } from 'comlink';
 import { WorkerTaskError, serializeTaskError, type SerializedTaskError } from './errors';
@@ -17,7 +17,7 @@ import { tasks as defaultTasks, type TaskContext, type TaskFn, type TaskProgress
 export type TaskResult<O = unknown> =
   { ok: true; value: O } | { ok: false; error: SerializedTaskError };
 
-/** Callback de progresso, exposto pelo cliente na outra ponta de `progressPort`. */
+/** Progress callback, exposed by the client on the other end of `progressPort`. */
 export type ProgressCallback = (p: TaskProgress) => void;
 
 export interface DataWorkerApi {
@@ -31,11 +31,11 @@ export interface DataWorkerApi {
 }
 
 export interface DataWorkerApiOptions {
-  /** Registo de tarefas; por omissão o de tasks.ts (os testes podem injetar outro). */
+  /** Task registry; defaults to the one in tasks.ts (tests may inject another). */
   tasks?: Record<string, TaskFn>;
-  /** Intervalo mínimo entre mensagens de progresso (ms). */
+  /** Minimum interval between progress messages (ms). */
   throttleMs?: number;
-  /** Tempo máximo à espera de que o cliente confirme o progresso final (ms). */
+  /** Maximum time to wait for the client to acknowledge the final progress (ms). */
   flushTimeoutMs?: number;
 }
 
@@ -44,7 +44,7 @@ export const PROGRESS_FLUSH_TIMEOUT_MS = 1000;
 
 type RemoteProgress = (p: TaskProgress) => Promise<void>;
 
-/** Envia progresso no máximo 1× por `intervalMs`; o último valor pendente sai sempre no fim. */
+/** Sends progress at most once per `intervalMs`; the last pending value is always sent at the end. */
 function createProgressSender(
   cb: RemoteProgress | undefined,
   intervalMs: number,
@@ -57,7 +57,7 @@ function createProgressSender(
   const send = (p: TaskProgress) => {
     last = Date.now();
     pending = undefined;
-    // Mensagens intermédias são "fire and forget": um callback que falhe não interrompe a tarefa.
+    // Intermediate messages are "fire and forget": a failing callback does not interrupt the task.
     void Promise.resolve(cb?.(p)).catch(() => undefined);
   };
 
@@ -81,10 +81,10 @@ function createProgressSender(
       );
     },
     /**
-     * Entrega o último progresso pendente e espera (no máximo `flushTimeoutMs`) que o cliente o
-     * processe: o callback usa outro canal e, sem esta espera, o progresso final podia chegar
-     * depois da resposta de `run`. O limite garante que `run` responde mesmo que o cliente já
-     * tenha fechado o canal.
+     * Delivers the last pending progress and waits (at most `flushTimeoutMs`) for the client to
+     * process it: the callback uses another channel and, without this wait, the final progress
+     * could arrive after the response of `run`. The limit guarantees that `run` responds even if
+     * the client has already closed the channel.
      */
     async flush() {
       if (timer !== undefined) clearTimeout(timer);
@@ -138,14 +138,14 @@ export function createDataWorkerApi(options: DataWorkerApiOptions = {}): DataWor
       };
       try {
         const task = Object.hasOwn(registry, name) ? registry[name] : undefined;
-        if (!task) throw new WorkerTaskError('failed', `Tarefa desconhecida: ${name}`);
+        if (!task) throw new WorkerTaskError('failed', `Unknown task: ${name}`);
         ctx.throwIfCancelled();
         const value: unknown = await task(input, ctx);
         await sender.flush();
         return { ok: true, value };
       } catch (err) {
-        // Depois de um cancelamento, qualquer erro (incluindo AbortError de um fetch interno)
-        // é reportado como 'cancelled' e não como falha.
+        // After a cancellation, any error (including an AbortError from an inner fetch)
+        // is reported as 'cancelled' and not as a failure.
         if (cancelled.has(taskId) || isAbortError(err)) {
           sender.discard();
           return { ok: false, error: serializeTaskError(new WorkerTaskError('cancelled')) };
@@ -155,14 +155,14 @@ export function createDataWorkerApi(options: DataWorkerApiOptions = {}): DataWor
       } finally {
         running.delete(taskId);
         cancelled.delete(taskId);
-        // O RELEASE é "fire and forget": se o cliente já fechou o canal fica sem resposta, o que é
-        // inofensivo (a porta fecha-se com o canal e a promessa é descartada pelo GC).
+        // The RELEASE is "fire and forget": if the client already closed the channel it gets no
+        // reply, which is harmless (the port closes with the channel and the GC drops the promise).
         if (remote) remote[releaseProxy]();
       }
     },
 
     cancel(taskId) {
-      // Um cancelamento que chega depois do fim da tarefa é ignorado (não acumula ids).
+      // A cancellation arriving after the task has finished is ignored (ids do not accumulate).
       if (running.has(taskId)) cancelled.add(taskId);
     },
   };

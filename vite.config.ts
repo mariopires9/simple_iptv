@@ -3,13 +3,13 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// GitHub Pages serve a app em /<repo>/ — definido no workflow de deploy (ADR-007).
+// GitHub Pages serves the app under /<repo>/ — set in the deploy workflow (ADR-007).
 const base = process.env.VITE_BASE ?? '/';
 
 export default defineConfig({
   base,
   plugins: [react()],
-  // Workers como módulos ES: permite import() dinâmico dentro das tarefas (FND-07).
+  // Workers as ES modules: allows dynamic import() inside tasks (FND-07).
   worker: { format: 'es' },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },

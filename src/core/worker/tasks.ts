@@ -1,16 +1,16 @@
-// Registo das tarefas do worker de dados — FND-07 (ADR-009).
+// Data worker task registry — FND-07 (ADR-009).
 //
-// Como acrescentar uma tarefa (ex.: parseM3u, syncXtream, buildIndex):
-//   1. Escrever `async function minhaTarefa(input: MeuInput, ctx: TaskContext): Promise<MeuOutput>`
-//      (num ficheiro próprio em src/core/worker/tasks/ se for grande). Input e output têm de ser
-//      clonáveis por structured clone (sem funções, classes ou DOM).
-//   2. Chamar `ctx.progress({ phase, done, total })` à vontade (o envio é limitado a ~1/50 ms) e
-//      `ctx.throwIfCancelled()` entre unidades de trabalho (ex.: a cada lote de linhas/itens).
-//   3. Registá-la em `tasks` abaixo. O cliente fica tipado automaticamente:
-//      `runTask('minhaTarefa', input, { onProgress, signal })`.
-//   Para o cliente receber uma mensagem útil, lançar `WorkerTaskError('failed', mensagem)` — sem
-//   credenciais nem URLs completos. Qualquer outro erro chega como kind 'failed' com mensagem
-//   genérica (a mensagem original nunca atravessa a fronteira).
+// How to add a task (e.g. parseM3u, syncXtream, buildIndex):
+//   1. Write `async function myTask(input: MyInput, ctx: TaskContext): Promise<MyOutput>`
+//      (in its own file under src/core/worker/tasks/ if large). Input and output must be
+//      structured-clone cloneable (no functions, classes or DOM).
+//   2. Call `ctx.progress({ phase, done, total })` freely (sending is throttled to ~1/50 ms) and
+//      `ctx.throwIfCancelled()` between units of work (e.g. after each batch of lines/items).
+//   3. Register it in `tasks` below. The client is typed automatically:
+//      `runTask('myTask', input, { onProgress, signal })`.
+//   For the client to receive a useful message, throw `WorkerTaskError('failed', message)` —
+//   without credentials or full URLs. Any other error arrives as kind 'failed' with a generic
+//   message (the original message never crosses the boundary).
 
 import { WorkerTaskError } from './errors';
 
@@ -20,22 +20,22 @@ export interface TaskProgress {
   total?: number;
 }
 
-/** Contexto que cada tarefa recebe dentro do worker. */
+/** Context each task receives inside the worker. */
 export interface TaskContext {
   progress(p: TaskProgress): void;
   readonly cancelled: boolean;
-  /** Lança `WorkerTaskError('cancelled')` se o cliente abortou a tarefa. */
+  /** Throws `WorkerTaskError('cancelled')` if the client aborted the task. */
   throwIfCancelled(): void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- registo heterogéneo; os tipos concretos vêm de `tasks`
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous registry; the concrete types come from `tasks`
 export type TaskFn<I = any, O = any> = (input: I, ctx: TaskContext) => Promise<O>;
 
 export interface SelfTestInput {
   steps: number;
-  /** Pausa por passo (ms). Mesmo com 0 cede o event loop para o pedido de cancelamento chegar. */
+  /** Pause per step (ms). Even with 0 it yields the event loop so a cancel request can arrive. */
   delayMs?: number;
-  /** Só para testes: lança um `WorkerTaskError('failed')` ao chegar a este passo. */
+  /** Tests only: throws a `WorkerTaskError('failed')` on reaching this step. */
   failAt?: number;
 }
 
@@ -45,12 +45,12 @@ export interface SelfTestOutput {
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Tarefa de demonstração: valida progresso, cancelamento e propagação de erros. */
+/** Demo task: exercises progress, cancellation and error propagation. */
 export async function selfTest(input: SelfTestInput, ctx: TaskContext): Promise<SelfTestOutput> {
   const steps = Math.max(0, Math.floor(input.steps));
   for (let i = 0; i < steps; i++) {
     ctx.throwIfCancelled();
-    if (input.failAt === i) throw new WorkerTaskError('failed', `Falha simulada no passo ${i}`);
+    if (input.failAt === i) throw new WorkerTaskError('failed', `Simulated failure at step ${i}`);
     await pause(input.delayMs ?? 0);
     ctx.progress({ phase: 'selfTest', done: i + 1, total: steps });
   }

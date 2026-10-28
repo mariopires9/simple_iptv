@@ -1,4 +1,4 @@
-// Repositório do catálogo: categorias, canais, filmes, séries, detalhes de séries e índice de pesquisa.
+// Catalog repository: categories, channels, movies, series, series details and search index.
 import { getDb } from '../database';
 import { categoryKey, itemKey, normalizeName, parseCategoryKey, typePrefix } from '../keys';
 import { Dexie, type Collection, type Table } from 'dexie';
@@ -12,7 +12,7 @@ import type {
   SeriesDetails,
 } from '../types';
 
-/** Tamanho de cada `bulkPut` dentro da transação (limita picos de memória). */
+/** Size of each `bulkPut` inside the transaction (limits memory spikes). */
 export const BULK_CHUNK_SIZE = 5_000;
 
 type CatalogTableName = 'channels' | 'movies' | 'series';
@@ -23,7 +23,7 @@ const TABLE_BY_TYPE: Record<ContentType, CatalogTableName> = {
   series: 'series',
 };
 
-/** Tabela do tipo pedido (uso interno de core/db; as features nunca chamam `db.table()`). */
+/** Table for the requested type (internal to core/db; features never call `db.table()`). */
 function itemTable<T extends ContentType>(
   db: SimpleIptvDb,
   type: T,
@@ -31,7 +31,7 @@ function itemTable<T extends ContentType>(
   return db.table<CatalogItemByType[T], string>(TABLE_BY_TYPE[type]);
 }
 
-/** Todos os itens de uma categoria, ordenados por `order` (índice `[categoryKey+order]`). */
+/** All items of a category, sorted by `order` (index `[categoryKey+order]`). */
 function categoryRange<T extends CatalogItemByType[ContentType]>(
   table: Table<T, string>,
   catKey: string,
@@ -47,11 +47,11 @@ export interface PageOptions {
 }
 
 export interface ReplaceResult {
-  /** Categorias efetivamente gravadas (após remover chaves duplicadas). */
+  /** Categories actually written (after removing duplicate keys). */
   categories: number;
-  /** Itens efetivamente gravados (após remover chaves duplicadas). */
+  /** Items actually written (after removing duplicate keys). */
   items: number;
-  /** Itens descartados por terem a mesma chave de um item posterior (o último prevalece). */
+  /** Items dropped because a later item has the same key (the last one wins). */
   duplicates: number;
 }
 
@@ -59,7 +59,7 @@ function byOrder(a: { order: number }, b: { order: number }): number {
   return a.order - b.order;
 }
 
-/** Remove chaves repetidas mantendo o último registo (a mesma semântica de `bulkPut` sucessivos). */
+/** Removes repeated keys keeping the last record (same semantics as successive `bulkPut`s). */
 function dedupeByKey<R extends { key: string }>(records: R[]): R[] {
   const byKey = new Map<string, R>();
   for (const r of records) {
@@ -93,8 +93,8 @@ function buildItems<T extends ContentType>(
 
 export const catalogRepo = {
   /**
-   * Substitui todas as categorias e itens de uma fonte+tipo numa única transação:
-   * ou fica tudo gravado ou nada muda. Outras fontes e outros tipos não são tocados.
+   * Replaces all categories and items of a source+type in a single transaction:
+   * either everything is written or nothing changes. Other sources and types are untouched.
    */
   async replaceForSource<T extends ContentType>(
     sourceId: string,
@@ -117,8 +117,8 @@ export const catalogRepo = {
     const db = await getDb();
     const table = itemTable(db, type);
     await db.transaction('rw', db.categories, table, async () => {
-      // Apagar por intervalo da chave primária (prefixo `${sourceId}:${type}:`): o Dexie converte-o
-      // num único `deleteRange` nativo, muito mais rápido do que percorrer um índice secundário.
+      // Delete by primary-key range (prefix `${sourceId}:${type}:`): Dexie turns it into a single
+      // native `deleteRange`, much faster than walking a secondary index.
       const prefix = typePrefix(sourceId, type);
       await db.categories.where('key').startsWith(prefix).delete();
       await table.where('key').startsWith(prefix).delete();
@@ -134,7 +134,7 @@ export const catalogRepo = {
     };
   },
 
-  /** Categorias de uma fonte+tipo pela ordem original da fonte. */
+  /** Categories of a source+type in the source's original order. */
   async listCategories(sourceId: string, type: ContentType): Promise<Category[]> {
     const db = await getDb();
     const list = await db.categories.where('[sourceId+type]').equals([sourceId, type]).toArray();
@@ -142,8 +142,8 @@ export const catalogRepo = {
   },
 
   /**
-   * Itens de uma categoria pela ordem original da fonte. Usa o índice `[categoryKey+order]`,
-   * por isso só a página pedida é lida do IndexedDB.
+   * Items of a category in the source's original order. Uses the `[categoryKey+order]` index,
+   * so only the requested page is read from IndexedDB.
    */
   async listByCategory<T extends ContentType>(
     type: T,
@@ -158,7 +158,7 @@ export const catalogRepo = {
     return query.toArray();
   },
 
-  /** Número de itens numa categoria. */
+  /** Number of items in a category. */
   async countByCategory(type: ContentType, catKey: string): Promise<number> {
     const parsed = parseCategoryKey(catKey);
     if (!parsed || parsed.type !== type) return 0;
@@ -166,7 +166,7 @@ export const catalogRepo = {
     return categoryRange(itemTable(db, type), catKey).count();
   },
 
-  /** Número de itens de uma fonte+tipo. */
+  /** Number of items of a source+type. */
   async count(sourceId: string, type: ContentType): Promise<number> {
     const db = await getDb();
     return itemTable(db, type).where('sourceId').equals(sourceId).count();
@@ -180,7 +180,7 @@ export const catalogRepo = {
     return itemTable(db, type).get(key);
   },
 
-  /** Vários itens por chave (ex.: favoritos); chaves inexistentes são omitidas, ordem preservada. */
+  /** Several items by key (e.g. favorites); missing keys are omitted, order is preserved. */
   async getMany<T extends ContentType>(
     type: T,
     keys: readonly string[],

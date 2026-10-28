@@ -21,9 +21,9 @@ function source(id: string, createdAt: number, extra: Partial<Source> = {}): Sou
   return {
     id,
     kind: 'xtream',
-    name: `Fonte ${id}`,
-    serverUrl: 'http://exemplo.invalid:8080',
-    username: 'utilizador-teste',
+    name: `Source ${id}`,
+    serverUrl: 'http://example.invalid:8080',
+    username: 'test-user',
     secretRef: `secret-${id}`,
     prefs: { liveFormat: 'auto' },
     createdAt,
@@ -33,7 +33,7 @@ function source(id: string, createdAt: number, extra: Partial<Source> = {}): Sou
   };
 }
 
-/** Povoa todas as tabelas com dados da fonte `id`. */
+/** Seeds every table with data for source `id`. */
 async function seed(id: string) {
   await sourcesRepo.put(source(id, id === 'a' ? 1 : 2));
   await vaultStore.putSecret({
@@ -41,7 +41,7 @@ async function seed(id: string) {
     iv: new Uint8Array(12),
     ciphertext: new ArrayBuffer(8),
   });
-  const categories = [{ externalId: '1', name: 'Geral' }];
+  const categories = [{ externalId: '1', name: 'General' }];
   const playable = [1, 2].map((n) => ({
     externalId: String(n),
     categoryExternalId: '1',
@@ -66,12 +66,12 @@ async function seed(id: string) {
   await catalogRepo.putSearchIndex({ sourceId: id, data: '{}', builtAt: 1 });
   const db = await getDb();
   await db.epgPrograms.bulkPut([
-    { channelEpgId: `epg-${id}`, start: 1, end: 2, sourceId: id, title: 'Programa' },
-    { channelEpgId: `epg-${id}`, start: 2, end: 3, sourceId: id, title: 'Programa 2' },
+    { channelEpgId: `epg-${id}`, start: 1, end: 2, sourceId: id, title: 'Show' },
+    { channelEpgId: `epg-${id}`, start: 2, end: 3, sourceId: id, title: 'Show 2' },
   ]);
 }
 
-/** Conta registos de cada tabela que pertencem à fonte `id`. */
+/** Counts the records of each table that belong to source `id`. */
 async function countFor(id: string) {
   const db = await getDb();
   const prefix = `${id}:`;
@@ -100,7 +100,7 @@ describe('sourcesRepo', () => {
     expect(await sourcesRepo.update('zzz', { name: 'x' })).toBe(false);
   });
 
-  it('remover uma fonte apaga todos os registos com esse sourceId e só esses (CA4)', async () => {
+  it('removing a source deletes every record with that sourceId and only those (CA4)', async () => {
     await seed('a');
     await seed('b');
     await settingsRepo.set('activeSourceId', 'a');
@@ -114,13 +114,13 @@ describe('sourcesRepo', () => {
 
     const after = await countFor('a');
     expect(after).toEqual(Object.fromEntries(Object.keys(before).map((k) => [k, 0])));
-    expect(await countFor('b')).toEqual(before); // a outra fonte fica intacta
+    expect(await countFor('b')).toEqual(before); // the other source stays intact
     expect(await settingsRepo.get('activeSourceId')).toBeUndefined();
     expect(await settingsRepo.get('lastChannelKey')).toBeUndefined();
     expect(await settingsRepo.get('theme')).toBe('dark');
   });
 
-  it('não limpa definições que apontam para outra fonte', async () => {
+  it('does not clear settings pointing to another source', async () => {
     await seed('a');
     await settingsRepo.set('activeSourceId', 'b');
     await settingsRepo.set('lastChannelKey', 'b:live:1');
@@ -129,7 +129,7 @@ describe('sourcesRepo', () => {
     expect(await settingsRepo.get('lastChannelKey')).toBe('b:live:1');
   });
 
-  it('remover uma fonte inexistente não falha', async () => {
-    await expect(sourcesRepo.remove('nao-existe')).resolves.toBeUndefined();
+  it('removing a non-existent source does not fail', async () => {
+    await expect(sourcesRepo.remove('does-not-exist')).resolves.toBeUndefined();
   });
 });

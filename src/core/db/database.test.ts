@@ -17,7 +17,7 @@ afterEach(async () => {
   await closeDatabase();
 });
 
-/** Regista as instâncias Dexie criadas (para verificar que nenhuma ligação fica aberta). */
+/** Records the Dexie instances created (to check that no connection is left open). */
 function trackInstances(): Dexie[] {
   const instances: Dexie[] = [];
   const original = Dexie.prototype.open;
@@ -28,8 +28,8 @@ function trackInstances(): Dexie[] {
   return instances;
 }
 
-describe('fecho e wipe com abertura em curso', () => {
-  it('closeDatabase() durante a abertura: a ligação é fechada e nunca fica ativa', async () => {
+describe('close and wipe while opening', () => {
+  it('closeDatabase() during open: the connection is closed and never becomes active', async () => {
     const instances = trackInstances();
     const factory = new IDBFactory();
     const pending = openDatabase({ indexedDB: factory, IDBKeyRange });
@@ -38,13 +38,13 @@ describe('fecho e wipe com abertura em curso', () => {
     expect(instances).toHaveLength(1);
     expect(instances[0]?.isOpen()).toBe(false);
 
-    // A próxima abertura cria uma ligação nova (não reutiliza a cancelada).
+    // The next open creates a new connection (does not reuse the cancelled one).
     const db = await openDatabase({ indexedDB: factory, IDBKeyRange });
     expect(db).not.toBe(instances[0]);
     expect(db.isOpen()).toBe(true);
   });
 
-  it('wipeAll() durante a abertura: espera, fecha e apaga; nada fica em cache', async () => {
+  it('wipeAll() during open: waits, closes and deletes; nothing stays cached', async () => {
     const instances = trackInstances();
     const factory = new IDBFactory();
     const pending = openDatabase({ indexedDB: factory, IDBKeyRange });
@@ -59,16 +59,16 @@ describe('fecho e wipe com abertura em curso', () => {
   });
 });
 
-/** Abre a base diretamente na fábrica (sem Dexie) para inspecionar o schema real. */
+/** Opens the database directly on the factory (without Dexie) to inspect the real schema. */
 function rawOpen(factory: IDBFactory, name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = factory.open(name);
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('erro'));
+    req.onerror = () => reject(req.error ?? new Error('error'));
   });
 }
 
-/** Fábrica cujo `open()` falha como em modos privados restritos. */
+/** Factory whose `open()` fails as in restricted private modes. */
 function failingFactory(error: () => unknown): IDBFactory {
   const real = new IDBFactory();
   return new Proxy(real, {
@@ -85,7 +85,7 @@ function failingFactory(error: () => unknown): IDBFactory {
 }
 
 describe('openDatabase — schema v1 (CA1)', () => {
-  it('cria a base simple-iptv v1 com todas as tabelas e índices de ARCHITECTURE.md §5', async () => {
+  it('creates the simple-iptv v1 database with all tables and indexes from ARCHITECTURE.md §5', async () => {
     const { db, factory } = await openFreshDatabase();
     expect(db.name).toBe('simple-iptv');
     expect(db.verno).toBe(1);
@@ -170,19 +170,19 @@ describe('openDatabase — schema v1 (CA1)', () => {
     raw.close();
   });
 
-  it('SCHEMA_V1 tem exatamente as 13 tabelas', () => {
+  it('SCHEMA_V1 has exactly 13 tables', () => {
     expect(Object.keys(SCHEMA_V1)).toHaveLength(13);
   });
 
-  it('é idempotente: chamadas repetidas devolvem a mesma instância', async () => {
+  it('is idempotent: repeated calls return the same instance', async () => {
     const { db } = await openFreshDatabase();
     await expect(openDatabase()).resolves.toBe(db);
   });
 });
 
-describe('openDatabase — IndexedDB indisponível (CA5)', () => {
-  it('sem API IndexedDB rejeita com DatabaseUnavailableError("unsupported")', async () => {
-    expect(globalThis.indexedDB).toBeUndefined(); // jsdom não implementa IndexedDB
+describe('openDatabase — IndexedDB unavailable (CA5)', () => {
+  it('without the IndexedDB API rejects with DatabaseUnavailableError("unsupported")', async () => {
+    expect(globalThis.indexedDB).toBeUndefined(); // jsdom does not implement IndexedDB
     const error = await openDatabase().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DatabaseUnavailableError);
     expect(error).toMatchObject({ reason: 'unsupported' });
@@ -190,9 +190,9 @@ describe('openDatabase — IndexedDB indisponível (CA5)', () => {
   });
 
   it.each(['SecurityError', 'InvalidStateError', 'UnknownError'])(
-    'open() a falhar com %s rejeita com DatabaseUnavailableError("open-failed")',
+    'open() failing with %s rejects with DatabaseUnavailableError("open-failed")',
     async (name) => {
-      const factory = failingFactory(() => new DOMException('bloqueado', name));
+      const factory = failingFactory(() => new DOMException('blocked', name));
       const error = await openDatabase({ indexedDB: factory, IDBKeyRange }).catch(
         (e: unknown) => e,
       );
@@ -202,11 +202,11 @@ describe('openDatabase — IndexedDB indisponível (CA5)', () => {
     },
   );
 
-  it('open() sem resposta rejeita com DatabaseUnavailableError("timeout")', async () => {
+  it('open() with no response rejects with DatabaseUnavailableError("timeout")', async () => {
     const real = new IDBFactory();
     const hanging = new Proxy(real, {
       get(target, prop) {
-        if (prop === 'open') return () => ({}) as IDBOpenDBRequest; // nunca dispara eventos
+        if (prop === 'open') return () => ({}) as IDBOpenDBRequest; // never fires events
         const value: unknown = Reflect.get(target, prop, target);
         return typeof value === 'function' ? value.bind(target) : value;
       },
@@ -218,7 +218,7 @@ describe('openDatabase — IndexedDB indisponível (CA5)', () => {
     expect(error).toMatchObject({ reason: 'timeout' });
   });
 
-  it('depois de uma falha é possível tentar de novo', async () => {
+  it('can retry after a failure', async () => {
     const bad = failingFactory(() => new DOMException('x', 'SecurityError'));
     await expect(openDatabase({ indexedDB: bad, IDBKeyRange })).rejects.toBeInstanceOf(
       DatabaseUnavailableError,
@@ -226,20 +226,20 @@ describe('openDatabase — IndexedDB indisponível (CA5)', () => {
     await expect(openFreshDatabase()).resolves.toBeDefined();
   });
 
-  it('os repositórios propagam DatabaseUnavailableError', async () => {
+  it('repositories propagate DatabaseUnavailableError', async () => {
     await expect(settingsRepo.get('theme')).rejects.toBeInstanceOf(DatabaseUnavailableError);
   });
 });
 
 describe('wipeAll', () => {
-  it('apaga a base inteira', async () => {
+  it('deletes the whole database', async () => {
     const { factory } = await openFreshDatabase();
     await settingsRepo.set('theme', 'dark');
     await wipeAll();
     const names = (await factory.databases()).map((d) => d.name);
     expect(names).not.toContain('simple-iptv');
 
-    // Reabrir na mesma fábrica cria uma base vazia.
+    // Reopening on the same factory creates an empty database.
     await openDatabase({ indexedDB: factory, IDBKeyRange });
     await expect(settingsRepo.get('theme')).resolves.toBeUndefined();
   });

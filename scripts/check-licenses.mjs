@@ -1,4 +1,4 @@
-// Verifica as licenças das dependências de produção (as que são distribuídas no bundle) — FND-02, docs/SECURITY.md §5.
+// Checks the licenses of production dependencies (the ones shipped in the bundle) — FND-02, docs/SECURITY.md §5.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,7 +15,7 @@ export const ALLOWED = [
   'CC0-1.0',
 ];
 
-/** Aceita expressões SPDX simples: "MIT", "(MIT OR Apache-2.0)". AND exige todas permitidas. */
+/** Accepts simple SPDX expressions: "MIT", "(MIT OR Apache-2.0)". AND requires all to be allowed. */
 export function isAllowed(license) {
   if (typeof license !== 'string' || license.trim() === '') return false;
   const expr = license.replace(/[()]/g, '').trim();
@@ -44,8 +44,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const bad = findViolations(pkgs);
   if (bad.length > 0) {
     for (const p of bad)
-      process.stderr.write(`Licença não permitida: ${p.name} (${p.license ?? 'sem licença'})\n`);
+      process.stderr.write(`License not allowed: ${p.name} (${p.license ?? 'no license'})\n`);
     process.exit(1);
   }
-  process.stdout.write(`Licenças ok: ${pkgs.length} pacotes de produção.\n`);
+  process.stdout.write(`Licenses ok: ${pkgs.length} production packages.\n`);
 }

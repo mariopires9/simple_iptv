@@ -1,11 +1,11 @@
-// Repositório de favoritos. A chave é a chave composta do item, por isso sobrevive a re-sincronizações.
+// Favorites repository. The key is the item's composite key, so it survives re-syncs.
 import { getDb } from '../database';
 import { parseItemKey } from '../keys';
 import type { ContentType, Favorite } from '../types';
 
 function parseOrThrow(key: string) {
   const parsed = parseItemKey(key);
-  if (!parsed) throw new TypeError(`Chave de item inválida: "${key}"`);
+  if (!parsed) throw new TypeError(`Invalid item key: "${key}"`);
   return parsed;
 }
 
@@ -26,7 +26,7 @@ export const favoritesRepo = {
     return (await db.favorites.get(itemKey)) !== undefined;
   },
 
-  /** Alterna o favorito; devolve o novo estado. */
+  /** Toggles the favorite; returns the new state. */
   async toggle(itemKey: string): Promise<boolean> {
     const { sourceId, type } = parseOrThrow(itemKey);
     const db = await getDb();
@@ -40,7 +40,7 @@ export const favoritesRepo = {
     });
   },
 
-  /** Favoritos de uma fonte+tipo, mais recentes primeiro. */
+  /** Favorites of a source+type, most recent first. */
   async list(sourceId: string, type: ContentType): Promise<Favorite[]> {
     const db = await getDb();
     const list = await db.favorites.where('[sourceId+type]').equals([sourceId, type]).toArray();
