@@ -38,14 +38,27 @@ describe('messages', () => {
     for (const locale of LOCALES) expect(keyPaths(messages(locale))).toEqual(base);
   });
 
-  it('every message is a non-empty string', () => {
+  it('every message is a non-empty string, or a function returning one', () => {
     for (const locale of LOCALES) {
       const flat = keyPaths(messages(locale)).map((path) =>
         path
           .split('.')
           .reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], messages(locale)),
       );
-      for (const text of flat) expect(typeof text === 'string' && text.length > 0).toBe(true);
+      for (const message of flat) {
+        const text: unknown =
+          typeof message === 'function' ? (message as (arg: string) => unknown)('42') : message;
+        expect(typeof text === 'string' && text.length > 0).toBe(true);
+      }
     }
+  });
+
+  it('message functions interpolate their argument in every locale', () => {
+    for (const locale of LOCALES) {
+      expect(messages(locale).routes.categoryLabel('123')).toContain('123');
+      expect(messages(locale).routes.itemLabel('9')).toContain('9');
+    }
+    expect(messages('en').routes.categoryLabel('123')).toBe('Category: 123');
+    expect(messages('pt-PT').routes.categoryLabel('123')).toBe('Categoria: 123');
   });
 });

@@ -14,16 +14,16 @@ import MenuItem from '@mui/material/MenuItem';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useId, useState, type ReactNode } from 'react';
+import { NavLink } from 'react-router';
 import { t } from '@/i18n';
 import { THEME_PREFERENCES, useThemeMode } from '@/ui/theme';
 import { navSize } from '@/ui/theme/tokens';
-import { SETTINGS_NAV_ITEM, type NavId } from './navItems';
+import { SETTINGS_NAV_ITEM } from './navItems';
 
 export interface TopBarProps {
   /** Show "Settings" in the overflow menu (mobile, where the bottom bar has no room for it). */
   showSettings: boolean;
   settingsSelected: boolean;
-  onNavigate: (id: NavId) => void;
   /** Active list selector — filled in by the sources stories. */
   sourceSelector?: ReactNode;
   /** Search entry point — filled in by the search story. */
@@ -40,7 +40,6 @@ const searchPlaceholder = (
 export function TopBar({
   showSettings,
   settingsSelected,
-  onNavigate,
   sourceSelector,
   searchAction = searchPlaceholder,
 }: TopBarProps) {
@@ -89,11 +88,9 @@ export function TopBar({
           <MenuItem
             key="settings"
             selected={settingsSelected}
-            aria-current={settingsSelected ? 'page' : undefined}
-            onClick={() => {
-              onNavigate(SETTINGS_NAV_ITEM.id);
-              closeMenu();
-            }}
+            component={NavLink}
+            to={SETTINGS_NAV_ITEM.to}
+            onClick={closeMenu}
           >
             <ListItemIcon>{SETTINGS_NAV_ITEM.icon}</ListItemIcon>
             <ListItemText>{SETTINGS_NAV_ITEM.label}</ListItemText>

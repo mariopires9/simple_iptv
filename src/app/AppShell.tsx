@@ -1,14 +1,16 @@
 // App shell (FND-03, docs/UX_UI.md §3): top bar + responsive main navigation + content area.
+// Must render inside the router (FND-04): the selected destination comes from the location.
 //   < 600 px     → bottom bar (Settings in the top bar menu)
 //   600–1199 px  → navigation rail
 //   ≥ 1200 px    → expanded rail
 import Box from '@mui/material/Box';
 import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { useLocation } from 'react-router';
 import { pageMargin } from '@/ui/theme/tokens';
 import { BottomNav } from './shell/BottomNav';
-import type { NavId } from './shell/navItems';
+import { navIdForPath } from './shell/navItems';
 import { NavRail } from './shell/NavRail';
 import { TopBar } from './shell/TopBar';
 
@@ -32,9 +34,8 @@ export function useNavLayout(): NavLayout {
 
 export function AppShell({ children, sourceSelector, searchAction }: AppShellProps) {
   const layout = useNavLayout();
-  // TODO(FND-04): the selected destination comes from the router (current route) and the nav
-  // items become links; until then it is local state only.
-  const [selected, setSelected] = useState<NavId>('home');
+  // The current destination follows the route; the nav items are links (FND-04).
+  const selected = navIdForPath(useLocation().pathname);
   const isMobile = layout === 'bottom';
   // Settings selected on mobile (it lives in the top bar menu): the "More options" button shows
   // the selected state; the bottom bar then has no current item.
@@ -44,14 +45,11 @@ export function AppShell({ children, sourceSelector, searchAction }: AppShellPro
       <TopBar
         showSettings={isMobile}
         settingsSelected={selected === 'settings'}
-        onNavigate={setSelected}
         sourceSelector={sourceSelector}
         searchAction={searchAction}
       />
       <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        {!isMobile && (
-          <NavRail expanded={layout === 'expanded'} selected={selected} onNavigate={setSelected} />
-        )}
+        {!isMobile && <NavRail expanded={layout === 'expanded'} selected={selected} />}
         <Box
           component="main"
           sx={{
@@ -68,7 +66,7 @@ export function AppShell({ children, sourceSelector, searchAction }: AppShellPro
           {children}
         </Box>
       </Box>
-      {isMobile && <BottomNav selected={selected} onNavigate={setSelected} />}
+      {isMobile && <BottomNav selected={selected} />}
     </Box>
   );
 }

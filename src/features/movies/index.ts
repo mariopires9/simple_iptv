@@ -1,2 +1,2 @@
 // Module features/movies — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
-export {};
+export { moviesRoutes } from './routes';

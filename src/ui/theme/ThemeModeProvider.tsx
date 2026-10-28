@@ -13,15 +13,21 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { settingsRepo, THEMES, type Theme as ThemePreference } from '@/core/db';
+// `@/core/db` (Dexie) is only imported as types here and loaded on demand (`loadSettingsRepo`),
+// so it stays out of the initial chunk (ADR-003). The first paint uses the localStorage mirror.
+import type { THEMES, Theme as ThemePreference } from '@/core/db';
 import { log } from '@/core/log';
 import { createAppTheme } from './createAppTheme';
 import { REDUCED_MOTION_QUERY, type ColorMode } from './tokens';
 
 export type { ThemePreference };
 
-/** Theme preferences in display order (defined once in core/db as `THEMES`). */
-export const THEME_PREFERENCES: readonly ThemePreference[] = THEMES;
+/**
+ * Theme preferences in display order. A copy of core/db's `THEMES` (importing the value would
+ * pull Dexie into the initial chunk); the type below fails to compile if they ever diverge, and
+ * ThemeModeProvider.test.tsx checks the order.
+ */
+export const THEME_PREFERENCES = ['system', 'dark', 'light'] as const satisfies typeof THEMES;
 
 export const PREFERS_LIGHT_QUERY = '(prefers-color-scheme: light)';
 
@@ -43,6 +49,10 @@ export interface ThemeModeContextValue {
 }
 
 const ThemeModeContext = createContext<ThemeModeContextValue | null>(null);
+
+async function loadSettingsRepo() {
+  return (await import('@/core/db')).settingsRepo;
+}
 
 function isThemePreference(value: unknown): value is ThemePreference {
   return THEME_PREFERENCES.includes(value as ThemePreference);
@@ -86,19 +96,21 @@ export function ThemeModeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    settingsRepo.get('theme').then(
-      (stored) => {
-        if (!active || userChose.current) return;
-        // Reconcile with the source of truth: no stored value means "System".
-        const next = isThemePreference(stored) ? stored : 'system';
-        setPreferenceState(next);
-        writeCachedPreference(next === 'system' ? undefined : next);
-      },
-      (error: unknown) => {
-        // DB unavailable: keep the cached choice (or "System") and keep working.
-        log.warn('Theme preference could not be read', { error: String(error) });
-      },
-    );
+    loadSettingsRepo()
+      .then((settingsRepo) => settingsRepo.get('theme'))
+      .then(
+        (stored) => {
+          if (!active || userChose.current) return;
+          // Reconcile with the source of truth: no stored value means "System".
+          const next = isThemePreference(stored) ? stored : 'system';
+          setPreferenceState(next);
+          writeCachedPreference(next === 'system' ? undefined : next);
+        },
+        (error: unknown) => {
+          // DB unavailable: keep the cached choice (or "System") and keep working.
+          log.warn('Theme preference could not be read', { error: String(error) });
+        },
+      );
     return () => {
       active = false;
     };
@@ -108,9 +120,11 @@ export function ThemeModeProvider({ children }: { children: ReactNode }) {
     userChose.current = true;
     setPreferenceState(next);
     writeCachedPreference(next === 'system' ? undefined : next);
-    settingsRepo.set('theme', next).catch((error: unknown) => {
-      log.warn('Theme preference could not be saved', { error: String(error) });
-    });
+    loadSettingsRepo()
+      .then((settingsRepo) => settingsRepo.set('theme', next))
+      .catch((error: unknown) => {
+        log.warn('Theme preference could not be saved', { error: String(error) });
+      });
   }, []);
 
   const mode = resolveMode(preference, systemPrefersLight);

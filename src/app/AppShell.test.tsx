@@ -1,6 +1,8 @@
 import 'fake-indexeddb/auto';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createMemoryRouter } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 import { afterEach, describe, expect, it } from 'vitest';
 import { wipeAll } from '@/core/db';
 import { ThemeModeProvider } from '@/ui/theme';
@@ -12,19 +14,34 @@ const PRIMARY = ['Home', 'Live', 'Movies', 'Series', 'Favorites'];
 
 let media: ReturnType<typeof installMatchMedia> | undefined;
 
-function renderAt(width: number) {
+let router: ReturnType<typeof createMemoryRouter> | undefined;
+
+/** The shell alone (no screens) inside a memory router: every path renders it. */
+function renderAt(width: number, path = '/') {
   media = installMatchMedia({ width });
+  router = createMemoryRouter(
+    [
+      {
+        path: '*',
+        element: (
+          <AppShell>
+            <p>Page content</p>
+          </AppShell>
+        ),
+      },
+    ],
+    { initialEntries: [path] },
+  );
   return render(
     <ThemeModeProvider>
-      <AppShell>
-        <p>Page content</p>
-      </AppShell>
+      <RouterProvider router={router} />
     </ThemeModeProvider>,
   );
 }
 
 const mainNav = () => screen.getByRole('navigation', { name: 'Main navigation' });
-const navButtons = () => within(mainNav()).getAllByRole('button');
+const navLinks = () => within(mainNav()).getAllByRole('link');
+const currentPath = () => router?.state.location.pathname;
 
 /** The Emotion CSS rules (including @media blocks) generated for an element's classes. */
 function emotionCss(element: Element): string {
@@ -62,12 +79,13 @@ describe('AppShell — responsive navigation', () => {
   it('mobile: bottom bar with the five destinations; Settings lives in the top bar menu', async () => {
     const user = userEvent.setup();
     renderAt(375);
-    expect(navButtons().map((b) => b.textContent)).toEqual(PRIMARY);
+    expect(navLinks().map((b) => b.textContent)).toEqual(PRIMARY);
 
     await user.click(screen.getByRole('button', { name: 'More options' }));
     const menu = screen.getByRole('menu');
     await user.click(within(menu).getByRole('menuitem', { name: 'Settings' }));
-    expect(within(mainNav()).queryByRole('button', { current: 'page' })).toBeNull();
+    expect(currentPath()).toBe('/settings');
+    expect(within(mainNav()).queryByRole('link', { current: 'page' })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'More options' }));
     expect(screen.getByRole('menuitem', { name: 'Settings' })).toHaveAttribute(
@@ -78,7 +96,7 @@ describe('AppShell — responsive navigation', () => {
 
   it.each([800, 1400])('rail at %i px: five destinations plus Settings', (width) => {
     renderAt(width);
-    expect(navButtons().map((b) => b.textContent)).toEqual([...PRIMARY, 'Settings']);
+    expect(navLinks().map((b) => b.textContent)).toEqual([...PRIMARY, 'Settings']);
   });
 
   it('rail/top bar menu does not duplicate Settings on tablet and desktop', async () => {
@@ -101,7 +119,7 @@ describe('AppShell — responsive navigation', () => {
     const more = screen.getByRole('button', { name: 'More options' });
     expect(more).not.toHaveAttribute('data-selected');
 
-    await user.click(within(mainNav()).getByRole('button', { name: 'Settings' }));
+    await user.click(within(mainNav()).getByRole('link', { name: 'Settings' }));
     act(() => media?.set({ width: 375 }));
 
     expect(mainNav()).toHaveAttribute('data-layout', 'bottom');
@@ -136,25 +154,69 @@ describe('AppShell — responsive navigation', () => {
 
 describe('AppShell — accessibility and selection', () => {
   it.each([375, 800, 1400])(
-    'at %i px every nav button has an accessible name and only the selected one has aria-current',
+    'at %i px every nav link has an accessible name and only the selected one has aria-current',
     async (width) => {
       const user = userEvent.setup();
       renderAt(width);
-      for (const button of navButtons()) expect(button).toHaveAccessibleName();
+      for (const button of navLinks()) expect(button).toHaveAccessibleName();
 
-      const current = within(mainNav()).getAllByRole('button', { current: 'page' });
+      const current = within(mainNav()).getAllByRole('link', { current: 'page' });
       expect(current).toHaveLength(1);
       expect(current[0]).toHaveAccessibleName('Home');
 
-      await user.click(within(mainNav()).getByRole('button', { name: 'Movies' }));
-      expect(within(mainNav()).getByRole('button', { current: 'page' })).toHaveAccessibleName(
+      await user.click(within(mainNav()).getByRole('link', { name: 'Movies' }));
+      expect(currentPath()).toBe('/movies');
+      expect(within(mainNav()).getByRole('link', { current: 'page' })).toHaveAccessibleName(
         'Movies',
       );
-      expect(within(mainNav()).getByRole('button', { name: 'Home' })).not.toHaveAttribute(
+      expect(within(mainNav()).getByRole('link', { name: 'Home' })).not.toHaveAttribute(
         'aria-current',
       );
     },
   );
+
+  // FND-04 AC4: the current item follows the route (deep links, nested paths, back/forward).
+  it.each([
+    ['/', 'Home'],
+    ['/live/category/7', 'Live'],
+    ['/movies/category/123', 'Movies'],
+    ['/movies/42', 'Movies'],
+    ['/series/9', 'Series'],
+    ['/favorites', 'Favorites'],
+    ['/settings', 'Settings'],
+    ['/settings/sources', 'Settings'],
+    ['/Movies/category/1', 'Movies'],
+    ['/SETTINGS/sources', 'Settings'],
+  ])('rail: at %s the current item is %s', (path, name) => {
+    renderAt(1400, path);
+    const current = within(mainNav()).getAllByRole('link', { current: 'page' });
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAccessibleName(name);
+  });
+
+  it.each(['/search', '/does-not-exist'])('at %s no nav item is current', (path) => {
+    renderAt(1400, path);
+    expect(within(mainNav()).queryByRole('link', { current: 'page' })).toBeNull();
+  });
+
+  it('nav items are links to their routes', () => {
+    renderAt(1400);
+    const hrefs = navLinks().map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual(['/', '/live', '/movies', '/series', '/favorites', '/settings']);
+  });
+
+  it('follows programmatic navigation and history back', async () => {
+    renderAt(375, '/movies');
+    expect(within(mainNav()).getByRole('link', { current: 'page' })).toHaveAccessibleName('Movies');
+    await act(() => router?.navigate('/settings/sources'));
+    expect(within(mainNav()).queryByRole('link', { current: 'page' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'More options' })).toHaveAttribute(
+      'data-selected',
+      'true',
+    );
+    await act(() => router?.navigate(-1));
+    expect(within(mainNav()).getByRole('link', { current: 'page' })).toHaveAccessibleName('Movies');
+  });
 
   it('page margins follow the layout breakpoints (16 / 24 / 32 px)', () => {
     renderAt(1400);

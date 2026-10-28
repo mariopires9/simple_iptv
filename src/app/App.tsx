@@ -1,16 +1,21 @@
-import Typography from '@mui/material/Typography';
-import { t } from '@/i18n';
+import { useEffect } from 'react';
 import { ThemeModeProvider } from '@/ui/theme';
-import { AppShell } from './AppShell';
+import { installChunkReload } from './chunkReload';
+import { DatabaseUnavailableScreen, useDatabaseCheck } from './DatabaseUnavailableScreen';
+import { AppRouter, getAppRouter } from './router';
 
-/** Theme + AppShell with placeholder content until FND-04 (routing) adds the screens. */
+/**
+ * Theme, then the start-up storage check, then the hash router (AppShell + lazy screens).
+ * While the check runs nothing but the themed background is shown (UX_UI §5: short loads do not
+ * flash a spinner); it normally takes one IndexedDB open.
+ */
 export function App() {
-  return (
-    <ThemeModeProvider>
-      <AppShell>
-        <Typography variant="h1">{t.app.name}</Typography>
-        <Typography color="text.secondary">{t.app.placeholder}</Typography>
-      </AppShell>
-    </ThemeModeProvider>
-  );
+  const db = useDatabaseCheck();
+  useEffect(() => installChunkReload(), []);
+
+  let content = null;
+  if (db.status === 'unavailable') content = <DatabaseUnavailableScreen reason={db.reason} />;
+  else if (db.status === 'ready') content = <AppRouter router={getAppRouter()} />;
+
+  return <ThemeModeProvider>{content}</ThemeModeProvider>;
 }
