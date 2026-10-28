@@ -6,7 +6,7 @@ import Box from '@mui/material/Box';
 import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useState, type ReactNode } from 'react';
-import { navSize, pageMargin } from '@/ui/theme/tokens';
+import { pageMargin } from '@/ui/theme/tokens';
 import { BottomNav } from './shell/BottomNav';
 import type { NavId } from './shell/navItems';
 import { NavRail } from './shell/NavRail';
@@ -36,6 +36,8 @@ export function AppShell({ children, sourceSelector, searchAction }: AppShellPro
   // items become links; until then it is local state only.
   const [selected, setSelected] = useState<NavId>('home');
   const isMobile = layout === 'bottom';
+  // Settings selected on mobile (it lives in the top bar menu): the "More options" button shows
+  // the selected state; the bottom bar then has no current item.
 
   return (
     <Box sx={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
@@ -55,17 +57,12 @@ export function AppShell({ children, sourceSelector, searchAction }: AppShellPro
           sx={{
             flex: 1,
             minWidth: 0,
-            p: `${
-              layout === 'bottom'
-                ? pageMargin.mobile
-                : layout === 'rail'
-                  ? pageMargin.tablet
-                  : pageMargin.desktop
-            }px`,
-            // Keep content clear of the fixed bottom bar.
-            pb: isMobile
-              ? `calc(${navSize.bottomNav + pageMargin.mobile}px + env(safe-area-inset-bottom))`
-              : undefined,
+            // Same breakpoints as the navigation layout (sm = 600, lg = 1200).
+            p: {
+              xs: `${pageMargin.mobile}px`,
+              sm: `${pageMargin.tablet}px`,
+              lg: `${pageMargin.desktop}px`,
+            },
           }}
         >
           {children}

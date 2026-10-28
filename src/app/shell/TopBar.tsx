@@ -48,6 +48,10 @@ export function TopBar({
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const menuId = useId();
   const buttonId = useId();
+  const themeLabelId = useId();
+  // On mobile Settings lives in this menu: when it is the current page, the menu button carries
+  // the selected state (accent color) so the top bar still shows where the user is.
+  const menuHoldsCurrentPage = showSettings && settingsSelected;
   const closeMenu = () => setMenuAnchor(null);
 
   return (
@@ -68,6 +72,8 @@ export function TopBar({
           aria-expanded={menuAnchor ? true : undefined}
           onClick={(event) => setMenuAnchor(event.currentTarget)}
           edge="end"
+          data-selected={menuHoldsCurrentPage || undefined}
+          sx={menuHoldsCurrentPage ? { color: 'primary.main' } : undefined}
         >
           <MoreVertRounded />
         </IconButton>
@@ -94,23 +100,34 @@ export function TopBar({
           </MenuItem>,
           <Divider key="divider" />,
         ]}
-        <ListSubheader sx={{ bgcolor: 'transparent', lineHeight: 2.5 }}>
+        <ListSubheader id={themeLabelId} sx={{ bgcolor: 'transparent', lineHeight: 2.5 }}>
           {t.nav.theme}
         </ListSubheader>
-        {THEME_PREFERENCES.map((option) => (
-          <MenuItem
-            key={option}
-            role="menuitemradio"
-            aria-checked={preference === option}
-            onClick={() => {
-              setPreference(option);
-              closeMenu();
-            }}
+        {/* menu > group > menuitemradio, labelled by the "Theme" subheader. MenuList's roving
+            focus registers items through context, so the nesting keeps arrow-key navigation. */}
+        <Box component="li" role="none" sx={{ p: 0 }}>
+          <Box
+            component="ul"
+            role="group"
+            aria-labelledby={themeLabelId}
+            sx={{ listStyle: 'none', m: 0, p: 0 }}
           >
-            <ListItemIcon>{preference === option && <CheckRounded />}</ListItemIcon>
-            <ListItemText>{t.nav.themes[option]}</ListItemText>
-          </MenuItem>
-        ))}
+            {THEME_PREFERENCES.map((option) => (
+              <MenuItem
+                key={option}
+                role="menuitemradio"
+                aria-checked={preference === option}
+                onClick={() => {
+                  setPreference(option);
+                  closeMenu();
+                }}
+              >
+                <ListItemIcon>{preference === option && <CheckRounded />}</ListItemIcon>
+                <ListItemText>{t.nav.themes[option]}</ListItemText>
+              </MenuItem>
+            ))}
+          </Box>
+        </Box>
       </Menu>
     </AppBar>
   );

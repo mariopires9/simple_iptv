@@ -6,7 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { settingsRepo, wipeAll } from '@/core/db';
 import { installMatchMedia } from '../test-utils/matchMedia';
 import { colors } from './tokens';
-import { ThemeModeProvider, useThemeMode, type ThemePreference } from './ThemeModeProvider';
+import {
+  THEME_CACHE_KEY,
+  ThemeModeProvider,
+  useThemeMode,
+  type ThemePreference,
+} from './ThemeModeProvider';
 
 function Probe() {
   const { preference, mode, reducedMotion, setPreference } = useThemeMode();
@@ -45,7 +50,69 @@ beforeEach(() => {
 afterEach(async () => {
   media.restore();
   vi.restoreAllMocks();
+  localStorage.clear();
   await wipeAll();
+});
+
+describe('ThemeModeProvider — localStorage mirror (no flash on cold start)', () => {
+  it('renders the cached theme on the very first render', () => {
+    localStorage.setItem(THEME_CACHE_KEY, 'light');
+    // The IndexedDB read never settles during this test: only the cache can explain "light".
+    vi.spyOn(settingsRepo, 'get').mockReturnValue(new Promise(() => undefined));
+    renderProbe();
+    expect(out('preference')).toBe('light');
+    expect(out('mode')).toBe('light');
+    expect(out('background')).toBe(colors.light.bg);
+  });
+
+  it('IndexedDB is the source of truth: a stale cache is reconciled when it loads', async () => {
+    localStorage.setItem(THEME_CACHE_KEY, 'light');
+    await settingsRepo.set('theme', 'dark');
+    renderProbe();
+    expect(out('mode')).toBe('light');
+    await waitFor(() => expect(out('preference')).toBe('dark'));
+    expect(localStorage.getItem(THEME_CACHE_KEY)).toBe('dark');
+  });
+
+  it('no stored preference means System, and the stale cache is dropped', async () => {
+    localStorage.setItem(THEME_CACHE_KEY, 'light');
+    renderProbe();
+    await waitFor(() => expect(out('preference')).toBe('system'));
+    expect(localStorage.getItem(THEME_CACHE_KEY)).toBeNull();
+  });
+
+  it('mirrors every choice to the cache', async () => {
+    const user = userEvent.setup();
+    renderProbe();
+    await user.click(screen.getByRole('button', { name: 'light' }));
+    expect(localStorage.getItem(THEME_CACHE_KEY)).toBe('light');
+    await user.click(screen.getByRole('button', { name: 'system' }));
+    expect(localStorage.getItem(THEME_CACHE_KEY)).toBeNull();
+  });
+
+  it('keeps working when localStorage throws', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    const user = userEvent.setup();
+    renderProbe();
+    expect(out('preference')).toBe('system');
+    await user.click(screen.getByRole('button', { name: 'light' }));
+    expect(out('mode')).toBe('light');
+    await waitFor(async () => expect(await settingsRepo.get('theme')).toBe('light'));
+  });
+
+  it('keeps the cached choice when the database is unavailable', async () => {
+    localStorage.setItem(THEME_CACHE_KEY, 'light');
+    vi.spyOn(settingsRepo, 'get').mockRejectedValue(new Error('IndexedDB unavailable'));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    renderProbe();
+    await waitFor(() => expect(settingsRepo.get).toHaveBeenCalled());
+    expect(out('mode')).toBe('light');
+  });
 });
 
 describe('ThemeModeProvider', () => {

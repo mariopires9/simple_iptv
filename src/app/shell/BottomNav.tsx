@@ -16,8 +16,10 @@ export function BottomNav({ selected, onNavigate }: BottomNavProps) {
       aria-label={t.nav.mainNavigation}
       data-layout="bottom"
       sx={{
-        position: 'fixed',
-        insetInline: 0,
+        // Sticky and in normal flow (last child of the shell column), not `fixed`: the content
+        // area never needs a guessed bottom padding, however tall the bar gets (wrapped pt-PT
+        // labels, font scaling, iOS home-indicator inset below).
+        position: 'sticky',
         bottom: 0,
         zIndex: 'appBar',
         bgcolor: 'tokens.surface2',

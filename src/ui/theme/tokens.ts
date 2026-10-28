@@ -68,9 +68,11 @@ export const colors: Readonly<Record<ColorMode, Readonly<ColorTokens>>> = {
 /** Focus ring geometry (px). */
 export const focusRing = { width: 2, offset: 2 } as const;
 
-/** 4 px grid. */
-export const spacingUnit = 4;
-export const space = [4, 8, 12, 16, 24, 32, 48, 64] as const;
+/**
+ * MUI spacing unit (px). The design uses a 4 px grid (4, 8, 12, 16, 24, 32, 48, 64); MUI keeps
+ * its 8 px base so its components keep their designed paddings, and `theme.spacing(0.5)` = 4 px.
+ */
+export const spacingBase = 8;
 /** Page margins per viewport (px). */
 export const pageMargin = { mobile: 16, tablet: 24, desktop: 32 } as const;
 
@@ -84,7 +86,7 @@ export const touchTarget = 44;
 export const breakpoints = { tablet: 600, desktop: 1200 } as const;
 
 /** Navigation chrome sizes (px). */
-export const navSize = { rail: 88, expandedRail: 240, topBar: 56, bottomNav: 64 } as const;
+export const navSize = { rail: 88, expandedRail: 240, topBar: 56 } as const;
 
 export const fontFamily =
   '"Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -107,3 +109,9 @@ export const motion = {
   easing: 'cubic-bezier(.2,0,0,1)',
   duration: { short: 120, medium: 160, long: 200 },
 } as const;
+
+/**
+ * The single source for "the user asked for reduced motion": used by `ThemeModeProvider`
+ * (`useMediaQuery`) for the MUI theme and as the `@media` condition of the global CSS fallback.
+ */
+export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';

@@ -8,6 +8,8 @@ import {
   labelLetterSpacing,
   motion,
   radii,
+  REDUCED_MOTION_QUERY,
+  spacingBase,
   touchTarget,
   typeScale,
   type ColorMode,
@@ -32,9 +34,15 @@ export interface AppThemeOptions {
 /** Material elevation is replaced by tonal surfaces: every shadow level is `none`. */
 const NO_SHADOWS = Array.from({ length: 25 }, () => 'none') as Shadows;
 
-/** Global CSS that also covers non-MUI elements when the OS asks for reduced motion. */
+/*
+ * Reduced motion is handled in two layers, both keyed on `REDUCED_MOTION_QUERY`:
+ *  1. MUI components: `ThemeModeProvider` evaluates the query and passes `reducedMotion`, so the
+ *     theme's `transitions` produce no transition and zero durations (JS-driven animations such as
+ *     Collapse/Grow read these values and would not be stopped by CSS alone).
+ *  2. Non-MUI elements (our own CSS, third-party markup): this global CSS rule is the fallback.
+ */
 const REDUCED_MOTION_CSS = {
-  '@media (prefers-reduced-motion: reduce)': {
+  [`@media ${REDUCED_MOTION_QUERY}`]: {
     '*, *::before, *::after': {
       animationDuration: '0.01ms !important',
       animationIterationCount: '1 !important',
@@ -75,8 +83,7 @@ export function createAppTheme(mode: ColorMode, options: AppThemeOptions = {}): 
     breakpoints: {
       values: { xs: 0, sm: breakpoints.tablet, md: 900, lg: breakpoints.desktop, xl: 1536 },
     },
-    // MUI keeps its 8 px unit; `theme.spacing(0.5)` = 4 px keeps everything on the 4 px grid.
-    spacing: 8,
+    spacing: spacingBase,
     shape: { borderRadius: radii.sm },
     shadows: NO_SHADOWS,
     typography: {
@@ -102,6 +109,7 @@ export function createAppTheme(mode: ColorMode, options: AppThemeOptions = {}): 
     transitions: reducedMotion
       ? {
           create: () => 'none',
+          getAutoHeightDuration: () => 0,
           duration: {
             shortest: 0,
             shorter: 0,

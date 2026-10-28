@@ -212,7 +212,9 @@ export interface EpgProgram {
   desc?: string;
 }
 
-export type Theme = 'system' | 'light' | 'dark';
+/** Theme preferences, in display order. Single source of truth for the `Theme` type. */
+export const THEMES = ['system', 'dark', 'light'] as const;
+export type Theme = (typeof THEMES)[number];
 
 /** Typed values per key of the `settings` table. */
 export interface SettingsMap {

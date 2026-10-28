@@ -13,17 +13,25 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { settingsRepo, type Theme as ThemePreference } from '@/core/db';
+import { settingsRepo, THEMES, type Theme as ThemePreference } from '@/core/db';
 import { log } from '@/core/log';
 import { createAppTheme } from './createAppTheme';
-import type { ColorMode } from './tokens';
+import { REDUCED_MOTION_QUERY, type ColorMode } from './tokens';
 
 export type { ThemePreference };
 
-export const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'dark', 'light'];
+/** Theme preferences in display order (defined once in core/db as `THEMES`). */
+export const THEME_PREFERENCES: readonly ThemePreference[] = THEMES;
 
 export const PREFERS_LIGHT_QUERY = '(prefers-color-scheme: light)';
-export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+/**
+ * localStorage mirror of the preference, read synchronously so the first paint already uses the
+ * right theme (IndexedDB is async). Per-viewer convenience only: IndexedDB is the source of truth.
+ */
+export const THEME_CACHE_KEY = 'simple-iptv:theme';
+
+const MEDIA_OPTIONS = { noSsr: true } as const;
 
 export interface ThemeModeContextValue {
   /** What the user chose. */
@@ -40,6 +48,24 @@ function isThemePreference(value: unknown): value is ThemePreference {
   return THEME_PREFERENCES.includes(value as ThemePreference);
 }
 
+function readCachedPreference(): ThemePreference | undefined {
+  try {
+    const value = globalThis.localStorage?.getItem(THEME_CACHE_KEY);
+    return isThemePreference(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCachedPreference(value: ThemePreference | undefined): void {
+  try {
+    if (value === undefined) globalThis.localStorage?.removeItem(THEME_CACHE_KEY);
+    else globalThis.localStorage?.setItem(THEME_CACHE_KEY, value);
+  } catch {
+    // Storage blocked (private mode, quota): the cache is optional.
+  }
+}
+
 /**
  * Resolves the rendered mode. "System" follows `prefers-color-scheme`; dark is the default
  * whenever the system does not explicitly ask for light (or cannot be resolved).
@@ -50,21 +76,27 @@ export function resolveMode(preference: ThemePreference, systemPrefersLight: boo
 }
 
 export function ThemeModeProvider({ children }: { children: ReactNode }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>('system');
+  const [preference, setPreferenceState] = useState<ThemePreference>(
+    () => readCachedPreference() ?? 'system',
+  );
   // Once the user picks a theme, a late read of the stored value must not override it.
   const userChose = useRef(false);
-  const systemPrefersLight = useMediaQuery(PREFERS_LIGHT_QUERY);
-  const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
+  const systemPrefersLight = useMediaQuery(PREFERS_LIGHT_QUERY, MEDIA_OPTIONS);
+  const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY, MEDIA_OPTIONS);
 
   useEffect(() => {
     let active = true;
     settingsRepo.get('theme').then(
       (stored) => {
-        if (active && !userChose.current && isThemePreference(stored)) setPreferenceState(stored);
+        if (!active || userChose.current) return;
+        // Reconcile with the source of truth: no stored value means "System".
+        const next = isThemePreference(stored) ? stored : 'system';
+        setPreferenceState(next);
+        writeCachedPreference(next === 'system' ? undefined : next);
       },
       (error: unknown) => {
-        // DB unavailable: keep "System" and keep working (FND-05 AC5 shows the error elsewhere).
-        log.warn('Theme preference could not be read; using System', { error: String(error) });
+        // DB unavailable: keep the cached choice (or "System") and keep working.
+        log.warn('Theme preference could not be read', { error: String(error) });
       },
     );
     return () => {
@@ -75,6 +107,7 @@ export function ThemeModeProvider({ children }: { children: ReactNode }) {
   const setPreference = useCallback((next: ThemePreference) => {
     userChose.current = true;
     setPreferenceState(next);
+    writeCachedPreference(next === 'system' ? undefined : next);
     settingsRepo.set('theme', next).catch((error: unknown) => {
       log.warn('Theme preference could not be saved', { error: String(error) });
     });

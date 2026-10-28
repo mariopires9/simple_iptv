@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createAppTheme } from './createAppTheme';
-import { breakpoints, colors, focusRing, motion, touchTarget } from './tokens';
+import {
+  breakpoints,
+  colors,
+  focusRing,
+  motion,
+  REDUCED_MOTION_QUERY,
+  touchTarget,
+} from './tokens';
 
 describe('createAppTheme', () => {
   it.each(['dark', 'light'] as const)('maps the %s tokens onto the MUI palette', (mode) => {
@@ -74,6 +81,9 @@ describe('createAppTheme', () => {
     const theme = createAppTheme('dark', { reducedMotion: true });
     expect(theme.transitions.create(['opacity', 'transform'])).toBe('none');
     expect(Object.values(theme.transitions.duration).every((d) => d === 0)).toBe(true);
+    // Collapse with `timeout="auto"` uses this instead of the durations.
+    expect(theme.transitions.getAutoHeightDuration(500)).toBe(0);
+    expect(createAppTheme('dark').transitions.getAutoHeightDuration(500)).toBeGreaterThan(0);
   });
 
   it('also disables CSS transitions/animations globally under prefers-reduced-motion', () => {
@@ -81,7 +91,9 @@ describe('createAppTheme', () => {
       string,
       Record<string, Record<string, string>>
     >;
-    const rule = overrides['@media (prefers-reduced-motion: reduce)']?.['*, *::before, *::after'];
+    // Same query the provider evaluates for the MUI theme: one source of truth.
+    expect(REDUCED_MOTION_QUERY).toBe('(prefers-reduced-motion: reduce)');
+    const rule = overrides[`@media ${REDUCED_MOTION_QUERY}`]?.['*, *::before, *::after'];
     expect(rule?.transition).toBe('none !important');
     expect(rule?.animationDuration).toBe('0.01ms !important');
   });

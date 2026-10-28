@@ -3,7 +3,7 @@ import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import Typography from '@mui/material/Typography';
 import { t } from '@/i18n';
-import { navSize, radii, touchTarget } from '@/ui/theme/tokens';
+import { navSize, radii } from '@/ui/theme/tokens';
 import { PRIMARY_NAV_ITEMS, SETTINGS_NAV_ITEM, type NavId, type NavItem } from './navItems';
 
 export interface NavRailProps {
@@ -29,7 +29,7 @@ function RailButton({
       aria-current={selected ? 'page' : undefined}
       sx={{
         width: '100%',
-        minHeight: expanded ? 48 : 64,
+        minHeight: expanded ? 48 : 64, // both ≥ the 44 px touch target
         display: 'flex',
         flexDirection: expanded ? 'row' : 'column',
         justifyContent: expanded ? 'flex-start' : 'center',
@@ -108,7 +108,6 @@ export function NavRail({ expanded, selected, onNavigate }: NavRailProps) {
         px: expanded ? 1.5 : 1,
         py: 1,
         bgcolor: 'tokens.surface2',
-        minWidth: touchTarget,
       }}
     >
       <Box component="ul" sx={listSx}>
