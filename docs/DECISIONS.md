@@ -21,6 +21,7 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 | ADR-014 | Lists stored on the device only, no sync | **Accepted** (2026-10-28) |
 | ADR-015 | English as the repo language; UI in English (base) + pt-PT | **Accepted** (2026-10-28) |
 | ADR-016 | Worker task registry lives in `src/worker`, outside `core` | **Accepted** (2026-10-28) |
+| ADR-017 | Full hls.js build (not `hls.js/light`), lazily loaded | **Accepted** (2026-10-28) |
 
 ---
 
@@ -98,3 +99,8 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 - **Context:** registering provider tasks (e.g. `syncXtream`, SRC-07) in `src/core/worker` would make `core` import `providers`, breaking the module boundaries (ARCHITECTURE §2).
 - **Decision:** `src/core/worker` stays a generic runtime (Comlink API, client factory, `TaskContext`, `WorkerTaskError`, progress throttling, cancellation). The task registry and the `data.worker.ts` entry live in `src/worker/`, which may import `core` and `providers`; features call the worker through `@/worker`. Enforced by ESLint and `src/test/boundaries.test.ts`.
 - **Alternatives:** a targeted `eslint-disable` in core (rejected: normalises boundary exceptions); relative imports to dodge the rule (rejected: hides the violation).
+
+### ADR-017 — Full hls.js build, lazily loaded — Accepted (2026-10-28)
+- **Context:** measured in PLY-01: hls.js 1.7.3 full build ≈ 179 KB gz; `hls.js/light` ≈ 113 KB gz but drops alternate audio renditions, subtitles, EME, CMCD and interstitials.
+- **Decision:** use the full build. Alternate audio and subtitles are needed for PLY-05 (and are common in Portuguese/English channels); EME is never used (no DRM). The chunk is loaded with `import()` only on the first HLS play, so the initial budget (≤ 200 KB gz) is unaffected; the service worker (PWA-02) precaches it.
+- **Budget:** hls chunk ≤ 190 KB gz (QA-03). Revisit if a later hls.js release grows past it, or if PLY-05 is dropped (switch to light).

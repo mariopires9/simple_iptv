@@ -738,7 +738,7 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Story:** As a user, I want an app that opens quickly on my phone, so that I don't wait.
 - **AC:**
   1. Given Lighthouse CI (mobile), Then Performance ≥ 90, A11y ≥ 95, Best Practices ≥ 95; CI fails below that.
-  2. Given `size-limit` (or equivalent), Then initial JS ≤ 200 KB gz; hls chunk ≤ 150 KB gz; mpegts ≤ 80 KB gz.
+  2. Given `size-limit` (or equivalent), Then initial JS ≤ 200 KB gz; hls chunk ≤ 190 KB gz (full build, ADR-017); mpegts ≤ 80 KB gz; both lazily loaded and absent from the initial chunks.
   3. Given the report, Then it is published as a CI artifact.
 - **Dependencies:** FND-02, FND-03.
 
