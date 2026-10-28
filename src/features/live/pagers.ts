@@ -8,7 +8,34 @@ export interface ChannelPager {
   readonly total: number;
   /** Channels `[offset, offset + limit)` in display order. */
   load(offset: number, limit: number): Promise<Channel[]>;
+  /** Position of `channel` in this category, or -1 (LIV-02: zapping after a reload). */
+  locate(channel: Channel): Promise<number>;
 }
+
+/**
+ * Binary search of `channel` among `count` rows sorted by `order` (one category, read through
+ * its `[categoryKey+order]` index): ~log2(count) single-row reads instead of a scan.
+ */
+async function bisect(
+  count: number,
+  at: (index: number) => Promise<Channel | undefined>,
+  channel: Channel,
+): Promise<number> {
+  let lo = 0;
+  let hi = count - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const row = await at(mid);
+    if (!row) return -1;
+    if (row.key === channel.key) return mid;
+    if (row.order < channel.order) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return -1;
+}
+
+const rowOf = (catKey: string) => async (index: number) =>
+  (await catalogRepo.listByCategory('live', catKey, { offset: index, limit: 1 }))[0];
 
 /** How many recently watched channels "Recent" shows. */
 export const RECENT_LIMIT = 50;
@@ -18,6 +45,7 @@ function memoryPager(channels: readonly Channel[]): ChannelPager {
   return {
     total: channels.length,
     load: (offset, limit) => Promise.resolve(channels.slice(offset, offset + limit)),
+    locate: (channel) => Promise.resolve(channels.findIndex((c) => c.key === channel.key)),
   };
 }
 
@@ -26,6 +54,8 @@ function categoryPager(key: string, total: number): ChannelPager {
   return {
     total,
     load: (offset, limit) => catalogRepo.listByCategory('live', key, { offset, limit }),
+    locate: (channel) =>
+      channel.categoryKey === key ? bisect(total, rowOf(key), channel) : Promise.resolve(-1),
   };
 }
 
@@ -65,6 +95,12 @@ export function concatPager(segments: readonly { key: string; count: number }[])
         );
       }
       return (await Promise.all(reads)).flat();
+    },
+    async locate(channel) {
+      const segment = placed.find((s) => s.key === channel.categoryKey);
+      if (!segment) return -1;
+      const local = await bisect(segment.count, rowOf(segment.key), channel);
+      return local < 0 ? -1 : segment.start + local;
     },
   };
 }

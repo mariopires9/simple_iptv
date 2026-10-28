@@ -1,4 +1,4 @@
-// Live TV (LIV-01): categories, channel list and its states.
+// Live TV (LIV-01, LIV-02): categories, channel list, its states and the live player.
 export const live = {
   title: 'Live TV',
   categories: 'Categories',
@@ -36,5 +36,33 @@ export const live = {
   loadError: { title: "Couldn't load the channels", message: 'Try again in a moment.' },
   player: {
     idle: 'Select a channel to watch it here.',
+    /** Accessible name of the player area. */
+    region: (name: string) => `Player: ${name}`,
+    /** Shown (and announced) as soon as a channel is chosen, before its stream starts. */
+    watching: (name: string) => `Watching ${name}`,
+    loading: (name: string) => `Loading ${name}…`,
+    channels: 'Channels',
+    closeChannels: 'Close the channel list',
+    unsupported: {
+      title: 'This channel uses DRM / DASH, which this app does not support',
+      message: 'Protected (DRM) and DASH streams cannot be played in this app.',
+    },
+    credentials: {
+      title: 'Re-enter the password for this list',
+      message:
+        "The saved password can't be read on this device any more. Enter it again in My lists to watch this list.",
+      action: 'My lists',
+    },
+    unavailable: {
+      title: "This channel can't be played",
+      message: 'The list has no valid stream address for this channel. Try syncing the list.',
+    },
+    resolveError: {
+      title: "Couldn't start this channel",
+      message: 'Try again in a moment.',
+    },
+    /** M3U entry with required headers that failed with 401/403 (PLY-04 AC8). */
+    restricted:
+      'The provider restricts playback to its own app/site: it requires headers (such as Referer or User-Agent) that browsers cannot send.',
   },
 };

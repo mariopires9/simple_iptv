@@ -1,0 +1,167 @@
+// Channel → playable stream (LIV-02, docs/ARCHITECTURE.md §5–§6.2).
+//
+// - Xtream: only the stream id is stored; the URL embeds the credentials, so it is built here, in
+//   memory, at play time: `${server}/live/${user}/${pass}/${id}.${ext}`. The password comes from
+//   the vault (which registers it with the log redactor). The URL is never logged.
+// - M3U: the entry's own URL (`streamUrl`, falling back to `streamPath`) with its `container`
+//   (or the one inferred from the extension). Entries flagged `drm` or DASH are never attempted
+//   (PLY-04 AC7, no DRM circumvention — SECURITY.md §8).
+import type { Channel, LiveFormat, Source } from '@/core/db';
+import { VaultKeyLostError, credentialVault, type CredentialVault } from '@/core/crypto';
+import { parseExternalUrl } from '@/core/net';
+import { getCapabilities, type Capabilities } from '@/core/platform';
+import type { StreamContainer, StreamDescriptor } from '@/player';
+
+/**
+ * Fields an M3U entry may carry (SRC-04, written by the M3U provider). Read defensively: older
+ * catalogues and Xtream channels do not have them.
+ */
+export interface M3uChannelFields {
+  streamUrl?: unknown;
+  container?: unknown;
+  drm?: unknown;
+  requiredHeaders?: unknown;
+  audioOnly?: unknown;
+}
+
+export type ResolvedStream =
+  | {
+      status: 'ok';
+      descriptor: StreamDescriptor;
+      /** The entry declares headers (Referer/User-Agent…) a browser cannot send. */
+      requiredHeaders: boolean;
+    }
+  /** DRM-protected or DASH entry: never attempted. */
+  | { status: 'unsupported'; reason: 'drm' | 'dash' }
+  /** The Xtream password is missing or can no longer be decrypted (`VaultKeyLostError`). */
+  | { status: 'credentials' }
+  /** No usable stream address (corrupt entry, incomplete source). */
+  | { status: 'unavailable' };
+
+export interface ResolveDeps {
+  vault?: Pick<CredentialVault, 'get'>;
+  capabilities?: Pick<Capabilities, 'mse' | 'mms'>;
+}
+
+let cachedCapabilities: Pick<Capabilities, 'mse' | 'mms'> | undefined;
+function defaultCapabilities(): Pick<Capabilities, 'mse' | 'mms'> {
+  cachedCapabilities ??= getCapabilities();
+  return cachedCapabilities;
+}
+
+const EXTENSION_CONTAINERS: Readonly<Record<string, StreamContainer | 'dash'>> = {
+  m3u8: 'hls',
+  m3u: 'hls',
+  ts: 'ts',
+  mpegts: 'ts',
+  mp4: 'mp4',
+  m4v: 'mp4',
+  mkv: 'mkv',
+  webm: 'webm',
+  mov: 'mov',
+  flv: 'flv',
+  avi: 'avi',
+  mpd: 'dash',
+};
+
+/** `container` as declared by the entry (`hls`, `m3u8`, `dash`, `ts`…), if recognisable. */
+function declaredContainer(value: unknown): StreamContainer | 'dash' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const v = value.trim().toLowerCase();
+  if (v === 'hls' || v === 'dash') return v;
+  return EXTENSION_CONTAINERS[v];
+}
+
+/**
+ * Container from the URL path's extension. Live URLs without one (`http://host/123`) are almost
+ * always raw MPEG-TS (the Xtream short form), so that is the guess for live entries.
+ */
+export function inferContainer(url: URL): StreamContainer | 'dash' {
+  const match = /\.([a-z0-9]{2,6})$/i.exec(url.pathname);
+  const ext = match?.[1]?.toLowerCase();
+  if (ext === undefined) return 'ts';
+  return EXTENSION_CONTAINERS[ext] ?? 'unknown';
+}
+
+function hasHeaders(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return value !== false && value !== '';
+}
+
+function resolveM3u(channel: Channel): ResolvedStream {
+  const fields = channel as Channel & M3uChannelFields;
+  if (fields.drm !== undefined && fields.drm !== null && fields.drm !== false) {
+    return { status: 'unsupported', reason: 'drm' };
+  }
+  const raw = typeof fields.streamUrl === 'string' ? fields.streamUrl : channel.streamPath;
+  const parsed = parseExternalUrl(raw, 'stream');
+  if (!parsed.ok) return { status: 'unavailable' };
+  const container = declaredContainer(fields.container) ?? inferContainer(parsed.url);
+  if (container === 'dash') return { status: 'unsupported', reason: 'dash' };
+  return {
+    status: 'ok',
+    descriptor: { url: parsed.url.href, kind: 'live', container },
+    requiredHeaders: hasHeaders(fields.requiredHeaders),
+  };
+}
+
+/** Xtream live descriptor for a format preference (exported for tests). */
+export function xtreamLiveDescriptor(
+  base: string,
+  username: string,
+  password: string,
+  streamId: string,
+  format: LiveFormat,
+  caps: Pick<Capabilities, 'mse' | 'mms'>,
+): StreamDescriptor {
+  const prefix = `${base.replace(/\/+$/, '')}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${encodeURIComponent(streamId)}`;
+  const ts: StreamDescriptor = { url: `${prefix}.ts`, kind: 'live', container: 'ts' };
+  const hls: StreamDescriptor = { url: `${prefix}.m3u8`, kind: 'live', container: 'hls' };
+  if (format === 'm3u8') return hls;
+  if (format === 'ts' || caps.mse || caps.mms) return { ...ts, fallbacks: [hls] };
+  return hls;
+}
+
+async function resolveXtream(
+  channel: Channel,
+  source: Source,
+  deps: ResolveDeps,
+): Promise<ResolvedStream> {
+  const { serverUrl, username, secretRef } = source;
+  // Stored as the bare id; tolerate an extension left by an older catalogue.
+  const streamId = channel.streamPath.replace(/\.[a-z0-9]{2,5}$/i, '');
+  if (!serverUrl || !username || streamId === '') {
+    return secretRef ? { status: 'unavailable' } : { status: 'credentials' };
+  }
+  if (!secretRef) return { status: 'credentials' };
+  let password: string | undefined;
+  try {
+    password = await (deps.vault ?? credentialVault).get(secretRef);
+  } catch (error) {
+    if (error instanceof VaultKeyLostError) return { status: 'credentials' };
+    throw error;
+  }
+  if (password === undefined) return { status: 'credentials' };
+  const descriptor = xtreamLiveDescriptor(
+    serverUrl,
+    username,
+    password,
+    streamId,
+    source.prefs.liveFormat,
+    // Only "auto" depends on the browser; probing creates a <video>, so skip it otherwise.
+    source.prefs.liveFormat === 'auto'
+      ? (deps.capabilities ?? defaultCapabilities())
+      : { mse: false, mms: false },
+  );
+  return { status: 'ok', descriptor, requiredHeaders: false };
+}
+
+/** Builds the stream of a live channel of `source`. Never logs the URL. */
+export async function resolveStream(
+  channel: Channel,
+  source: Source,
+  deps: ResolveDeps = {},
+): Promise<ResolvedStream> {
+  return source.kind === 'xtream' ? resolveXtream(channel, source, deps) : resolveM3u(channel);
+}

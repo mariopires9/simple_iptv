@@ -50,6 +50,15 @@ export class PageCache {
     };
   }
 
+  /** Index of the channel `key` among the cached pages, or -1 (not cached or not here). */
+  indexOf(key: string): number {
+    for (const [page, rows] of this.pages) {
+      const i = rows.findIndex((c) => c.key === key);
+      if (i >= 0) return page * this.pageSize + i;
+    }
+    return -1;
+  }
+
   /** Keeps the page of row `index` cached (the active row); `undefined` unpins. */
   pin(index: number | undefined): void {
     this.pinnedPage = index === undefined ? undefined : Math.floor(index / this.pageSize);
