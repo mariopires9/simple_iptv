@@ -38,10 +38,15 @@ export interface ChannelListProps {
   favorites: ReadonlySet<string>;
   /** Key of the channel currently playing (accent bar). */
   playingKey?: string | undefined;
-  onPlay: (channel: Channel) => void;
+  /** `index`: the channel's row in this list (zapping starts from it). */
+  onPlay: (channel: Channel, index: number) => void;
   onToggleFavorite: (channel: Channel) => void;
   /** Loading a page failed. */
   onError?: (error: unknown) => void;
+  /** Row selected (and scrolled to) on mount. Default 0. */
+  initialIndex?: number | undefined;
+  /** Focus the listbox on mount (e.g. the "Channels" panel). */
+  focusOnMount?: boolean;
 }
 
 export function ChannelList({
@@ -52,11 +57,13 @@ export function ChannelList({
   onPlay,
   onToggleFavorite,
   onError,
+  initialIndex = 0,
+  focusOnMount = false,
 }: ChannelListProps) {
   const listId = useId();
   const hintId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState(() => Math.max(0, Math.min(cache.total - 1, initialIndex)));
   const [, pageArrived] = useReducer((n: number) => n + 1, 0);
   const total = cache.total;
 
@@ -91,10 +98,21 @@ export function ChannelList({
   // Fetch the pages covering the viewport (plus overscan) and the active row — two separate
   // ranges, so jumping with End does not fetch every page in between.
   useEffect(() => {
+    cache.pin(active < total ? active : undefined);
     if (active < total) cache.ensure(active, active);
     // Last, so eviction keeps the pages around the viewport.
     if (lastIndex >= 0) cache.ensure(firstIndex, lastIndex);
   }, [cache, firstIndex, lastIndex, active, total]);
+
+  // Mount only: start at the initial row (the playing channel in the "Channels" panel).
+  const initialActive = useRef(active);
+  useEffect(() => {
+    if (initialActive.current > 0) {
+      virtualizer.scrollToIndex(initialActive.current, { align: 'center' });
+    }
+    if (focusOnMount) scrollRef.current?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+  }, []);
 
   const move = (index: number) => {
     const next = Math.max(0, Math.min(total - 1, index));
@@ -128,7 +146,7 @@ export function ChannelList({
         break;
       case 'Enter': {
         const channel = cache.get(active);
-        if (channel) onPlay(channel);
+        if (channel) onPlay(channel, active);
         break;
       }
       case 'f':
@@ -153,7 +171,7 @@ export function ChannelList({
     setActive(index);
     if (!channel) return;
     if (target.closest('[data-action="favorite"]')) onToggleFavorite(channel);
-    else onPlay(channel);
+    else onPlay(channel, index);
   };
 
   const activeRendered = rows.some((r) => r.index === active);

@@ -38,5 +38,31 @@ export const live = {
   },
   player: {
     idle: 'Selecione um canal para o ver aqui.',
+    region: (name: string) => `Leitor: ${name}`,
+    watching: (name: string) => `A ver ${name}`,
+    loading: (name: string) => `A carregar ${name}…`,
+    channels: 'Canais',
+    closeChannels: 'Fechar a lista de canais',
+    unsupported: {
+      title: 'Este canal usa DRM / DASH, que esta aplicação não suporta',
+      message: 'Emissões protegidas (DRM) e DASH não podem ser reproduzidas nesta aplicação.',
+    },
+    credentials: {
+      title: 'Volte a introduzir a palavra-passe desta lista',
+      message:
+        'A palavra-passe guardada já não pode ser lida neste dispositivo. Introduza-a novamente em As minhas listas para ver esta lista.',
+      action: 'As minhas listas',
+    },
+    unavailable: {
+      title: 'Não é possível reproduzir este canal',
+      message:
+        'A lista não tem um endereço de emissão válido para este canal. Experimente sincronizar a lista.',
+    },
+    resolveError: {
+      title: 'Não foi possível iniciar este canal',
+      message: 'Tente novamente dentro de momentos.',
+    },
+    restricted:
+      'O fornecedor restringe a reprodução à sua própria aplicação/site: exige cabeçalhos (como Referer ou User-Agent) que os browsers não conseguem enviar.',
   },
 } satisfies MessageShape<typeof base>;

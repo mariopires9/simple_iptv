@@ -7,6 +7,7 @@ import Chip from '@mui/material/Chip';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { t } from '@/i18n';
 import { categoryPath, type LiveCategory } from './categories';
@@ -15,9 +16,21 @@ export interface CategoryNavProps {
   categories: readonly LiveCategory[];
   selectedId: string;
   variant: 'chips' | 'list';
+  /** Query string kept on the category links (e.g. `?channel=…`, so the channel keeps playing). */
+  search?: string;
 }
 
-export function CategoryNav({ categories, selectedId, variant }: CategoryNavProps) {
+export function CategoryNav({ categories, selectedId, variant, search = '' }: CategoryNavProps) {
+  const selectedChip = useRef<HTMLAnchorElement>(null);
+  // Mobile: keep the selected chip visible in the horizontal strip (deep links, Back).
+  useEffect(() => {
+    const chip = selectedChip.current;
+    // jsdom (and very old engines) have no scrollIntoView.
+    if (variant === 'chips' && chip && typeof chip.scrollIntoView === 'function') {
+      chip.scrollIntoView({ inline: 'center', block: 'nearest' });
+    }
+  }, [variant, selectedId]);
+
   if (variant === 'chips') {
     return (
       <Box
@@ -34,8 +47,9 @@ export function CategoryNav({ categories, selectedId, variant }: CategoryNavProp
             return (
               <li key={c.id}>
                 <Chip
+                  ref={selected ? selectedChip : undefined}
                   component={Link}
-                  to={categoryPath(c.id)}
+                  to={{ pathname: categoryPath(c.id), search }}
                   clickable
                   label={c.name}
                   icon={c.kind === 'favorites' ? <StarRounded aria-hidden /> : undefined}
@@ -64,7 +78,7 @@ export function CategoryNav({ categories, selectedId, variant }: CategoryNavProp
             <li key={c.id}>
               <ListItemButton
                 component={Link}
-                to={categoryPath(c.id)}
+                to={{ pathname: categoryPath(c.id), search }}
                 selected={selected}
                 aria-current={selected ? 'page' : undefined}
                 sx={{ minHeight: 44 }}

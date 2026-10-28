@@ -13,7 +13,7 @@ function fakePager(total: number) {
       ),
     ),
   );
-  const pager: ChannelPager = { total, load };
+  const pager: ChannelPager = { total, load, locate: () => Promise.resolve(-1) };
   return { pager, load };
 }
 
@@ -53,6 +53,41 @@ describe('PageCache', () => {
     expect(cache.get(0)).toBeUndefined();
   });
 
+  it('never evicts the pinned page of the active row, so it is read only once', async () => {
+    // Active row 0, then the viewport scrolls 2 000 rows away (and further) page by page,
+    // exactly as ChannelList calls it: the active row first, then the viewport.
+    const { pager, load } = fakePager(10_000);
+    const cache = new PageCache(pager, 100, 3);
+    cache.subscribe(() => {});
+    for (let row = 0; row <= 2_000; row += 100) {
+      cache.pin(0);
+      cache.ensure(0, 0);
+      cache.ensure(row, row + 50);
+      await flush();
+    }
+    expect(load.mock.calls.filter(([offset]) => offset === 0)).toHaveLength(1);
+    expect(cache.get(0)?.name).toBe('Channel 0');
+    expect(cache.get(2_000)?.name).toBe('Channel 2000');
+    expect(cache.cachedPages).toBe(3);
+
+    // Unpinned, it is evicted like any other page.
+    cache.pin(undefined);
+    cache.ensure(5_000, 5_000);
+    await flush();
+    expect(cache.get(0)).toBeUndefined();
+  });
+
+  it('indexOf finds a channel among the cached pages only', async () => {
+    const { pager } = fakePager(1000);
+    const cache = new PageCache(pager, 100, 4);
+    cache.subscribe(() => {});
+    expect(cache.indexOf('s:live:250')).toBe(-1);
+    cache.ensure(250, 250);
+    await flush();
+    expect(cache.indexOf('s:live:250')).toBe(250);
+    expect(cache.indexOf('s:live:999')).toBe(-1);
+  });
+
   it('clamps to the total and ignores an empty pager', () => {
     const { pager, load } = fakePager(150);
     const cache = new PageCache(pager, 100, 3);
@@ -77,7 +112,11 @@ describe('PageCache', () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(cache.get(0)).toBeUndefined();
 
-    const failing = new PageCache({ total: 10, load: () => Promise.reject(new Error('boom')) });
+    const failing = new PageCache({
+      total: 10,
+      load: () => Promise.reject(new Error('boom')),
+      locate: () => Promise.resolve(-1),
+    });
     const onError = vi.fn();
     failing.subscribe(() => {}, onError);
     failing.ensure(0, 5);

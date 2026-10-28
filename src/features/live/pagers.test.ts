@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   catalogRepo,
   categoryKey,
@@ -11,7 +11,7 @@ import {
   type Category,
 } from '@/core/db';
 import { buildCategories, VIRTUAL_CATEGORY_IDS } from './categories';
-import { concatPager, createPager } from './pagers';
+import { clearCountCache, concatPager, createPager } from './pagers';
 
 const S = 'src';
 const cat = (id: string) => categoryKey(S, 'live', id);
@@ -45,6 +45,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  clearCountCache();
   await wipeAll();
 });
 
@@ -105,6 +107,54 @@ describe('createPager', () => {
 
   it('"All" counts every categorised channel', async () => {
     expect((await pagerFor(VIRTUAL_CATEGORY_IDS.all)).total).toBe(7);
+  });
+
+  it('"All" memoises the category counts per source sync, recounting after a new sync', async () => {
+    const list = await categories();
+    const all = list.find((c) => c.kind === 'all');
+    if (!all) throw new Error('no All');
+    const keys = list.flatMap((c) => (c.kind === 'source' ? [c.key] : []));
+    const spy = vi.spyOn(catalogRepo, 'countByCategory');
+    expect((await createPager(all, S, keys, 100)).total).toBe(7);
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect((await createPager(all, S, keys, 100)).total).toBe(7);
+    expect(spy).toHaveBeenCalledTimes(3);
+    // A sync moved `lastSyncAt`: counted again.
+    expect((await createPager(all, S, keys, 200)).total).toBe(7);
+    expect(spy).toHaveBeenCalledTimes(6);
+  });
+
+  it('"All" does not memoise a failed count', async () => {
+    const list = await categories();
+    const all = list.find((c) => c.kind === 'all');
+    if (!all) throw new Error('no All');
+    const keys = list.flatMap((c) => (c.kind === 'source' ? [c.key] : []));
+    vi.spyOn(catalogRepo, 'countByCategory').mockRejectedValueOnce(new Error('boom'));
+    await expect(createPager(all, S, keys, 1)).rejects.toThrow('boom');
+    expect((await createPager(all, S, keys, 1)).total).toBe(7);
+  });
+
+  it('locate finds a channel by binary search in a category and in "All"', async () => {
+    const list = await categories();
+    const keys = list.flatMap((c) => (c.kind === 'source' ? [c.key] : []));
+    const byId = (id: string) => list.find((c) => c.id === id);
+    const items = await catalogRepo.getMany('live', [1, 2, 3, 4, 5, 6, 7].map(key));
+    const c = byId('c');
+    const all = byId(VIRTUAL_CATEGORY_IDS.all);
+    if (!c || !all) throw new Error('categories');
+    const pagerC = await createPager(c, S, keys);
+    const pagerAll = await createPager(all, S, keys);
+    // C = c2, c4, c5, c7; All = a1, a3, a6, c2, c4, c5, c7.
+    expect(items).toHaveLength(7);
+    for (const item of items) {
+      const inC = ['c2', 'c4', 'c5', 'c7'].indexOf(item.name);
+      expect(await pagerC.locate(item)).toBe(inC);
+      expect(await pagerAll.locate(item)).toBe(
+        ['a1', 'a3', 'a6', 'c2', 'c4', 'c5', 'c7'].indexOf(item.name),
+      );
+    }
+    const ghost = { ...items[0], key: key(99), order: 99 } as (typeof items)[number];
+    expect(await pagerAll.locate(ghost)).toBe(-1);
   });
 
   it('"Favorites" lists favourite channels, most recent first, skipping removed ones', async () => {
