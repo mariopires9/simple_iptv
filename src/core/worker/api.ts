@@ -54,11 +54,14 @@ function createProgressSender(
   let pending: TaskProgress | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  // Last message handed to the client; `flush` waits for it so it is not overtaken by `run`'s response.
+  let inflight: Promise<void> = Promise.resolve();
+
   const send = (p: TaskProgress) => {
     last = Date.now();
     pending = undefined;
     // Intermediate messages are "fire and forget": a failing callback does not interrupt the task.
-    void Promise.resolve(cb?.(p)).catch(() => undefined);
+    inflight = Promise.resolve(cb?.(p)).catch(() => undefined);
   };
 
   return {
@@ -82,19 +85,18 @@ function createProgressSender(
     },
     /**
      * Delivers the last pending progress and waits (at most `flushTimeoutMs`) for the client to
-     * process it: the callback uses another channel and, without this wait, the final progress
+     * process the last message sent — pending or already in flight: the callback uses another channel and, without this wait, the final progress
      * could arrive after the response of `run`. The limit guarantees that `run` responds even if
      * the client has already closed the channel.
      */
     async flush() {
       if (timer !== undefined) clearTimeout(timer);
       timer = undefined;
-      const p = pending;
-      pending = undefined;
-      if (!cb || !p) return;
+      if (!cb) return;
+      if (pending) send(pending);
       let timeout: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([
-        Promise.resolve(cb(p)).catch(() => undefined),
+        inflight,
         new Promise<void>((resolve) => {
           timeout = setTimeout(resolve, flushTimeoutMs);
         }),

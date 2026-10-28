@@ -103,6 +103,26 @@ describe('data worker — progress (AC1)', () => {
   });
 });
 
+describe('data worker — final progress already in flight (CI regression)', () => {
+  it('delivers a progress message sent immediately before the task returns', async () => {
+    // The first update is never throttled, so it is sent "fire and forget"; `flush` must still wait
+    // for it, otherwise `run` can answer first and the client drops the late update.
+    const api = connect({
+      tasks: {
+        once: async (_input: unknown, ctx) => {
+          ctx.progress({ phase: 'once', done: 1 });
+          return 'ok';
+        },
+      },
+    });
+    for (let i = 0; i < 25; i++) {
+      const seen: TaskProgress[] = [];
+      await runTaskOn(api, 'once' as TaskName, { steps: 0 }, { onProgress: (p) => seen.push(p) });
+      expect(seen).toEqual([{ phase: 'once', done: 1 }]);
+    }
+  });
+});
+
 describe('data worker — cancellation (AC1)', () => {
   it('aborting the AbortSignal cancels the task with kind "cancelled"', async () => {
     const api = connect();
