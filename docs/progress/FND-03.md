@@ -1,6 +1,6 @@
 # FND-03 — Design tokens, theme and AppShell
 
-**Status:** Done (2026-10-28) · agent `implementer` (worktree) · review: `/code-review` · visual checkpoint: pending owner feedback
+**Status:** Done (2026-10-28) · agent `implementer` (worktree) · review: `/code-review` · visual checkpoint: approved by the owner (2026-10-28)
 
 ## Delivered
 - `src/ui/theme`: tokens (both palettes, typography, radii, motion, breakpoints), `createAppTheme` (no shadows, ripple off, 44 px targets, visible focus ring, reduced motion), `ThemeModeProvider` (System/Dark/Light persisted in IndexedDB, mirrored to localStorage to avoid a flash on cold start), WCAG contrast helpers.
