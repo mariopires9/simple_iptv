@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { HtmlTagDescriptor, IndexHtmlTransformHook } from 'vite';
-import { CONTENT_SECURITY_POLICY, CSP_DIRECTIVES, cspPlugin } from '../../build/csp';
+import { CONTENT_SECURITY_POLICY, CSP_DIRECTIVES, cspPlugin } from '../../build/csp.ts';
 
 // SEC-01 AC1 + AC5.
 const indexHtml = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');

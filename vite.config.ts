@@ -2,7 +2,7 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { cspPlugin } from './build/csp';
+import { cspPlugin } from './build/csp.ts';
 
 // GitHub Pages serves the app under /<repo>/ — set in the deploy workflow (ADR-007).
 const base = process.env.VITE_BASE ?? '/';

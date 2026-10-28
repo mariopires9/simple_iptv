@@ -32,10 +32,6 @@ describe('parseExternalUrl — accepted', () => {
       'http://iptv.example.test/get.php?username=u&password=p&type=m3u_plus',
       'http://iptv.example.test/get.php?username=u&password=p&type=m3u_plus',
     ],
-    [
-      'http://jdoe:abc123@iptv.example.test/list.m3u',
-      'http://jdoe:abc123@iptv.example.test/list.m3u',
-    ],
     ['https://iptv.example.test/a b.png', 'https://iptv.example.test/a%20b.png'],
     ['https://iptv.example.test/#frag', 'https://iptv.example.test/#frag'],
   ])('%j → %s', (input, href) => {
@@ -87,6 +83,11 @@ describe('parseExternalUrl — rejected', () => {
     ['http://[2001:db8::zz]/', 'invalid'],
     ['http://exa mple.test/', 'invalid'],
     ['<img src=x onerror=alert(1)>', 'invalid'],
+    ['http://jdoe:abc123@iptv.example.test/list.m3u', 'credentials'],
+    ['http://jdoe@iptv.example.test/list.m3u', 'credentials'],
+    ['http://:abc123@iptv.example.test/list.m3u', 'credentials'],
+    ['https://trusted.example.test@evil.example.test/', 'credentials'],
+    ['HTTPS://JDOE:ABC123@IPTV.EXAMPLE.TEST/', 'credentials'],
     [`https://iptv.example.test/${'a'.repeat(MAX_EXTERNAL_URL_LENGTH)}`, 'too-long'],
     // Fits as input, but percent-encoding pushes the normalized href over the limit.
     [`https://iptv.example.test/${' '.repeat(MAX_EXTERNAL_URL_LENGTH - 100)}x`, 'too-long'],
@@ -108,11 +109,28 @@ describe('parseExternalUrl — rejected', () => {
     expect(parseExternalUrl(input, 'stream').ok).toBe(true);
   });
 
-  it('accepts userinfo for server purposes but not for links', () => {
-    const input = 'https://trusted.example.test@evil.example.test/';
-    expect(parseExternalUrl(input, 'source').ok).toBe(true);
-    expect(parseExternalUrl(input, 'stream').ok).toBe(true);
-    expect(parseExternalUrl(input, 'link')).toEqual({ ok: false, reason: 'invalid' });
+  it.each(PURPOSES)('rejects userinfo as credentials for purpose %s', (purpose) => {
+    expect(parseExternalUrl('http://jdoe:abc123@iptv.example.test/', purpose)).toEqual({
+      ok: false,
+      reason: 'credentials',
+    });
+  });
+
+  it('trims before checking the length', () => {
+    const prefix = 'https://iptv.example.test/';
+    const url = prefix + 'a'.repeat(MAX_EXTERNAL_URL_LENGTH - prefix.length);
+    const padded = `${' '.repeat(100)}${url}${'\n'.repeat(100)}`;
+    expect(padded.length).toBeGreaterThan(MAX_EXTERNAL_URL_LENGTH);
+    expect(parseExternalUrl(padded, 'source').ok).toBe(true);
+    expect(parseExternalUrl(`  ${url}a  `, 'source')).toEqual({ ok: false, reason: 'too-long' });
+  });
+
+  it('rejects pathological raw input (> 4x the limit) even if it trims to a valid URL', () => {
+    const input = ' '.repeat(4 * MAX_EXTERNAL_URL_LENGTH) + 'https://iptv.example.test/';
+    expect(parseExternalUrl(input, 'source')).toEqual({ ok: false, reason: 'too-long' });
+    const justUnder = ' '.repeat(4 * MAX_EXTERNAL_URL_LENGTH - 30) + 'https://iptv.example.test/';
+    expect(justUnder.length).toBeLessThanOrEqual(4 * MAX_EXTERNAL_URL_LENGTH);
+    expect(parseExternalUrl(justUnder, 'source').ok).toBe(true);
   });
 });
 
@@ -132,6 +150,22 @@ describe('displayUrl', () => {
     ['https://iptv.example.test:443/', 'https://iptv.example.test'],
     ['http://[2001:db8::1]:8000/epg.xml', 'http://[2001:db8::1]:8000/epg.xml'],
     ['https://exämple.test/x', 'https://xn--exmple-cua.test/x'],
+    // Xtream credential paths are masked by the log redactor.
+    [
+      'http://iptv.example.test:8080/live/jdoe/abc123/1.ts',
+      'http://iptv.example.test:8080/live/***/***/1.ts',
+    ],
+    [
+      'http://iptv.example.test/movie/jdoe/abc123/7.mp4',
+      'http://iptv.example.test/movie/***/***/7.mp4',
+    ],
+    [
+      'http://iptv.example.test/series/jdoe/abc123/9.mkv',
+      'http://iptv.example.test/series/***/***/9.mkv',
+    ],
+    ['http://iptv.example.test/jdoe/abc123/123.ts', 'http://iptv.example.test/***/***/123.ts'],
+    ['http://iptv.example.test/jdoe/abc123/123', 'http://iptv.example.test/***/***/123'],
+    ['http://iptv.example.test/logos/a/b.png', 'http://iptv.example.test/logos/a/b.png'],
   ])('%s → %s', (input, expected) => {
     expect(show(input)).toBe(expected);
   });
@@ -143,6 +177,16 @@ describe('displayUrl', () => {
     expect(text).not.toContain('@');
     expect(text).not.toContain('?');
     expect(text).not.toContain('#');
+  });
+
+  it.each([
+    'http://iptv.example.test/live/jdoe/abc123/1.ts',
+    'http://iptv.example.test/jdoe/abc123/123.ts',
+    'http://iptv.example.test:8080/timeshift/jdoe/abc123/60/2026-01-01:10-00/5.ts',
+  ])('never contains Xtream path credentials: %s', (input) => {
+    const text = show(input);
+    expect(text).not.toContain('jdoe');
+    expect(text).not.toContain('abc123');
   });
 });
 
