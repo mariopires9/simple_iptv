@@ -16,8 +16,10 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         // Long-lived vendor chunks for libraries every page needs, so an app update does not
-        // re-download them. Only list eagerly used libraries: a catch-all `node_modules` group
-        // would pull lazily loaded ones (hls.js, mpegts.js, Dexie) into the initial load.
+        // re-download them. A group captures every matching module, including ones only lazy
+        // screens use, so only list libraries that are entirely needed at startup: no catch-all
+        // `node_modules` group (would pull hls.js, mpegts.js, Dexie in) and no `@mui` group (would
+        // pull every MUI component used by any lazy screen into the initial load).
         codeSplitting: {
           groups: [
             {
@@ -26,7 +28,6 @@ export default defineConfig({
               priority: 3,
             },
             { name: 'router', test: /node_modules[\\/]react-router[\\/]/, priority: 2 },
-            { name: 'mui', test: /node_modules[\\/](@mui|@emotion|@popperjs)[\\/]/, priority: 1 },
           ],
         },
       },
