@@ -31,13 +31,7 @@ export const routes = {
     message: 'A página que procura não existe.',
   },
   error: {
-    title: 'Algo correu mal',
     message: 'Não foi possível mostrar este ecrã. Tente novamente ou volte ao Início.',
-    retry: 'Tentar novamente',
   },
   goHome: 'Ir para o Início',
-  dbUnavailable: {
-    title: 'Armazenamento indisponível',
-    reload: 'Recarregar',
-  },
 } satisfies MessageShape<typeof base>;

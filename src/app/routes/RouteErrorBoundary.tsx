@@ -22,7 +22,7 @@ export function RouteErrorBoundary() {
     <StateView
       variant="error"
       headingLevel={1}
-      title={t.routes.error.title}
+      title={t.state.errors.unknown.title}
       message={t.routes.error.message}
       actions={
         <>
@@ -36,7 +36,7 @@ export function RouteErrorBoundary() {
               else void navigate({ pathname, search, hash }, { replace: true });
             }}
           >
-            {t.routes.error.retry}
+            {t.state.actions.retry}
           </Button>
           <Button variant="outlined" component={Link} to="/">
             {t.routes.goHome}

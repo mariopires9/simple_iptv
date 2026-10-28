@@ -7,7 +7,6 @@ export const state = {
   cancel: 'Cancelar',
   cancelling: 'A cancelar…',
   dismiss: 'Fechar',
-  notifications: 'Notificações',
   progress: {
     count: (count: string) => `${count} processados`,
     countOf: (count: string, total: string) => `${count} de ${total}`,
@@ -16,9 +15,10 @@ export const state = {
     retry: 'Tentar novamente',
     reload: 'Recarregar',
     'edit-source': 'Editar lista',
-    'reenter-credentials': 'Introduzir a palavra-passe novamente',
+    'reenter-credentials': 'Reintroduzir a palavra-passe',
   },
   errors: {
+    cancelled: { title: 'Cancelado', message: 'A operação foi cancelada.' },
     net: {
       offline: {
         title: 'Está sem ligação',
@@ -27,10 +27,6 @@ export const state = {
       timeout: {
         title: 'O servidor demorou demasiado',
         message: 'O servidor não respondeu a tempo. Tente novamente daqui a pouco.',
-      },
-      aborted: {
-        title: 'Pedido cancelado',
-        message: 'O pedido foi cancelado antes de terminar.',
       },
       blocked: {
         title: 'Pedido bloqueado pelo browser',
@@ -65,7 +61,6 @@ export const state = {
       },
     },
     worker: {
-      cancelled: { title: 'Cancelado', message: 'A operação foi cancelada.' },
       failed: {
         title: 'O processamento falhou',
         message: 'Não foi possível processar os dados. Tente novamente.',

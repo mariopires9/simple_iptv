@@ -1,5 +1,5 @@
-// Routing (FND-04): screen titles and placeholder texts, not-found, the route error boundary and
-// the "storage unavailable" start-up screen.
+// Routing (FND-04): screen titles and placeholder texts, not-found and the route error boundary
+// message. Generic titles and action labels (retry, reload) live in `state` (UX-02).
 export const routes = {
   screens: {
     home: {
@@ -28,13 +28,7 @@ export const routes = {
     message: 'The page you are looking for does not exist.',
   },
   error: {
-    title: 'Something went wrong',
     message: 'This screen could not be displayed. Try again or go back to Home.',
-    retry: 'Try again',
   },
   goHome: 'Go to Home',
-  dbUnavailable: {
-    title: 'Storage unavailable',
-    reload: 'Reload',
-  },
 };

@@ -5,15 +5,7 @@
 import Button from '@mui/material/Button';
 import Snackbar, { type SnackbarCloseReason } from '@mui/material/Snackbar';
 import Box from '@mui/material/Box';
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { t } from '@/i18n';
 import { visuallyHidden } from './visuallyHidden';
 
@@ -59,34 +51,44 @@ function durationOf(toast: QueuedToast): number | null {
   return toast.action ? TOAST_WITH_ACTION_DURATION_MS : TOAST_DURATION_MS;
 }
 
+interface ToastState {
+  queue: readonly QueuedToast[];
+  /** Id of the visible toast once dismissed: it is leaving, the queue shifts on exit. */
+  closedId: number | null;
+}
+
+/** Marks the head as leaving; dismissing an id that is not the head drops it from the queue. */
+function dismissIn(state: ToastState, id?: number): ToastState {
+  const head = state.queue[0];
+  if (head === undefined) return state;
+  if (id === undefined || id === head.id) {
+    return state.closedId === head.id ? state : { ...state, closedId: head.id };
+  }
+  const queue = state.queue.filter((toast) => toast.id !== id);
+  return queue.length === state.queue.length ? state : { ...state, queue };
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [queue, setQueue] = useState<readonly QueuedToast[]>([]);
-  /** Id of the visible toast once it was dismissed (it is leaving; the queue shifts on exit). */
-  const [closedId, setClosedId] = useState<number | null>(null);
+  const [state, setState] = useState<ToastState>({ queue: [], closedId: null });
   const nextId = useRef(1);
-  const current = queue[0];
-  const open = current !== undefined && current.id !== closedId;
+  const current = state.queue[0];
+  const open = current !== undefined && current.id !== state.closedId;
 
-  const show = useCallback((options: ToastOptions) => {
-    const id = nextId.current++;
-    setQueue((q) => [...q, { ...options, id }]);
-    return id;
-  }, []);
-
-  const dismiss = useCallback(
-    (id?: number) => {
-      if (current === undefined) return;
-      if (id === undefined || id === current.id) setClosedId(current.id);
-      else setQueue((q) => q.filter((toast) => toast.id !== id));
-    },
-    [current],
+  // Stable for the provider's lifetime: consumers may keep the API in effects and callbacks;
+  // every operation reads the latest queue through functional updates.
+  const api = useMemo<ToastApi>(
+    () => ({
+      show: (options) => {
+        const id = nextId.current++;
+        setState((s) => ({ ...s, queue: [...s.queue, { ...options, id }] }));
+        return id;
+      },
+      dismiss: (id) => setState((s) => dismissIn(s, id)),
+    }),
+    [],
   );
 
-  const api = useMemo<ToastApi>(() => ({ show, dismiss }), [show, dismiss]);
-
-  const close = () => {
-    if (current) setClosedId(current.id);
-  };
+  const close = () => api.dismiss();
 
   const handleClose = (_event: unknown, reason?: SnackbarCloseReason) => {
     // A click elsewhere must not swallow the message before it was read.
@@ -94,9 +96,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     close();
   };
 
-  // After the exit transition the next toast (if any) comes in.
+  // The head leaves the queue only once its exit transition has finished; then the next toast
+  // (if any) comes in.
   const handleExited = () => {
-    setQueue((q) => (q[0] !== undefined && q[0].id === closedId ? q.slice(1) : q));
+    setState((s) =>
+      s.queue[0] !== undefined && s.queue[0].id === s.closedId
+        ? { queue: s.queue.slice(1), closedId: null }
+        : s,
+    );
   };
 
   const isError = current?.severity === 'error';

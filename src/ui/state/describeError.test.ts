@@ -22,7 +22,8 @@ function expectedNet(kind: NetErrorKind, hint: NetErrorHint | undefined) {
   if (kind === 'blocked' && hint === 'mixed-content')
     return ['net.blocked.mixed-content', 'edit-source', 'error'];
   if (kind === 'offline') return ['net.offline', 'retry', 'offline'];
-  if (kind === 'auth') return ['net.auth', 'edit-source', 'error'];
+  if (kind === 'auth') return ['net.auth', 'reenter-credentials', 'error'];
+  if (kind === 'aborted') return ['net.aborted', 'none', 'empty'];
   return [`net.${kind}`, 'retry', 'error'];
 }
 
@@ -42,7 +43,12 @@ describe('describeError — NetError (every kind × hint)', () => {
     expect(d.variant).toBe(variant);
     expect(d.title.length).toBeGreaterThan(0);
     expect(d.message.length).toBeGreaterThan(0);
-    expect(d.actionLabel).toBe(en.state.actions[action as 'retry' | 'edit-source']);
+    expect(d.cancelled).toBe(kind === 'aborted');
+    expect(d.actionLabel).toBe(
+      action === 'none'
+        ? undefined
+        : en.state.actions[action as 'retry' | 'edit-source' | 'reenter-credentials'],
+    );
     expect(d.details).toContain('NetError');
     expect(d.details).not.toMatch(/example\.test|username=u|password=p/);
   });
@@ -69,16 +75,46 @@ describe('describeError — NetError (every kind × hint)', () => {
     expect(hinted.code).toBe(plain.code);
     expect(hinted.message).toBe(plain.message);
   });
+
+  it('auth suggests re-entering the password', () => {
+    const d = describeError(new NetError({ kind: 'auth', status: 401 }), en);
+    expect(d.actionLabel).toBe('Re-enter password');
+    expect(describeError(new NetError({ kind: 'auth' }), pt).actionLabel).toBe(
+      pt.state.actions['reenter-credentials'],
+    );
+  });
 });
 
-describe('describeError — WorkerTaskError', () => {
+// Review finding 3: a cancellation is not a failure.
+describe('describeError — cancellations are neutral', () => {
   it.each([
-    ['cancelled', 'worker.cancelled', 'none', undefined],
-    ['failed', 'worker.failed', 'retry', 'Try again'],
-  ] as const)('%s', (kind, code, action, label) => {
-    const d = describeError(new WorkerTaskError(kind), en);
-    expect(d).toMatchObject({ code, action, actionLabel: label, variant: 'error' });
-    expect(d.title).toBe(en.state.errors.worker[kind].title);
+    ['NetError aborted', new NetError({ kind: 'aborted' }), 'net.aborted'],
+    ['WorkerTaskError cancelled', new WorkerTaskError('cancelled'), 'worker.cancelled'],
+  ])('%s', (_label, error, code) => {
+    const d = describeError(error, en);
+    expect(d).toMatchObject({
+      code,
+      cancelled: true,
+      variant: 'empty',
+      action: 'none',
+      actionLabel: undefined,
+      title: en.state.errors.cancelled.title,
+      message: en.state.errors.cancelled.message,
+    });
+  });
+});
+
+describe('describeError — WorkerTaskError failed', () => {
+  it('failed → retry', () => {
+    const d = describeError(new WorkerTaskError('failed'), en);
+    expect(d).toMatchObject({
+      code: 'worker.failed',
+      action: 'retry',
+      actionLabel: 'Try again',
+      variant: 'error',
+      cancelled: false,
+      title: en.state.errors.worker.failed.title,
+    });
     expect(d.details).toContain('WorkerTaskError');
   });
 });
@@ -169,9 +205,30 @@ describe('describeError — details', () => {
     expect(details).not.toMatch(/\bat\s|secretFunction|file\.ts/);
   });
 
-  it('drops stack-frame-looking lines embedded in a message', () => {
-    const error = new Error('first line\n    at fn (x.js:1:1)\nfn@http://h/x.js:1:1\nlast line');
-    expect(describeError(error, en).details).toBe('Error: first line\nlast line');
+  // Review finding 6: messages are kept whole (only `stack`, which is never read, holds frames).
+  it('keeps every line of the message, even ones that start with "at"', () => {
+    const error = new Error('Invalid M3U\nat least one #EXTINF entry is required');
+    expect(describeError(error, en).details).toBe(
+      'Error: Invalid M3U\nat least one #EXTINF entry is required',
+    );
+  });
+
+  // Review finding 5.
+  it('stops at a null or undefined cause', () => {
+    expect(errorDetails(new Error('outer', { cause: null }))).toBe('Error: outer');
+    expect(errorDetails(new Error('outer', { cause: undefined }))).toBe('Error: outer');
+  });
+
+  it('uses the string message of a thrown plain object (redacted), never other fields', () => {
+    registerSecret('obj-secret');
+    expect(errorDetails({ message: 'failed for obj-secret', password: 'pw-123' })).toBe(
+      'failed for ***',
+    );
+    expect(errorDetails(new Error('outer', { cause: { message: 'inner obj' } }))).toBe(
+      'Error: outer\nCaused by: inner obj',
+    );
+    expect(errorDetails({ message: 42 })).toBe('Thrown object');
+    expect(errorDetails(null)).toBe('Thrown null');
   });
 
   it('follows the cause chain up to 3 levels and redacts every level', () => {
@@ -192,6 +249,7 @@ describe('describeError — details', () => {
 
   it('describes non-Error values without serialising them', () => {
     expect(errorDetails({ password: 'x' })).toBe('Thrown object');
+    expect(errorDetails(42)).toBe('Thrown number');
     expect(errorDetails('plain text')).toBe('plain text');
   });
 

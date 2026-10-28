@@ -48,7 +48,7 @@ export function StateView({
   const isError = variant === 'error';
   return (
     <Box
-      role={isError ? 'alert' : 'status'}
+      component="section"
       aria-labelledby={titleId}
       data-variant={variant}
       sx={{ maxWidth: 560, mx: 'auto', py: 6, px: 2, textAlign: 'center' }}
@@ -57,10 +57,14 @@ export function StateView({
         aria-hidden
         sx={{ fontSize: 48, mb: 2, color: isError ? 'error.main' : 'text.secondary' }}
       />
-      <Typography id={titleId} variant={`h${headingLevel}`} gutterBottom>
-        {title}
-      </Typography>
-      {message !== undefined && <Typography color="text.secondary">{message}</Typography>}
+      {/* Only the title and message form the live region: actions and details are not
+          announced as part of the alert/status. */}
+      <Box role={isError ? 'alert' : 'status'}>
+        <Typography id={titleId} variant={`h${headingLevel}`} gutterBottom>
+          {title}
+        </Typography>
+        {message !== undefined && <Typography color="text.secondary">{message}</Typography>}
+      </Box>
       {actions && (
         <Stack
           direction="row"

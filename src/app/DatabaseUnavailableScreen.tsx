@@ -59,11 +59,13 @@ export function DatabaseUnavailableScreen({ reason }: { reason: DatabaseUnavaila
       <StateView
         variant="error"
         headingLevel={1}
-        title={t.routes.dbUnavailable.title}
+        // Same texts as `describeError` gives a DatabaseUnavailableError (only the reason is
+        // known here: the error object stays in the lazily loaded check).
+        title={t.state.errors.db.title}
         message={t.db.errors[reason]}
         actions={
           <Button variant="contained" onClick={() => window.location.reload()}>
-            {t.routes.dbUnavailable.reload}
+            {t.state.actions.reload}
           </Button>
         }
       />

@@ -4,7 +4,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { detectLocale, t } from '@/i18n';
 import { visuallyHidden } from './visuallyHidden';
 
@@ -25,6 +25,12 @@ const numberFormat = new Intl.NumberFormat(detectLocale());
 
 export function ProgressPanel({ phase, count, total, onCancel, cancelling }: ProgressPanelProps) {
   const phaseId = useId();
+  const liveRef = useRef<HTMLDivElement>(null);
+  // The live region is mounted empty and only then filled (a region inserted together with its
+  // text is not reliably announced); React renders no children into it.
+  useEffect(() => {
+    if (liveRef.current) liveRef.current.textContent = phase;
+  }, [phase]);
   const determinate = count !== undefined && total !== undefined && total > 0;
   const percent = determinate ? Math.min(100, Math.max(0, (count / total) * 100)) : undefined;
   let countText: string | undefined;
@@ -38,11 +44,11 @@ export function ProgressPanel({ phase, count, total, onCancel, cancelling }: Pro
       aria-labelledby={phaseId}
       sx={{ p: 2, borderRadius: 2, bgcolor: 'background.paper' }}
     >
-      {/* Only the phase is announced: the count changes too often for a live region. */}
-      <Box role="status" sx={visuallyHidden}>
-        {phase}
-      </Box>
-      <Typography id={phaseId} variant="body1" sx={{ fontWeight: 600 }}>
+      {/* Only the phase is announced: the count changes too often for a live region. The
+          visible label is hidden from assistive technology so the phase is exposed once; it
+          still names the group and the bar (aria-labelledby reads hidden elements). */}
+      <Box ref={liveRef} role="status" sx={visuallyHidden} data-testid="progress-live" />
+      <Typography id={phaseId} aria-hidden="true" variant="body1" sx={{ fontWeight: 600 }}>
         {phase}
       </Typography>
       <LinearProgress

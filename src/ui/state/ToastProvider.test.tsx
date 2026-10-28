@@ -13,8 +13,11 @@ import {
 } from './ToastProvider';
 
 let api: ToastApi;
+/** Every API value the consumer effect saw (the effect re-runs only when the identity changes). */
+let seen: ToastApi[] = [];
 const setApi = (value: ToastApi) => {
   api = value;
+  seen.push(value);
 };
 
 function Capture() {
@@ -24,9 +27,10 @@ function Capture() {
 }
 
 // Reduced motion: zero-length transitions, so the queue advances without animation delays.
-function renderToasts(children?: ReactNode) {
+function renderToasts(children?: ReactNode, reducedMotion = true) {
+  seen = [];
   return render(
-    <ThemeProvider theme={createAppTheme('dark', { reducedMotion: true })}>
+    <ThemeProvider theme={createAppTheme('dark', { reducedMotion })}>
       <ToastProvider>
         <Capture />
         {children}
@@ -166,6 +170,53 @@ describe('ToastProvider', () => {
     act(() => api.dismiss(queued));
     act(() => api.dismiss());
     await waitFor(() => expect(visibleToast()).toHaveTextContent('Last'));
+  });
+
+  // Review findings 1–2.
+  it('the API is stable: a consumer effect on it runs once while toasts come and go', async () => {
+    const user = userEvent.setup();
+    renderToasts();
+    act(() => {
+      api.show({ message: 'A' });
+      api.show({ message: 'B' });
+    });
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(visibleToast()).toHaveTextContent('B'));
+    act(() => api.dismiss());
+    await waitFor(() => expect(visibleToast()).toBeNull());
+    expect(seen).toHaveLength(1);
+  });
+
+  it('an API captured before the toast was shown still dismisses the current head', async () => {
+    renderToasts();
+    const early = api; // captured while the queue was empty
+    act(() => {
+      api.show({ message: 'First' });
+      api.show({ message: 'Second' });
+    });
+    act(() => early.dismiss());
+    await waitFor(() => expect(visibleToast()).toHaveTextContent('Second'));
+    let id = 0;
+    act(() => void (id = api.show({ message: 'Third' })));
+    act(() => early.dismiss(id)); // queued id, via the early API
+    act(() => early.dismiss());
+    await waitFor(() => expect(visibleToast()).toBeNull());
+    expect(screen.queryByText('Third')).toBeNull();
+  });
+
+  it('the dismissed head stays rendered during its exit transition, then leaves the queue', async () => {
+    renderToasts(undefined, false); // real (non-zero) transition durations
+    act(() => {
+      api.show({ message: 'Leaving' });
+      api.show({ message: 'Next' });
+    });
+    act(() => api.dismiss());
+    // Not announced any more, but still on screen while it animates out; "Next" waits.
+    expect(polite()).toBeEmptyDOMElement();
+    expect(visibleToast()).toHaveTextContent('Leaving');
+    expect(screen.queryByText('Next')).toBeNull();
+    await waitFor(() => expect(visibleToast()).toHaveTextContent('Next'));
+    expect(polite()).toHaveTextContent('Next');
   });
 
   it('useToast outside the provider throws', () => {

@@ -42,6 +42,34 @@ describe('ProgressPanel', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/^Loading movies…$/);
   });
 
+  // Review finding 7: one persistent region, mounted empty and then filled.
+  it('mounts the live region empty, fills it afterwards and keeps the same node', async () => {
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((list) => records.push(...list));
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const { rerender } = render(<ProgressPanel phase="Loading channels…" />);
+    const live = screen.getByTestId('progress-live');
+    rerender(<ProgressPanel phase="Loading movies…" />);
+    await Promise.resolve();
+    observer.disconnect();
+    // The phase text arrived as a separate mutation of the already-mounted region.
+    const fills = records.filter((r) => r.target === live && r.addedNodes.length > 0);
+    expect(fills.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId('progress-live')).toBe(live);
+    expect(live).toHaveTextContent(/^Loading movies…$/);
+  });
+
+  it('exposes the phase text once to assistive technology', () => {
+    render(<ProgressPanel phase="Loading series…" count={3} total={10} />);
+    const exposed = screen
+      .getAllByText('Loading series…')
+      .filter((el) => el.closest('[aria-hidden="true"]') === null);
+    expect(exposed).toEqual([screen.getByRole('status')]);
+    // The hidden visible label still names the group and the bar.
+    expect(screen.getByRole('group', { name: 'Loading series…' })).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Loading series…' })).toBeInTheDocument();
+  });
+
   it('cancel button: keyboard-reachable, calls onCancel; disabled while cancelling', async () => {
     const user = userEvent.setup();
     const onCancel = vi.fn();

@@ -6,7 +6,6 @@ export const state = {
   cancel: 'Cancel',
   cancelling: 'Cancelling…',
   dismiss: 'Close',
-  notifications: 'Notifications',
   progress: {
     /** Count of processed items when the total is unknown. Arguments are already formatted. */
     count: (count: string) => `${count} processed`,
@@ -17,9 +16,11 @@ export const state = {
     retry: 'Try again',
     reload: 'Reload',
     'edit-source': 'Edit list',
-    'reenter-credentials': 'Enter password again',
+    'reenter-credentials': 'Re-enter password',
   },
   errors: {
+    /** Neutral: a cancelled request or task is not a failure. */
+    cancelled: { title: 'Cancelled', message: 'The operation was cancelled.' },
     net: {
       offline: {
         title: 'You are offline',
@@ -28,10 +29,6 @@ export const state = {
       timeout: {
         title: 'The server took too long',
         message: 'The server did not respond in time. Try again in a moment.',
-      },
-      aborted: {
-        title: 'Request cancelled',
-        message: 'The request was cancelled before it finished.',
       },
       blocked: {
         title: 'Request blocked by the browser',
@@ -65,7 +62,6 @@ export const state = {
       },
     },
     worker: {
-      cancelled: { title: 'Cancelled', message: 'The operation was cancelled.' },
       failed: {
         title: 'Processing failed',
         message: 'The data could not be processed. Try again.',

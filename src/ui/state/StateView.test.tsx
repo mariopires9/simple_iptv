@@ -14,17 +14,38 @@ describe('StateView', () => {
     ['offline', 'status'],
     ['error', 'alert'],
   ] as const satisfies readonly (readonly [StateViewVariant, string])[])(
-    '%s → role="%s", labelled by its heading',
+    '%s → section landmark labelled by its heading; role="%s" on title + message only',
     (variant, role) => {
       render(<StateView variant={variant} title="The title" message="The message" />);
-      const region = screen.getByRole(role, { name: 'The title' });
-      expect(region).toHaveAttribute('data-variant', variant);
+      const section = screen.getByRole('region', { name: 'The title' });
+      expect(section.tagName).toBe('SECTION');
+      expect(section).toHaveAttribute('data-variant', variant);
+      expect(section).not.toHaveAttribute('role');
+      const live = screen.getByRole(role);
+      expect(section).toContainElement(live);
+      expect(live).toHaveTextContent(/^The titleThe message$/);
       expect(screen.getByRole('heading', { level: 2, name: 'The title' })).toBeInTheDocument();
-      expect(screen.getByText('The message')).toBeInTheDocument();
       // The icon is decorative.
-      expect(region.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(section.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     },
   );
+
+  // Review finding 8: actions and details are not announced as part of the alert.
+  it('keeps actions and details outside the live region', () => {
+    render(
+      <StateView
+        variant="error"
+        title="Failed"
+        message="It broke"
+        actions={<Button>Try again</Button>}
+        details="NetError: timeout"
+      />,
+    );
+    const live = screen.getByRole('alert');
+    expect(live).not.toContainElement(screen.getByRole('button', { name: 'Try again' }));
+    expect(live).not.toContainElement(screen.getByText('Details'));
+    expect(live).toHaveTextContent(/^FailedIt broke$/);
+  });
 
   it('error and non-error variants never share a role', () => {
     render(<StateView variant="error" title="Err" />);
