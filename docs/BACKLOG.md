@@ -25,7 +25,7 @@ Allowed statuses (exactly one per story):
 | UX-02 | State components | E11 | Must | 3 | FND-03 | 2 | M0 | Done |
 | SRC-01 | Credential vault | E1 | Must | 3 | FND-05, FND-06 | 2 | M1 | Done |
 | SRC-02 | Xtream client: auth/account | E1 | Must | 3 | FND-06 | 2 | M1 | Done |
-| SRC-04 | Streaming M3U parser | E1 | Must | 5 | FND-07 | 2 | M1 | Backlog |
+| SRC-04 | Streaming M3U parser | E1 | Must | 5 | FND-07 | 2 | M1 | In Progress |
 | PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | Done |
 | FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | Backlog |
 | FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | Backlog |
@@ -36,7 +36,7 @@ Allowed statuses (exactly one per story):
 | UX-01 | Onboarding | E11 | Must | 2 | FND-04 | 3 | M1 | Done |
 | UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | Backlog |
 | SRC-03 | Add Xtream source (UI) | E1 | Must | 3 | SRC-01, SRC-02, FND-04, UX-02 | 3 | M1 | Done |
-| SRC-05 | Import M3U by URL | E1 | Must | 3 | SRC-04, SRC-01, FND-05 | 3 | M1 | Backlog |
+| SRC-05 | Import M3U by URL | E1 | Must | 3 | SRC-04, SRC-01, FND-05 | 3 | M1 | In Progress |
 | SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | Backlog |
 | SRC-07 | Sync Xtream catalog | E1 | Must | 5 | SRC-02, FND-05, FND-07 | 3 | M1 | Done |
 | VOD-04 | VOD/series classification in M3U | E5 | Must | 3 | SRC-04 | 3 | M2 | Backlog |
@@ -52,7 +52,7 @@ Allowed statuses (exactly one per story):
 | VOD-01 | Movie grid | E5 | Must | 3 | FND-04, FND-05, UX-02, SRC-07 | 4 | M2 | Backlog |
 | PLY-03 | Fullscreen and PiP | E3 | Must | 3 | PLY-02 | 4 | M1 | Backlog |
 | SCH-01 | Search index | E8 | Must | 3 | FND-07, SRC-07 | 4 | M2 | Backlog |
-| LIV-02 | Play channel and zapping | E4 | Must | 5 | LIV-01, PLY-02 | 5 | M1 | Backlog |
+| LIV-02 | Play channel and zapping | E4 | Must | 5 | LIV-01, PLY-02 | 5 | M1 | In Progress |
 | LIV-04 | Quick channel filter | E4 | Must | 2 | LIV-01 | 5 | M1 | Backlog |
 | VOD-02 | Movie details | E5 | Must | 3 | VOD-01, PLY-02 | 5 | M2 | Backlog |
 | SER-01 | Series grid | E6 | Must | 2 | VOD-01 | 5 | M2 | Backlog |
