@@ -31,7 +31,10 @@ export type ConnectionFixCode =
   | 'check-network'
   | 'retry-later'
   | 'check-server-url'
-  | 'see-connection-options';
+  | 'see-connection-options'
+  | 'use-https'
+  | 'use-local-file'
+  | 'use-proxy';
 
 export interface ConnectionProblem {
   code: ConnectionProblemCode;
@@ -42,7 +45,17 @@ export interface ConnectionProblem {
    * `code`). Contains no host, URL or credentials.
    */
   message: string;
+  /** Main suggested action. */
   fix?: ConnectionFixCode;
+  /** All suggested actions, best first (starts with `fix`), when there are several. */
+  fixes?: ConnectionFixCode[];
+}
+
+export interface HttpsAttempt {
+  /** HTTPS base tried (same host as entered). */
+  baseUrl: string;
+  ok: boolean;
+  error?: NetErrorKind;
 }
 
 export interface ConnectionAccount {
@@ -72,8 +85,13 @@ export interface XtreamConnectionReport extends ConnectionReport {
    * Use `displayUrl` before showing it.
    */
   baseUrl: string;
-  /** Result of the automatic HTTPS attempt (only when the server is http and reports `https_port`). */
-  httpsCheck?: { baseUrl: string; ok: boolean; error?: NetErrorKind };
+  /**
+   * Decisive automatic HTTPS attempt: the one that worked, or the last one that failed. Present
+   * when http was blocked as mixed content, or http worked and the panel reports `https_port`.
+   */
+  httpsCheck?: HttpsAttempt;
+  /** Every automatic HTTPS attempt, in order. */
+  httpsAttempts?: HttpsAttempt[];
   /** The error that prevented authentication, when there is one (message is already redacted). */
   error?: NetError;
 }

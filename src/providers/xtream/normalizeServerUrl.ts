@@ -19,16 +19,18 @@ export class InvalidServerUrlError extends Error {
 
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 /**
- * `javascript:…`, `data:…`: a scheme not followed by `//`, not a `host:port` and not userinfo
- * (`user:pass@host`, which must be reported as `credentials`).
+ * `javascript:…`, `data:…`: a scheme not followed by `//`, not a `host:port`, not a bare `host:`
+ * or `host:/path` (empty port) and not userinfo (`user:pass@host`, which must be reported as
+ * `credentials`).
  */
-const OPAQUE_SCHEME = /^[a-z][a-z0-9+.-]*:(?!\d)(?![^/]*@)/i;
+const OPAQUE_SCHEME = /^[a-z][a-z0-9+.-]*:(?![\d/]|$)(?![^/]*@)/i;
 
 /**
  * `example.test:8080`, `http://example.test:8080/`, `HTTP://Example.test:8080/player_api.php?x=1`
  * → `http://example.test:8080`. Without a scheme, `http:` is assumed (most panels are HTTP-only).
  * Path, query and fragment are dropped; default ports are omitted by the URL parser
- * (`http://host:80` → `http://host`).
+ * (`http://host:80` → `http://host`). A trailing colon with no port (`host:`) is accepted as an
+ * empty port and dropped (`http://host`), as the URL parser does for `http://host:`.
  */
 export function normalizeServerUrl(input: string): ServerUrlResult {
   const trimmed = input.trim();

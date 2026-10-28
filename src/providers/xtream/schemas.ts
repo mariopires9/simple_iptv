@@ -98,8 +98,11 @@ export function toPort(value: number | undefined): number | undefined {
 }
 
 export interface XtreamAccount {
-  /** `user_info.auth` (false when missing). */
-  auth: boolean;
+  /**
+   * `user_info.auth`: true/false when the panel sends it (1/"1"/true, 0/"0"/false), undefined when
+   * missing, null or unrecognised. Only an explicit `false` means the credentials were rejected.
+   */
+  auth?: boolean;
   /** `user_info.status` as sent by the panel (`Active`, `Expired`, `Banned`, `Disabled`…). */
   status?: string;
   /** Expiry in epoch ms; undefined = no expiry / unknown. */
@@ -128,12 +131,18 @@ export interface XtreamAuthInfo {
   server?: XtreamServerInfo;
 }
 
+/** True only for an explicit rejection (`user_info.auth` 0/"0"/false). */
+export function isAuthRejection(body: unknown): boolean {
+  return parseAuthResponse(body)?.account.auth === false;
+}
+
 /** Returns undefined when the body is not an auth response (e.g. no `user_info` object). */
 export function parseAuthResponse(body: unknown): XtreamAuthInfo | undefined {
   const result = v.safeParse(AuthResponseSchema, body);
   if (!result.success) return undefined;
   const { user_info: u, server_info: s } = result.output;
-  const account: XtreamAccount = { auth: u.auth === true, formats: u.allowed_output_formats };
+  const account: XtreamAccount = { formats: u.allowed_output_formats };
+  if (u.auth !== undefined) account.auth = u.auth;
   if (u.status !== undefined) account.status = u.status;
   if (u.exp_date !== undefined) account.expiresAt = u.exp_date;
   if (u.created_at !== undefined) account.createdAt = u.created_at;

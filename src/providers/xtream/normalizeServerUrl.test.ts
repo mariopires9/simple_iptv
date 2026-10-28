@@ -33,6 +33,11 @@ describe('normalizeServerUrl — accepted (AC1)', () => {
     ['[2001:db8::1]:8000', 'http://[2001:db8::1]:8000'],
     ['https://[2001:db8::1]/', 'https://[2001:db8::1]'],
     ['localhost:8080', 'http://localhost:8080'],
+    // Review: a bare `host:` (empty port) is not an opaque scheme.
+    ['example.test:', 'http://example.test'],
+    ['localhost:', 'http://localhost'],
+    ['example.test:/player_api.php', 'http://example.test'],
+    ['http://example.test:/', 'http://example.test'],
     ['exämple.test:8080', 'http://xn--exmple-cua.test:8080'],
   ])('%j → %s', (input, expected) => {
     const result = normalizeServerUrl(input);

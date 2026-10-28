@@ -221,6 +221,165 @@ describe('fetchJson — timeout and abort (AC7)', () => {
   });
 });
 
+describe('review regressions', () => {
+  // Finding 1: PHP panels send JSON as text/html.
+  it('parses valid JSON served as text/html', async () => {
+    const fetchImpl = respond('{"user_info":{"auth":1}}', {
+      headers: { 'content-type': 'text/html; charset=UTF-8' },
+    });
+    await expect(fetchJson(HTTP_URL, { fetchImpl })).resolves.toEqual({ user_info: { auth: 1 } });
+  });
+
+  it.each([
+    [
+      '<!DOCTYPE html><html><body>Panel</body></html>',
+      'text/html; charset=UTF-8',
+      'HTML instead of JSON',
+    ],
+    ['<html>', 'application/json', 'HTML instead of JSON'],
+    ['Not JSON at all', 'text/html', 'HTML instead of JSON'],
+    ['{"a":', 'application/json', 'Invalid JSON'],
+  ])('unparseable body %j (%s) → parse with cause %s', async (body, type, cause) => {
+    const e = await failure(
+      fetchJson(HTTP_URL, { fetchImpl: respond(body, { headers: { 'content-type': type } }) }),
+    );
+    expect(e.kind).toBe('parse');
+    expect(e.cause).toBe(cause);
+  });
+
+  // Finding 4: an AbortError nobody asked for is a network failure, not a cancellation.
+  it('AbortError without caller abort or timeout → blocked', async () => {
+    const e = await failure(
+      fetchJson(HTTP_URL, {
+        fetchImpl: throwing(new DOMException('The operation was aborted', 'AbortError')),
+        signal: new AbortController().signal,
+      }),
+    );
+    expect(e.kind).toBe('blocked');
+  });
+
+  // Finding 6: unconsumed bodies are released.
+  function trackedBody(chunks: number, chunkSize = 1024) {
+    const cancel = vi.fn();
+    let sent = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= chunks) {
+          controller.close();
+          return;
+        }
+        sent += 1;
+        controller.enqueue(new Uint8Array(chunkSize));
+      },
+      cancel,
+    });
+    return { stream, cancel, sent: () => sent };
+  }
+
+  it.each([401, 403, 500])('HTTP %i with a large body → body cancelled', async (status) => {
+    const body = trackedBody(Number.POSITIVE_INFINITY);
+    const e = await failure(
+      fetchJson(HTTP_URL, {
+        fetchImpl: () => Promise.resolve(new Response(body.stream, { status })),
+      }),
+    );
+    expect(e.status).toBe(status);
+    expect(body.cancel).toHaveBeenCalledOnce();
+    expect(body.sent()).toBeLessThan(100);
+  });
+
+  it('HTTP error with a small body → drained, not cancelled', async () => {
+    const body = trackedBody(2);
+    await failure(
+      fetchJson(HTTP_URL, {
+        fetchImpl: () => Promise.resolve(new Response(body.stream, { status: 404 })),
+      }),
+    );
+    expect(body.cancel).not.toHaveBeenCalled();
+    expect(body.sent()).toBe(2);
+  });
+
+  it('timeout during the body read cancels the body', async () => {
+    const cancel = vi.fn();
+    const stalled = new ReadableStream<Uint8Array>({ start() {}, cancel });
+    const e = await failure(
+      fetchJson(HTTP_URL, {
+        fetchImpl: () => Promise.resolve(new Response(stalled)),
+        timeoutMs: 20,
+      }),
+    );
+    expect(e.kind).toBe('timeout');
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('caller abort during the body read cancels the body', async () => {
+    const cancel = vi.fn();
+    const stalled = new ReadableStream<Uint8Array>({ start() {}, cancel });
+    const controller = new AbortController();
+    const promise = failure(
+      fetchJson(HTTP_URL, {
+        fetchImpl: () => Promise.resolve(new Response(stalled)),
+        signal: controller.signal,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    controller.abort();
+    expect((await promise).kind).toBe('aborted');
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('decodes UTF-8 split across chunks', async () => {
+    const bytes = new TextEncoder().encode('{"name":"Canal Português ✓"}');
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
+        controller.close();
+      },
+    });
+    await expect(
+      fetchJson(HTTP_URL, { fetchImpl: () => Promise.resolve(new Response(stream)) }),
+    ).resolves.toEqual({ name: 'Canal Português ✓' });
+  });
+
+  // Finding 8: the inner cause chain survives (redacted) for diagnostics.
+  it('keeps the inner cause chain with the host masked', async () => {
+    const dns = Object.assign(new Error(`getaddrinfo ENOTFOUND ${HOST}`), { code: 'ENOTFOUND' });
+    const tls = new Error(`TLS handshake with ${HOST}:8443 failed`, { cause: dns });
+    const top = new TypeError(`fetch failed for ${HTTP_URL}`, { cause: tls });
+    registerSecret(USER);
+    registerSecret(PASS);
+    const e = await failure(fetchJson(HTTP_URL, { fetchImpl: throwing(top) }));
+    const c1 = e.cause as Error;
+    const c2 = c1.cause as Error;
+    const c3 = c2.cause as Error;
+    expect(c1.name).toBe('TypeError');
+    expect(c2.message).toBe('TLS handshake with ***:8443 failed');
+    expect(c3.message).toContain('ENOTFOUND');
+    const all = JSON.stringify([c1.message, c2.message, c3.message, e.message, String(e)]);
+    for (const secret of [HOST, USER, PASS]) expect(all).not.toContain(secret);
+    expect(c1.stack).toBeUndefined();
+  });
+
+  it('adds a system error code missing from the message', async () => {
+    const refused = Object.assign(new Error('connect failed'), { code: 'ECONNREFUSED' });
+    const e = await failure(
+      fetchJson(HTTP_URL, {
+        fetchImpl: throwing(new TypeError('fetch failed', { cause: refused })),
+      }),
+    );
+    expect(((e.cause as Error).cause as Error).message).toBe('connect failed (ECONNREFUSED)');
+  });
+
+  it('limits the cause chain depth', async () => {
+    let cause: Error = new Error('level 5');
+    for (let i = 4; i >= 1; i--) cause = new Error(`level ${i}`, { cause });
+    const e = await failure(fetchJson(HTTP_URL, { fetchImpl: throwing(cause) }));
+    const c3 = ((e.cause as Error).cause as Error).cause as Error;
+    expect(c3.message).toBe('level 3');
+    expect(c3.cause).toBeUndefined();
+  });
+});
+
 describe('fetchJson — no leaks', () => {
   it('never logs or exposes the host, username or password', async () => {
     registerSecret(USER);

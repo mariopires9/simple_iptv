@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { xtreamFixtures } from '@/test/msw';
-import { parseAuthResponse, toBool, toEpochMs, toInt, toStringList, toText } from './schemas';
+import {
+  isAuthRejection,
+  parseAuthResponse,
+  toBool,
+  toEpochMs,
+  toInt,
+  toStringList,
+  toText,
+} from './schemas';
 
 describe('coercion helpers', () => {
   it.each([
@@ -156,6 +164,28 @@ describe('parseAuthResponse', () => {
     });
     expect(info?.account.maxConnections).toBeUndefined();
     expect(info?.account.activeConnections).toBeUndefined();
+  });
+
+  // Review: only an explicit 0/"0"/false is a rejection; missing/null/unknown auth is unknown.
+  it.each([
+    [{ user_info: { auth: 0 } }, true],
+    [{ user_info: { auth: '0' } }, true],
+    [{ user_info: { auth: false } }, true],
+    [{ user_info: { auth: 1 } }, false],
+    [{ user_info: {} }, false],
+    [{ user_info: { auth: null, status: 'Active' } }, false],
+    [{ user_info: { auth: 'maybe' } }, false],
+    [{ user_info: [] }, false],
+    [[], false],
+    [{ user_info: null }, false],
+  ])('isAuthRejection(%j) → %s', (body, expected) => {
+    expect(isAuthRejection(body)).toBe(expected);
+  });
+
+  it('keeps auth undefined when missing or null', () => {
+    expect(parseAuthResponse({ user_info: { auth: null, status: 'Active' } })).toEqual({
+      account: { status: 'Active', formats: [] },
+    });
   });
 
   it.each([null, undefined, 'x', 42, [], {}, { user_info: null }, { user_info: 'x' }])(

@@ -5,7 +5,7 @@ export { InvalidServerUrlError, assertServerUrl, normalizeServerUrl } from './no
 export type { ServerUrlResult } from './normalizeServerUrl';
 export { parseAuthResponse } from './schemas';
 export type { XtreamAccount, XtreamAuthInfo, XtreamServerInfo } from './schemas';
-export { testConnection } from './testConnection';
+export { DEFAULT_PROBE_TIMEOUT_MS, testConnection } from './testConnection';
 export type { TestConnectionOptions } from './testConnection';
 export type {
   ConnectionAccount,
@@ -13,5 +13,6 @@ export type {
   ConnectionProblem,
   ConnectionProblemCode,
   ConnectionReport,
+  HttpsAttempt,
   XtreamConnectionReport,
 } from './types';

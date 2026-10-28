@@ -8,7 +8,7 @@ import {
   type UrlRewriter,
 } from '@/core/net';
 import { assertServerUrl } from './normalizeServerUrl';
-import { parseAuthResponse, type XtreamAuthInfo } from './schemas';
+import { isAuthRejection, parseAuthResponse, type XtreamAuthInfo } from './schemas';
 
 export interface XtreamClientOptions {
   /** Server address as typed by the user; normalized with `normalizeServerUrl`. */
@@ -28,7 +28,8 @@ export interface XtreamClient {
   readonly baseUrl: string;
   /**
    * `player_api.php` without `action`. Throws `NetError(kind='auth')` when `user_info.auth` is
-   * not 1 (or on 401/403) and `NetError(kind='parse')` when the body is not an auth response.
+   * explicitly 0/false (or on 401/403) — a missing/null `auth` is not a rejection — and
+   * `NetError(kind='parse')` when the body is not an auth response.
    * A non-active account (Expired, Banned…) is returned, not thrown: see `testConnection`.
    */
   authenticate(signal?: AbortSignal): Promise<XtreamAuthInfo>;
@@ -38,15 +39,6 @@ export interface XtreamClient {
    * rejects the credentials (`user_info.auth` 0) it is reported as `NetError(kind='auth')`.
    */
   call(action: string, params?: XtreamParams, signal?: AbortSignal): Promise<unknown>;
-}
-
-/** `{ user_info: { auth: 0 | "0" | false } }` as returned by panels for rejected credentials. */
-function isAuthRejection(body: unknown): boolean {
-  if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
-  const userInfo = (body as { user_info?: unknown }).user_info;
-  if (userInfo === null || typeof userInfo !== 'object') return false;
-  const info = parseAuthResponse(body);
-  return info !== undefined && !info.account.auth;
 }
 
 export function createXtreamClient(options: XtreamClientOptions): XtreamClient {
@@ -85,7 +77,8 @@ export function createXtreamClient(options: XtreamClientOptions): XtreamClient {
       if (info === undefined) {
         throw new NetError({ kind: 'parse', url, cause: 'Not an Xtream auth response' });
       }
-      if (!info.account.auth) throw new NetError({ kind: 'auth', url });
+      // Missing/null `auth` is tolerated (unknown): only an explicit 0/false is a rejection.
+      if (info.account.auth === false) throw new NetError({ kind: 'auth', url });
       return info;
     },
 

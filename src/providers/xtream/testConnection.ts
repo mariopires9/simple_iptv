@@ -1,27 +1,39 @@
 // Connection test for an Xtream source (SRC-02 AC2–AC7): authenticates, reads the account state
-// and, for an http server that reports `https_port`, tries HTTPS automatically.
+// and tries HTTPS automatically on the host the user entered (mixed-content block, `https_port`).
 import { log } from '@/core/log';
 import { isNetError, type NetError } from '@/core/net';
 import { createXtreamClient, type XtreamClientOptions } from './client';
-import type { XtreamAccount } from './schemas';
+import type { XtreamAccount, XtreamAuthInfo } from './schemas';
 import type {
   ConnectionAccount,
   ConnectionFixCode,
   ConnectionProblem,
   ConnectionProblemCode,
+  HttpsAttempt,
   XtreamConnectionReport,
 } from './types';
 
+/** Timeout for each automatic HTTPS probe. */
+export const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
+
 export interface TestConnectionOptions extends XtreamClientOptions {
   signal?: AbortSignal;
+  /** Timeout for each automatic HTTPS probe. Default {@link DEFAULT_PROBE_TIMEOUT_MS}. */
+  probeTimeoutMs?: number;
   /** Clock for the expiry check. Default `Date.now`. */
   now?: () => number;
 }
 
-const PROBLEMS: Record<
-  ConnectionProblemCode,
-  { severity: 'error' | 'warning'; message: string; fix?: ConnectionFixCode }
-> = {
+type HttpsCheck = HttpsAttempt;
+
+interface ProblemSpec {
+  severity: 'error' | 'warning';
+  message: string;
+  fix?: ConnectionFixCode;
+  fixes?: ConnectionFixCode[];
+}
+
+const PROBLEMS: Record<ConnectionProblemCode, ProblemSpec> = {
   'auth-failed': {
     severity: 'error',
     message: 'The server rejected the username or password',
@@ -57,7 +69,8 @@ const PROBLEMS: Record<
   'blocked-mixed-content': {
     severity: 'error',
     message: 'The browser blocked an http request from an https page (mixed content)',
-    fix: 'see-connection-options',
+    fix: 'use-https',
+    fixes: ['use-https', 'use-local-file', 'use-proxy'],
   },
   'blocked-cors': {
     severity: 'error',
@@ -91,8 +104,11 @@ const PROBLEMS: Record<
 };
 
 function problem(code: ConnectionProblemCode): ConnectionProblem {
-  const { severity, message, fix } = PROBLEMS[code];
-  return fix !== undefined ? { code, severity, message, fix } : { code, severity, message };
+  const { severity, message, fix, fixes } = PROBLEMS[code];
+  const out: ConnectionProblem = { code, severity, message };
+  if (fix !== undefined) out.fix = fix;
+  if (fixes !== undefined) out.fixes = [...fixes];
+  return out;
 }
 
 function errorProblem(error: NetError): ConnectionProblemCode {
@@ -146,44 +162,112 @@ function httpsBaseUrl(baseUrl: string, port: number): string {
   return url.origin;
 }
 
+/**
+ * HTTPS candidates for an http panel blocked as mixed content, on the host the user entered:
+ * the same port first (when one was given), then the default 443.
+ */
+function mixedContentCandidates(baseUrl: string): string[] {
+  const { port } = new URL(baseUrl);
+  const candidates = port !== '' ? [httpsBaseUrl(baseUrl, Number(port))] : [];
+  candidates.push(httpsBaseUrl(baseUrl, 443));
+  return [...new Set(candidates)];
+}
+
+/** Rethrows caller cancellation (and non-NetErrors); returns the NetError otherwise. */
+function reportable(error: unknown, signal: AbortSignal | undefined): NetError {
+  if (!isNetError(error)) throw error;
+  if (error.kind === 'aborted' && signal?.aborted === true) throw error;
+  return error;
+}
+
+function failure(
+  error: NetError,
+  baseUrl: string,
+  extra: Pick<XtreamConnectionReport, 'httpsCheck' | 'httpsAttempts'> = {},
+): XtreamConnectionReport {
+  const report: XtreamConnectionReport = {
+    ok: false,
+    https: baseUrl.startsWith('https:'),
+    corsApi: error.kind === 'blocked' ? 'blocked' : 'unknown',
+    baseUrl,
+    problems: [problem(errorProblem(error))],
+    error,
+  };
+  if (extra.httpsCheck !== undefined) report.httpsCheck = extra.httpsCheck;
+  if (extra.httpsAttempts !== undefined) report.httpsAttempts = extra.httpsAttempts;
+  return report;
+}
+
 function finish(report: XtreamConnectionReport): XtreamConnectionReport {
   log.info('Xtream connection test finished', {
     ok: report.ok,
     https: report.https,
     corsApi: report.corsApi,
     problems: report.problems.map((p) => p.code),
-    httpsCheck: report.httpsCheck
-      ? { ok: report.httpsCheck.ok, error: report.httpsCheck.error }
-      : undefined,
+    httpsAttempts: report.httpsAttempts?.map((a) => ({ ok: a.ok, error: a.error })),
   });
   return report;
 }
 
 /**
  * Tests the connection. Network/auth failures are returned in the report (`ok: false`, `error`,
- * a problem code); only caller cancellation (`NetError(kind='aborted')`) and an invalid server
- * URL (`InvalidServerUrlError`) are thrown.
+ * a problem code); only caller cancellation (`NetError(kind='aborted')` with the caller's signal
+ * aborted) and an invalid server URL (`InvalidServerUrlError`) are thrown.
+ *
+ * HTTPS is probed automatically, always on the host the user entered (credentials never go to
+ * another host), each probe limited by `probeTimeoutMs`:
+ * - http blocked as mixed content → `https://host:<same port>`, then `https://host`; the first
+ *   that authenticates wins;
+ * - http works, `server_info.https_port` is set and the account is usable →
+ *   `https://host:<https_port>`.
  */
 export async function testConnection(
   options: TestConnectionOptions,
 ): Promise<XtreamConnectionReport> {
-  const { signal, now = Date.now, ...clientOptions } = options;
+  const {
+    signal,
+    now = Date.now,
+    probeTimeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+    ...clientOptions
+  } = options;
   const client = createXtreamClient(clientOptions);
-  const isHttps = client.baseUrl.startsWith('https:');
+  const probeClient = (baseUrl: string) =>
+    createXtreamClient({ ...clientOptions, baseUrl, timeoutMs: probeTimeoutMs });
 
-  let info;
+  let info: XtreamAuthInfo | undefined;
+  let usableBase = client.baseUrl;
+  let httpsCheck: HttpsCheck | undefined;
+  const httpsAttempts: HttpsCheck[] = [];
+
   try {
     info = await client.authenticate(signal);
-  } catch (error) {
-    if (!isNetError(error) || error.kind === 'aborted') throw error;
-    return finish({
-      ok: false,
-      https: isHttps,
-      corsApi: error.kind === 'blocked' ? 'blocked' : 'unknown',
-      baseUrl: client.baseUrl,
-      problems: [problem(errorProblem(error))],
-      error,
-    });
+  } catch (thrown) {
+    const error = reportable(thrown, signal);
+    if (error.kind !== 'blocked' || error.hint !== 'mixed-content') {
+      return finish(failure(error, client.baseUrl));
+    }
+    // This page can never reach the http panel: try HTTPS on the same host.
+    for (const candidate of mixedContentCandidates(client.baseUrl)) {
+      const httpsClient = probeClient(candidate);
+      try {
+        info = await httpsClient.authenticate(signal);
+        httpsCheck = { baseUrl: httpsClient.baseUrl, ok: true };
+        httpsAttempts.push(httpsCheck);
+        usableBase = httpsClient.baseUrl;
+        break;
+      } catch (probeThrown) {
+        const probeError = reportable(probeThrown, signal);
+        httpsCheck = { baseUrl: httpsClient.baseUrl, ok: false, error: probeError.kind };
+        httpsAttempts.push(httpsCheck);
+        // HTTPS reached the panel and it rejected the credentials: that is the real answer.
+        if (probeError.kind === 'auth') {
+          return finish(failure(probeError, httpsClient.baseUrl, { httpsCheck, httpsAttempts }));
+        }
+      }
+    }
+    if (info === undefined) {
+      return finish(failure(error, client.baseUrl, { httpsCheck, httpsAttempts }));
+    }
   }
 
   const problems: ConnectionProblem[] = [];
@@ -200,34 +284,33 @@ export async function testConnection(
     problems.push(problem('max-connections-reached'));
   }
 
+  // https_port probe: only on an http base with a usable account (a fatal problem makes it moot).
+  const httpsPort = info.server?.httpsPort;
+  if (usableBase.startsWith('http:') && httpsPort !== undefined && status === undefined) {
+    const httpsClient = probeClient(httpsBaseUrl(usableBase, httpsPort));
+    try {
+      await httpsClient.authenticate(signal);
+      httpsCheck = { baseUrl: httpsClient.baseUrl, ok: true };
+      usableBase = httpsClient.baseUrl;
+    } catch (thrown) {
+      const error = reportable(thrown, signal);
+      httpsCheck = { baseUrl: httpsClient.baseUrl, ok: false, error: error.kind };
+      problems.push(problem('https-unavailable'));
+    }
+    httpsAttempts.push(httpsCheck);
+  }
+
+  const https = usableBase.startsWith('https:');
+  if (!https) problems.push(problem('http-only'));
   const report: XtreamConnectionReport = {
-    ok: true,
-    https: isHttps,
+    ok: !problems.some((p) => p.severity === 'error'),
+    https,
     corsApi: 'ok',
-    baseUrl: client.baseUrl,
+    baseUrl: usableBase,
     account: toReportAccount(info.account),
     problems,
   };
-
-  const httpsPort = info.server?.httpsPort;
-  if (!isHttps && httpsPort !== undefined) {
-    const httpsClient = createXtreamClient({
-      ...clientOptions,
-      baseUrl: httpsBaseUrl(client.baseUrl, httpsPort),
-    });
-    try {
-      await httpsClient.authenticate(signal);
-      report.https = true;
-      report.baseUrl = httpsClient.baseUrl;
-      report.httpsCheck = { baseUrl: httpsClient.baseUrl, ok: true };
-    } catch (error) {
-      if (!isNetError(error) || error.kind === 'aborted') throw error;
-      report.httpsCheck = { baseUrl: httpsClient.baseUrl, ok: false, error: error.kind };
-      problems.push(problem('https-unavailable'));
-    }
-  }
-  if (!report.https) problems.push(problem('http-only'));
-
-  report.ok = !problems.some((p) => p.severity === 'error');
+  if (httpsCheck !== undefined) report.httpsCheck = httpsCheck;
+  if (httpsAttempts.length > 0) report.httpsAttempts = httpsAttempts;
   return finish(report);
 }

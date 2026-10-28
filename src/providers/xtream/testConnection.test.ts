@@ -1,6 +1,6 @@
 // SRC-02 AC2–AC7 against the synthetic MSW panel (QA-01) in its three variants.
 import { http, HttpResponse } from 'msw';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearLogBuffer, clearSecrets, getLogEntries } from '@/core/log';
 import { NetError } from '@/core/net';
 import {
@@ -331,6 +331,184 @@ describe('testConnection — no credential or host leaks', () => {
     expect(getLogEntries().length).toBeGreaterThan(0);
     for (const secret of [USER, PASS, 'wrongpass', HOST]) expect(all).not.toContain(secret);
   });
+});
+
+// Review finding 2: https page + http panel blocked as mixed content → HTTPS probes on the same host.
+describe('testConnection — HTTPS probes after a mixed-content block', () => {
+  const SAME_PORT = `https://${HOST}:8080`;
+  const DEFAULT_PORT = `https://${HOST}`;
+
+  /** Records every host:port contacted, to prove credentials only go to the entered host. */
+  function recordHosts(): string[] {
+    const seen: string[] = [];
+    server.events.on('request:start', ({ request }) => {
+      seen.push(new URL(request.url).origin);
+    });
+    return seen;
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('location', { protocol: 'https:' });
+    server.use(...xtreamHandlers({ error: 'network' }));
+  });
+  afterEach(() => {
+    server.events.removeAllListeners();
+  });
+
+  it('https on the same port works → used, https true', async () => {
+    server.use(...xtreamHandlers({ baseUrl: SAME_PORT }));
+    const seen = recordHosts();
+    const report = await testConnection(options());
+    expect(report).toMatchObject({
+      ok: true,
+      https: true,
+      corsApi: 'ok',
+      baseUrl: SAME_PORT,
+      httpsCheck: { baseUrl: SAME_PORT, ok: true },
+      account: { status: 'Active' },
+    });
+    expect(report.httpsAttempts).toHaveLength(1);
+    expect(report.problems).toEqual([]);
+    expect(seen).toEqual([XTREAM_TEST_BASE_URL, SAME_PORT]);
+  });
+
+  it('same port fails, 443 works → 443 used', async () => {
+    server.use(
+      ...xtreamHandlers({ baseUrl: SAME_PORT, error: 'network' }),
+      ...xtreamHandlers({ baseUrl: DEFAULT_PORT }),
+    );
+    const seen = recordHosts();
+    const report = await testConnection(options());
+    expect(report).toMatchObject({ ok: true, https: true, baseUrl: DEFAULT_PORT });
+    expect(report.httpsAttempts).toEqual([
+      { baseUrl: SAME_PORT, ok: false, error: 'blocked' },
+      { baseUrl: DEFAULT_PORT, ok: true },
+    ]);
+    expect(seen).toEqual([XTREAM_TEST_BASE_URL, SAME_PORT, DEFAULT_PORT]);
+  });
+
+  it('no https anywhere → blocked-mixed-content with fix codes', async () => {
+    server.use(
+      ...xtreamHandlers({ baseUrl: SAME_PORT, error: 'network' }),
+      ...xtreamHandlers({ baseUrl: DEFAULT_PORT, error: 'network' }),
+    );
+    const report = await testConnection(options());
+    expect(report).toMatchObject({
+      ok: false,
+      https: false,
+      corsApi: 'blocked',
+      baseUrl: XTREAM_TEST_BASE_URL,
+      error: { kind: 'blocked', hint: 'mixed-content' },
+      httpsCheck: { baseUrl: DEFAULT_PORT, ok: false, error: 'blocked' },
+    });
+    expect(report.httpsAttempts).toHaveLength(2);
+    expect(report.problems).toEqual([
+      expect.objectContaining({
+        code: 'blocked-mixed-content',
+        fix: 'use-https',
+        fixes: ['use-https', 'use-local-file', 'use-proxy'],
+      }),
+    ]);
+  });
+
+  it('no port entered → only https://host is probed', async () => {
+    server.use(
+      ...xtreamHandlers({ baseUrl: `http://${HOST}`, error: 'network' }),
+      ...xtreamHandlers({ baseUrl: DEFAULT_PORT }),
+    );
+    const report = await testConnection(options({ baseUrl: HOST }));
+    expect(report).toMatchObject({ ok: true, baseUrl: DEFAULT_PORT });
+    expect(report.httpsAttempts).toEqual([{ baseUrl: DEFAULT_PORT, ok: true }]);
+  });
+
+  it('https rejects the credentials → auth-failed, no further probes', async () => {
+    server.use(...xtreamHandlers({ baseUrl: SAME_PORT, auth: 'fail' }));
+    const seen = recordHosts();
+    const report = await testConnection(options());
+    expect(report).toMatchObject({ ok: false, https: true, error: { kind: 'auth' } });
+    expect(codes(report)).toEqual(['auth-failed']);
+    expect(seen).toEqual([XTREAM_TEST_BASE_URL, SAME_PORT]);
+  });
+
+  it('each probe uses probeTimeoutMs, not timeoutMs', async () => {
+    server.use(
+      ...xtreamHandlers({ baseUrl: SAME_PORT, error: 'timeout' }),
+      ...xtreamHandlers({ baseUrl: DEFAULT_PORT, error: 'timeout' }),
+    );
+    const started = Date.now();
+    const report = await testConnection(options({ probeTimeoutMs: 30 }));
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(report.httpsAttempts).toEqual([
+      { baseUrl: SAME_PORT, ok: false, error: 'timeout' },
+      { baseUrl: DEFAULT_PORT, ok: false, error: 'timeout' },
+    ]);
+    expect(codes(report)).toEqual(['blocked-mixed-content']);
+  });
+
+  it('an https server is never probed again', async () => {
+    server.use(...xtreamHandlers({ baseUrl: HTTPS_BASE, error: 'network' }));
+    const seen = recordHosts();
+    const report = await testConnection(options({ baseUrl: HTTPS_BASE }));
+    expect(report.httpsAttempts).toBeUndefined();
+    expect(seen).toEqual([HTTPS_BASE]);
+  });
+});
+
+describe('testConnection — review regressions', () => {
+  // Finding 3: missing/null auth is not a rejection.
+  it.each([undefined, null])('user_info.auth = %j → proceeds with the account', async (auth) => {
+    serveAuth({ auth });
+    const report = await testConnection(options());
+    expect(report.ok).toBe(true);
+    expect(report.account?.status).toBe('Active');
+    expect(report.error).toBeUndefined();
+  });
+
+  it.each([0, '0', false])('user_info.auth = %j → auth-failed', async (auth) => {
+    serveAuth({ auth });
+    const report = await testConnection(options());
+    expect(report.error?.kind).toBe('auth');
+  });
+
+  // Finding 4: an aborted kind without caller cancellation is reported, not thrown.
+  it('an AbortError not caused by the caller is reported as a network failure', async () => {
+    const fetchImpl = () => Promise.reject(new DOMException('aborted', 'AbortError'));
+    const report = await testConnection(
+      options({ fetchImpl, signal: new AbortController().signal }),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.error?.kind).toBe('blocked');
+  });
+
+  // Finding 5: the https_port probe has its own timeout and is skipped for unusable accounts.
+  it('https_port probe uses probeTimeoutMs', async () => {
+    server.use(
+      ...xtreamHandlers({ auth: 'ok-https' }),
+      ...xtreamHandlers({ baseUrl: HTTPS_BASE, error: 'timeout' }),
+    );
+    const report = await testConnection(options({ probeTimeoutMs: 30 }));
+    expect(report).toMatchObject({
+      ok: true,
+      https: false,
+      httpsCheck: { baseUrl: HTTPS_BASE, ok: false, error: 'timeout' },
+    });
+  });
+
+  it.each(['Expired', 'Banned', 'Disabled', 'Paused'])(
+    'no https_port probe for a %s account',
+    async (status) => {
+      serveAuth({ status }, { https_port: '8443' });
+      const seen: string[] = [];
+      server.events.on('request:start', ({ request }) => {
+        seen.push(new URL(request.url).origin);
+      });
+      const report = await testConnection(options());
+      server.events.removeAllListeners();
+      expect(report.ok).toBe(false);
+      expect(report.httpsCheck).toBeUndefined();
+      expect(seen).toEqual([XTREAM_TEST_BASE_URL]);
+    },
+  );
 });
 
 describe('createXtreamClient', () => {
