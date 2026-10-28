@@ -1,0 +1,11 @@
+#EXTM3U x-tvg-url="http://panel.example.test:8080/xmltv.php?username=jdoe&password=testpass"
+#EXTINF:-1 tvg-id="news.example.test" tvg-name="Example News HD" tvg-logo="http://img.example.test/logos/1001.png" group-title="News",Example News HD
+http://panel.example.test:8080/live/jdoe/testpass/1001.ts
+#EXTINF:-1 tvg-id="noticias.example.test" tvg-name="Notícias Exemplo" tvg-logo="http://img.example.test/logos/1002.png" group-title="News",Notícias Exemplo
+http://panel.example.test:8080/live/jdoe/testpass/1002.ts
+#EXTINF:-1 tvg-id="sports1.example.test" tvg-name="Test Sports 1" tvg-logo="http://img.example.test/logos/1003.png" group-title="Sports",Test Sports 1
+http://panel.example.test:8080/live/jdoe/testpass/1003.ts
+#EXTINF:-1 tvg-id="" tvg-name="The Synthetic Movie (2024)" tvg-logo="http://img.example.test/posters/2001.jpg" group-title="Movies | Action",The Synthetic Movie (2024)
+http://panel.example.test:8080/movie/jdoe/testpass/2001.mp4
+#EXTINF:-1 tvg-id="" tvg-name="Example Drama S01 E01" tvg-logo="http://img.example.test/episodes/3001-1-1.jpg" group-title="Series | Drama",Example Drama S01 E01
+http://panel.example.test:8080/series/jdoe/testpass/40101.mp4

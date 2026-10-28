@@ -1,0 +1,47 @@
+{
+  "info": {
+    "kinopoisk_url": "",
+    "tmdb_id": "123456",
+    "name": "The Synthetic Movie",
+    "o_name": "The Synthetic Movie",
+    "cover_big": "http://img.example.test/posters/2001-big.jpg",
+    "movie_image": "http://img.example.test/posters/2001.jpg",
+    "releasedate": "2024-05-01",
+    "episode_run_time": "",
+    "youtube_trailer": "",
+    "director": "Carol Placeholder",
+    "actors": "Alice Example, Bob Sample, João Exemplo",
+    "cast": "Alice Example, Bob Sample, João Exemplo",
+    "description": "A test pattern discovers it is a movie. Synthetic data for tests.",
+    "plot": "A test pattern discovers it is a movie. Synthetic data for tests.",
+    "age": "12+",
+    "mpaa_rating": "PG-13",
+    "rating_count_kinopoisk": 0,
+    "country": "Portugal",
+    "genre": "Action, Comédia",
+    "backdrop_path": ["http://img.example.test/backdrops/2001.jpg"],
+    "duration_secs": 5,
+    "duration": "00:00:05",
+    "video": {
+      "codec_name": "h264",
+      "width": 320,
+      "height": 180
+    },
+    "audio": {
+      "codec_name": "aac",
+      "channels": 1
+    },
+    "bitrate": 184,
+    "rating": "7.1"
+  },
+  "movie_data": {
+    "stream_id": 2001,
+    "name": "The Synthetic Movie (2024)",
+    "added": "1735689600",
+    "category_id": "10",
+    "category_ids": [10],
+    "container_extension": "mp4",
+    "custom_sid": "",
+    "direct_source": ""
+  }
+}

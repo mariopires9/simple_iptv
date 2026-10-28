@@ -1,0 +1,60 @@
+{
+  "epg_listings": [
+    {
+      "id": "900000",
+      "epg_id": "1",
+      "title": "TW9ybmluZyBOZXdz",
+      "lang": "en",
+      "start": "2026-01-01 12:00:00",
+      "end": "2026-01-01 13:00:00",
+      "description": "SGVhZGxpbmVzIGFuZCB3ZWF0aGVyLiBTeW50aGV0aWMgZGF0YS4=",
+      "channel_id": "news.example.test",
+      "start_timestamp": "1767268800",
+      "stop_timestamp": "1767272400",
+      "now_playing": 1,
+      "has_archive": 0
+    },
+    {
+      "id": "900001",
+      "epg_id": "1",
+      "title": "Tm90w61jaWFzIGRhIE1hbmjDow==",
+      "lang": "pt",
+      "start": "2026-01-01 13:00:00",
+      "end": "2026-01-01 14:00:00",
+      "description": "SW5mb3JtYcOnw6NvLCBkZXNwb3J0byBlIG1ldGVvcm9sb2dpYSDigJQgZWRpw6fDo28gZGUgdGVzdGUu",
+      "channel_id": "news.example.test",
+      "start_timestamp": "1767272400",
+      "stop_timestamp": "1767276000",
+      "now_playing": 0,
+      "has_archive": 0
+    },
+    {
+      "id": "900002",
+      "epg_id": "1",
+      "title": "Q2Fmw6kgY29tIENpw6puY2lh",
+      "lang": "pt",
+      "start": "2026-01-01 14:00:00",
+      "end": "2026-01-01 15:00:00",
+      "description": "UHJvZ3JhbWEgc29icmUgYcOnw6NvLCBjb3Jhw6fDo28gZSBww6NvLiDDgMOnw6nDsXTDtnM6IMOjw7XDosOqw67DtMO7w6DDqMOsw7LDuSDDpy4=",
+      "channel_id": "news.example.test",
+      "start_timestamp": "1767276000",
+      "stop_timestamp": "1767279600",
+      "now_playing": 0,
+      "has_archive": 0
+    },
+    {
+      "id": "900003",
+      "epg_id": "1",
+      "title": "RXZlbmluZyBSZXBvcnQ=",
+      "lang": "en",
+      "start": "2026-01-01 15:00:00",
+      "end": "2026-01-01 16:00:00",
+      "description": "UsOpc3Vtw6kgb2YgdGhlIGRheSDigJQgbmHDr3ZlIGNhZsOpIOaXpeacrOiqniBlbW9qaS1mcmVlLg==",
+      "channel_id": "news.example.test",
+      "start_timestamp": "1767279600",
+      "stop_timestamp": "1767283200",
+      "now_playing": 0,
+      "has_archive": 0
+    }
+  ]
+}

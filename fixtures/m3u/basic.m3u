@@ -1,0 +1,11 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="news.example.test" tvg-name="Example News HD" tvg-logo="http://img.example.test/logos/1001.png" group-title="News",Example News HD
+http://stream.example.test/live/1001.m3u8
+#EXTINF:-1 tvg-id="noticias.example.test" tvg-name="Notícias Exemplo" tvg-logo="http://img.example.test/logos/1002.png" group-title="News",Notícias Exemplo
+http://stream.example.test/live/1002.ts
+#EXTINF:-1 tvg-id="sports1.example.test" tvg-name="Test Sports 1" tvg-logo="http://img.example.test/logos/1003.png" group-title="Sports",Test Sports 1
+https://stream.example.test/live/1003.m3u8
+#EXTINF:-1 tvg-id="kids.example.test" tvg-name="Demo Kids" tvg-logo="http://img.example.test/logos/1005.png" group-title="Kids",Demo Kids
+http://stream.example.test/live/1005.ts
+#EXTINF:-1 tvg-id="" tvg-name="The Synthetic Movie (2024)" tvg-logo="http://img.example.test/posters/2001.jpg" group-title="Movies",The Synthetic Movie (2024)
+http://stream.example.test/movie/2001.mp4

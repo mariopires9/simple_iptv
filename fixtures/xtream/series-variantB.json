@@ -1,0 +1,50 @@
+[
+  {
+    "num": "1",
+    "name": "Example Drama",
+    "series_id": "3001",
+    "cover": "http://img.example.test/covers/3001.jpg",
+    "plot": "Synthetic plot for Example Drama.",
+    "cast": null,
+    "director": null,
+    "genre": "Drama",
+    "releaseDate": null,
+    "last_modified": "1735689600",
+    "rating": "8.2",
+    "rating_5based": "4.1",
+    "backdrop_path": null,
+    "episode_run_time": "42",
+    "category_id": "20"
+  },
+  {
+    "num": "2",
+    "name": "A Série de Teste",
+    "series_id": "3002",
+    "cover": "http://img.example.test/covers/3002.jpg",
+    "plot": "Synthetic plot for A Série de Teste.",
+    "genre": "Drama",
+    "releaseDate": null,
+    "last_modified": "1735689600",
+    "rating": "7",
+    "rating_5based": "3.5",
+    "episode_run_time": "42",
+    "category_id": "21"
+  },
+  {
+    "num": "3",
+    "name": "Empty Show",
+    "series_id": "3003",
+    "cover": null,
+    "plot": null,
+    "cast": null,
+    "director": null,
+    "genre": "Drama",
+    "releaseDate": null,
+    "last_modified": "1735689600",
+    "rating": "0",
+    "rating_5based": "0",
+    "backdrop_path": null,
+    "episode_run_time": "42",
+    "category_id": "20"
+  }
+]

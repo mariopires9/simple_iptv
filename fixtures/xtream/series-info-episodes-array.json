@@ -1,0 +1,82 @@
+{
+  "seasons": [],
+  "info": {
+    "name": "A Série de Teste",
+    "cover": "http://img.example.test/covers/3002.jpg",
+    "plot": "Synthetic plot for A Série de Teste.",
+    "cast": "Alice Example, Bob Sample",
+    "director": "Carol Placeholder",
+    "genre": "Drama",
+    "releaseDate": "2024-03-01",
+    "last_modified": "1735689600",
+    "rating": "7",
+    "rating_5based": 3.5,
+    "backdrop_path": ["http://img.example.test/backdrops/3002.jpg"],
+    "youtube_trailer": "",
+    "episode_run_time": "42",
+    "category_id": "21"
+  },
+  "episodes": [
+    [
+      {
+        "id": "50101",
+        "episode_num": 1,
+        "title": "S01E01 - Episódio 1",
+        "container_extension": "mp4",
+        "info": {
+          "movie_image": "http://img.example.test/episodes/3002-1-1.jpg",
+          "plot": "Episode 1 of season 1.",
+          "releasedate": "2024-03-01",
+          "rating": 7,
+          "duration_secs": 5,
+          "duration": "00:00:05",
+          "bitrate": 184
+        },
+        "custom_sid": "",
+        "added": "1735689600",
+        "season": 1,
+        "direct_source": ""
+      },
+      {
+        "id": "50102",
+        "episode_num": 2,
+        "title": "S01E02 - Episódio 2",
+        "container_extension": "mp4",
+        "info": {
+          "movie_image": "http://img.example.test/episodes/3002-1-2.jpg",
+          "plot": "Episode 2 of season 1.",
+          "releasedate": "2024-03-01",
+          "rating": 7,
+          "duration_secs": 5,
+          "duration": "00:00:05",
+          "bitrate": 184
+        },
+        "custom_sid": "",
+        "added": "1735689600",
+        "season": 1,
+        "direct_source": ""
+      }
+    ],
+    [
+      {
+        "id": "50201",
+        "episode_num": 1,
+        "title": "S02E01 - Episódio 1",
+        "container_extension": "mp4",
+        "info": {
+          "movie_image": "http://img.example.test/episodes/3002-2-1.jpg",
+          "plot": "Episode 1 of season 2.",
+          "releasedate": "2024-03-01",
+          "rating": 7,
+          "duration_secs": 5,
+          "duration": "00:00:05",
+          "bitrate": 184
+        },
+        "custom_sid": "",
+        "added": "1735689600",
+        "season": 2,
+        "direct_source": ""
+      }
+    ]
+  ]
+}

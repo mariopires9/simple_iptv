@@ -1,0 +1,7 @@
+# Byte-exact fixtures: never normalise line endings (QA-01).
+fixtures/m3u/crlf-bom.m3u -text
+# Contains NUL/control characters on purpose.
+fixtures/m3u/malicious.m3u -text
+# Generated media and playlists: never diff or normalise.
+fixtures/streams/** binary
+fixtures/xmltv/*.gz binary

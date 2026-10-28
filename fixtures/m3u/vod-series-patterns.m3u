@@ -1,0 +1,31 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="news.example.test" group-title="News",Plain Live Channel
+http://stream.example.test/live/user/pass/1001.ts
+#EXTINF:-1 tvg-id="" tvg-logo="http://img.example.test/posters/2001.jpg" group-title="VOD",The Synthetic Movie (2024)
+http://stream.example.test/movie/user/pass/2001.mp4
+#EXTINF:-1 tvg-id="" group-title="Movies | Action",Test Pattern Returns
+http://stream.example.test/movie/user/pass/2002.mkv
+#EXTINF:-1 tvg-id="" group-title="Filmes | Comédia",O Filme de Exemplo
+http://stream.example.test/movie/user/pass/2003.mp4
+#EXTINF:-1 tvg-id="" group-title="VOD: Documentaries",Documentary By Group Prefix Only
+http://stream.example.test/vod/2004.mkv
+#EXTINF:-1 tvg-id="" group-title="Uncategorized",Movie By Extension Only
+http://stream.example.test/files/2005.mp4
+#EXTINF:-1 tvg-id="" group-title="Series | Drama",Example Drama S01E01
+http://stream.example.test/series/user/pass/40101.mp4
+#EXTINF:-1 tvg-id="" group-title="Series | Drama",Example Drama S01E02
+http://stream.example.test/series/user/pass/40102.mkv
+#EXTINF:-1 tvg-id="" group-title="Series | Drama",Example Drama S02 E01
+http://stream.example.test/series/user/pass/40201.mp4
+#EXTINF:-1 tvg-id="" group-title="Séries | Animação",A Série de Teste 1x01
+http://stream.example.test/series/user/pass/50101.mp4
+#EXTINF:-1 tvg-id="" group-title="Séries | Animação",A Série de Teste 1x02
+http://stream.example.test/series/user/pass/50102.mp4
+#EXTINF:-1 tvg-id="" group-title="Séries | Animação",A Série de Teste - s02e01 - Lower Case
+http://stream.example.test/series/user/pass/50201.mp4
+#EXTINF:-1 tvg-id="" group-title="Shows",Pattern Without Series Path S03E10
+http://stream.example.test/vod/60310.mkv
+#EXTINF:-1 tvg-id="sports1.example.test" group-title="Sports",Test Sports 1x2 Live (not an episode)
+http://stream.example.test/live/user/pass/1003.m3u8
+#EXTINF:-1 tvg-id="" group-title="Movies",Movie 1984 (not an episode)
+http://stream.example.test/movie/user/pass/2006.mp4
