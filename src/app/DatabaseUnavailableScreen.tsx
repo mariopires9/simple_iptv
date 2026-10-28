@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import type { DatabaseUnavailableReason } from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
-import { FullScreen, StatusView } from './routes/StatusView';
+import { StateView } from '@/ui/state';
+import { FullScreen } from './routes/FullScreen';
 
 export type DatabaseCheck =
   | { status: 'checking' }
@@ -55,12 +56,16 @@ export function useDatabaseCheck(): DatabaseCheck {
 export function DatabaseUnavailableScreen({ reason }: { reason: DatabaseUnavailableReason }) {
   return (
     <FullScreen>
-      <StatusView
-        title={t.routes.dbUnavailable.title}
+      <StateView
+        variant="error"
+        headingLevel={1}
+        // Same texts as `describeError` gives a DatabaseUnavailableError (only the reason is
+        // known here: the error object stays in the lazily loaded check).
+        title={t.state.errors.db.title}
         message={t.db.errors[reason]}
         actions={
           <Button variant="contained" onClick={() => window.location.reload()}>
-            {t.routes.dbUnavailable.reload}
+            {t.state.actions.reload}
           </Button>
         }
       />

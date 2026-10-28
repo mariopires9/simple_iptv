@@ -4,3 +4,5 @@
 export * as tokens from './theme/tokens';
 export type { ColorMode, ColorTokens } from './theme/tokens';
 export { createAppTheme, type AppThemeOptions } from './theme/createAppTheme';
+// State and feedback components (UX-02). No Dexie: typed errors are matched structurally.
+export * from './state';

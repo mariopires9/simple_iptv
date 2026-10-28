@@ -1,6 +1,6 @@
 import { Outlet, ScrollRestoration } from 'react-router';
 import { AppShell } from '../AppShell';
-import { FullScreen } from './StatusView';
+import { FullScreen } from './FullScreen';
 
 // <ScrollRestoration> (data routers, SPA: renders nothing, no inline script): new navigations
 // start at the top; back/forward restore the saved window scroll position (sessionStorage).

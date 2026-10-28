@@ -2,9 +2,10 @@ import { app } from './app';
 import { db } from './db';
 import { nav } from './nav';
 import { routes } from './routes';
+import { state } from './state';
 
 /** Base (English) messages; aggregated per feature module (ADR-015). */
-export const en = { app, db, nav, routes };
+export const en = { app, db, nav, routes, state };
 
 /** Shape every locale must match exactly. */
 export type Messages = typeof en;
