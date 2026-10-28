@@ -4,7 +4,13 @@
 import { expose, wrap } from 'comlink';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDataWorkerApi, type DataWorkerApiOptions, type DataWorkerApi } from './api';
-import { getDataWorker, runTaskOn, terminateDataWorker, type DataWorkerRemote } from './client';
+import {
+  getDataWorker,
+  runTask,
+  runTaskOn,
+  terminateDataWorker,
+  type DataWorkerRemote,
+} from './client';
 import { WorkerTaskError, deserializeTaskError, serializeTaskError } from './errors';
 import type { TaskName, TaskProgress } from './tasks';
 
@@ -185,9 +191,11 @@ describe('worker de dados — erros (CA2)', () => {
 
   it('só name/kind/message atravessam a fronteira (sem stack, cause ou propriedades extra)', async () => {
     function tarefaQueRebenta(): never {
-      const e = new Error('servidor recusou');
-      Object.assign(e, { password: 'SEGREDO-123', url: 'http://u:SEGREDO-123@exemplo.com' });
-      throw new Error('servidor recusou', { cause: e });
+      const e = new Error('http://u:SEGREDO-123@exemplo.com recusou');
+      Object.assign(e, { password: 'SEGREDO-123' });
+      const err = new WorkerTaskError('failed', 'servidor recusou');
+      Object.assign(err, { cause: e, url: 'http://u:SEGREDO-123@exemplo.com' });
+      throw err;
     }
     const api = connect({ tasks: { boom: async () => tarefaQueRebenta() } });
 
@@ -209,17 +217,48 @@ describe('worker de dados — erros (CA2)', () => {
     expect(err.stack ?? '').not.toContain('tarefaQueRebenta');
   });
 
+  it('a mensagem de erros que não são WorkerTaskError nunca atravessa (revisão #1)', async () => {
+    const api = connect({
+      tasks: {
+        json: async () => JSON.parse('{"password":"SEGREDO-123"') as unknown,
+        comum: async () => {
+          throw new Error('GET http://u:SEGREDO-123@exemplo.com falhou');
+        },
+        dom: async () => {
+          throw new DOMException('chave SEGREDO-123 em falta', 'NotFoundError');
+        },
+      },
+    });
+
+    const json = await rejection(runTaskOn(api, 'json' as TaskName, { steps: 0 }));
+    expect(json.kind).toBe('failed');
+    expect(json.message).toBe('Falha na tarefa do worker (SyntaxError)');
+
+    const comum = await rejection(runTaskOn(api, 'comum' as TaskName, { steps: 0 }));
+    expect(comum.message).toBe('Falha na tarefa do worker');
+
+    // Nome fora da lista branca: nem o nome passa.
+    const dom = await rejection(runTaskOn(api, 'dom' as TaskName, { steps: 0 }));
+    expect(dom.message).toBe('Falha na tarefa do worker');
+
+    expect(serializeTaskError(new DOMException('x SEGREDO', 'QuotaExceededError'))).toEqual({
+      name: 'WorkerTaskError',
+      kind: 'failed',
+      message: 'Falha na tarefa do worker (QuotaExceededError)',
+    });
+  });
+
   it('valores lançados que não são Error resultam numa mensagem genérica', async () => {
     const api = connect({
       tasks: {
         estranha: async () => {
-          throw { password: 'SEGREDO' };
+          throw { password: 'SEGREDO', name: 'SEGREDO' };
         },
       },
     });
     const err = await rejection(runTaskOn(api, 'estranha' as TaskName, { steps: 0 }));
     expect(err.kind).toBe('failed');
-    expect(err.message).not.toContain('SEGREDO');
+    expect(err.message).toBe('Falha na tarefa do worker');
   });
 
   it('tarefa desconhecida falha com kind "failed"', async () => {
@@ -250,20 +289,181 @@ describe('worker de dados — erros (CA2)', () => {
   });
 });
 
-describe('cliente do worker de dados', () => {
-  it('cria um único Worker módulo de forma preguiçosa e termina-o', () => {
-    const created: Array<{ url: string; options: WorkerOptions | undefined }> = [];
-    const terminate = vi.fn();
-    class FakeWorker extends EventTarget {
-      constructor(url: URL | string, options?: WorkerOptions) {
-        super();
-        created.push({ url: String(url), options });
-      }
-      postMessage() {}
-      terminate = terminate;
-    }
-    vi.stubGlobal('Worker', FakeWorker);
+describe('worker de dados — cancelamento no worker (revisão #7)', () => {
+  it('um erro lançado depois do cancelamento é reportado como "cancelled"', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const api = createDataWorkerApi({
+      tasks: {
+        teimosa: async () => {
+          await gate;
+          throw new Error('rebentou ao limpar');
+        },
+      },
+    });
+    const run = api.run(7, 'teimosa', null);
+    api.cancel(7);
+    release();
+    expect(await run).toEqual({
+      ok: false,
+      error: { name: 'WorkerTaskError', kind: 'cancelled', message: 'Tarefa cancelada' },
+    });
+  });
 
+  it('um AbortError (ex.: fetch interno abortado) é reportado como "cancelled"', async () => {
+    const api = createDataWorkerApi({
+      tasks: {
+        rede: async () => {
+          throw new DOMException('The operation was aborted.', 'AbortError');
+        },
+      },
+    });
+    expect(await api.run(8, 'rede', null)).toMatchObject({
+      ok: false,
+      error: { kind: 'cancelled' },
+    });
+  });
+});
+
+describe('worker de dados — progresso final limitado no tempo (revisão #6)', () => {
+  it('run responde mesmo que o cliente nunca confirme o progresso final', async () => {
+    const api = createDataWorkerApi({ throttleMs: 1000, flushTimeoutMs: 30 });
+    const { port1, port2 } = new MessageChannel();
+    ports.push(port1, port2);
+    // Ninguém escuta port1: a confirmação do callback nunca chega.
+    const start = Date.now();
+    const result = await api.run(9, 'selfTest', { steps: 3 }, port2);
+    expect(result).toEqual({ ok: true, value: { steps: 3 } });
+    expect(Date.now() - start).toBeLessThan(500);
+  });
+});
+
+describe('cliente — abort imediato (revisão #3 e #4)', () => {
+  it('abortar rejeita de imediato, envia cancel ao worker e corta o progresso', async () => {
+    const api = connect({
+      tasks: {
+        surda: async (_input: unknown, ctx) => {
+          // Ignora o cancelamento e continua a emitir progresso durante ~300 ms.
+          for (let i = 1; i <= 30; i++) {
+            ctx.progress({ phase: 'surda', done: i });
+            await pause(10);
+          }
+          return 'feito';
+        },
+      },
+      throttleMs: 0,
+    });
+    const ctrl = new AbortController();
+    const seen: TaskProgress[] = [];
+    const run = runTaskOn(
+      api,
+      'surda' as TaskName,
+      { steps: 0 },
+      { signal: ctrl.signal, onProgress: (p) => seen.push(p) },
+    );
+    await pause(40);
+    const before = seen.length;
+    expect(before).toBeGreaterThan(0);
+    const start = Date.now();
+    ctrl.abort();
+    expect((await rejection(run)).kind).toBe('cancelled');
+    expect(Date.now() - start).toBeLessThan(50);
+    await pause(100);
+    expect(seen.length).toBe(before);
+  });
+
+  it('envia api.cancel(taskId) ao worker mesmo rejeitando logo', async () => {
+    const cancel = vi.fn(async (_id: number) => undefined);
+    const run = vi.fn((_id: number) => new Promise<never>(() => {}));
+    const api = { run, cancel } as unknown as DataWorkerRemote;
+    const ctrl = new AbortController();
+    const p = runTaskOn(api, 'selfTest', { steps: 1 }, { signal: ctrl.signal });
+    ctrl.abort();
+    expect((await rejection(p)).kind).toBe('cancelled');
+    expect(cancel).toHaveBeenCalledWith(run.mock.calls[0]?.[0]);
+  });
+
+  it('se o utilizador abortou, prevalece "cancelled" sobre uma falha da tarefa', async () => {
+    const ctrl = new AbortController();
+    const api = {
+      run: vi.fn(async () => {
+        ctrl.abort();
+        return { ok: false, error: { name: 'WorkerTaskError', kind: 'failed', message: 'x' } };
+      }),
+      cancel: vi.fn(async () => undefined),
+    } as unknown as DataWorkerRemote;
+    const err = await rejection(runTaskOn(api, 'selfTest', { steps: 1 }, { signal: ctrl.signal }));
+    expect(err.kind).toBe('cancelled');
+  });
+});
+
+describe('cliente — porta de progresso fechada sempre (revisão #5)', () => {
+  function trackChannels() {
+    const Real = MessageChannel;
+    const closed: boolean[] = [];
+    class Tracked extends Real {
+      constructor() {
+        super();
+        const idx = closed.push(false) - 1;
+        const close = this.port1.close.bind(this.port1);
+        this.port1.close = () => {
+          closed[idx] = true;
+          close();
+        };
+      }
+    }
+    vi.stubGlobal('MessageChannel', Tracked);
+    return closed;
+  }
+
+  it('fecha a porta quando o input não é clonável', async () => {
+    const api = connect();
+    const closed = trackChannels();
+    const input = { steps: 1, f: () => 'x' } as unknown as { steps: number };
+    await rejection(runTaskOn(api, 'selfTest', input, { onProgress: () => {} }));
+    expect(closed).toEqual([true]);
+  });
+
+  it('fecha a porta no sucesso e quando o transporte falha', async () => {
+    const api = connect();
+    const closed = trackChannels();
+    await runTaskOn(api, 'selfTest', { steps: 2 }, { onProgress: () => {} });
+    const broken = {
+      run: vi.fn(async () => {
+        throw new Error('canal partido');
+      }),
+      cancel: vi.fn(),
+    } as unknown as DataWorkerRemote;
+    const err = await rejection(
+      runTaskOn(broken, 'selfTest', { steps: 1 }, { onProgress: () => {} }),
+    );
+    expect(err.message).toBe('Falha na comunicação com o worker');
+    expect(closed).toEqual([true, true]);
+  });
+});
+
+describe('cliente do worker de dados', () => {
+  const created: Array<{ url: string; options: WorkerOptions | undefined; worker: EventTarget }> =
+    [];
+  const terminate = vi.fn();
+  class FakeWorker extends EventTarget {
+    constructor(url: URL | string, options?: WorkerOptions) {
+      super();
+      created.push({ url: String(url), options, worker: this });
+    }
+    // Nunca responde: as chamadas ficam em curso até o worker falhar ou ser terminado.
+    postMessage() {}
+    terminate = terminate;
+  }
+
+  function stubWorker() {
+    created.length = 0;
+    terminate.mockClear();
+    vi.stubGlobal('Worker', FakeWorker);
+  }
+
+  it('cria um único Worker módulo de forma preguiçosa e termina-o', () => {
+    stubWorker();
     expect(created).toHaveLength(0);
     const a = getDataWorker();
     const b = getDataWorker();
@@ -276,5 +476,32 @@ describe('cliente do worker de dados', () => {
     expect(terminate).toHaveBeenCalledOnce();
     getDataWorker();
     expect(created).toHaveLength(2);
+  });
+
+  it.each(['error', 'messageerror'])(
+    'um evento "%s" rejeita as chamadas em curso e recria o worker (revisão #2)',
+    async (type) => {
+      stubWorker();
+      const a = runTask('selfTest', { steps: 1 });
+      const b = runTask('selfTest', { steps: 2 });
+      created[0]?.worker.dispatchEvent(new Event(type));
+
+      for (const err of [await rejection(a), await rejection(b)]) {
+        expect(err.kind).toBe('failed');
+        expect(err.message).toBe('O worker de dados falhou');
+      }
+      expect(terminate).toHaveBeenCalledOnce();
+      getDataWorker();
+      expect(created).toHaveLength(2);
+    },
+  );
+
+  it('terminateDataWorker rejeita as chamadas em curso (revisão #2)', async () => {
+    stubWorker();
+    const a = runTask('selfTest', { steps: 1 });
+    terminateDataWorker();
+    const err = await rejection(a);
+    expect(err.kind).toBe('failed');
+    expect(err.message).toBe('O worker de dados foi terminado');
   });
 });

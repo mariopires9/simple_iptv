@@ -8,8 +8,11 @@
 //      `ctx.throwIfCancelled()` entre unidades de trabalho (ex.: a cada lote de linhas/itens).
 //   3. Registá-la em `tasks` abaixo. O cliente fica tipado automaticamente:
 //      `runTask('minhaTarefa', input, { onProgress, signal })`.
-//   Erros lançados chegam ao cliente como `WorkerTaskError` com kind 'failed' e só a mensagem —
-//   não pôr credenciais nem URLs completos nas mensagens de erro.
+//   Para o cliente receber uma mensagem útil, lançar `WorkerTaskError('failed', mensagem)` — sem
+//   credenciais nem URLs completos. Qualquer outro erro chega como kind 'failed' com mensagem
+//   genérica (a mensagem original nunca atravessa a fronteira).
+
+import { WorkerTaskError } from './errors';
 
 export interface TaskProgress {
   phase: string;
@@ -32,7 +35,7 @@ export interface SelfTestInput {
   steps: number;
   /** Pausa por passo (ms). Mesmo com 0 cede o event loop para o pedido de cancelamento chegar. */
   delayMs?: number;
-  /** Só para testes: lança um erro comum ao chegar a este passo. */
+  /** Só para testes: lança um `WorkerTaskError('failed')` ao chegar a este passo. */
   failAt?: number;
 }
 
@@ -47,7 +50,7 @@ export async function selfTest(input: SelfTestInput, ctx: TaskContext): Promise<
   const steps = Math.max(0, Math.floor(input.steps));
   for (let i = 0; i < steps; i++) {
     ctx.throwIfCancelled();
-    if (input.failAt === i) throw new Error(`Falha simulada no passo ${i}`);
+    if (input.failAt === i) throw new WorkerTaskError('failed', `Falha simulada no passo ${i}`);
     await pause(input.delayMs ?? 0);
     ctx.progress({ phase: 'selfTest', done: i + 1, total: steps });
   }
