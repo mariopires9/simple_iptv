@@ -138,11 +138,12 @@ describe('PlayerView — live vs VOD controls', () => {
     expect(slider).toHaveAttribute('aria-valuemin', '100');
     expect(slider).toHaveAttribute('aria-valuemax', '400');
     expect(slider).toHaveAttribute('aria-valuetext', '2:30 of 5:00');
+    // Go live lands a safe distance (10 s without target-duration info) behind the edge.
     fireEvent.click(screen.getByRole('button', { name: 'Go live' }));
-    expect(t.media.seeks.at(-1)).toBe(400);
+    expect(t.media.seeks.at(-1)).toBe(390);
     // ← seeks back inside the window, clamped to its start.
     key(t.region(), 'ArrowLeft');
-    expect(t.media.seeks.at(-1)).toBe(390);
+    expect(t.media.seeks.at(-1)).toBe(380);
     act(() => t.media.setTime(105));
     key(t.region(), 'ArrowLeft');
     expect(t.media.seeks.at(-1)).toBe(100);
@@ -523,5 +524,117 @@ describe('PlayerView — announcements', () => {
     );
     expect(names.every((n) => n !== null && n !== '')).toBe(true);
     expect(screen.getByRole('slider', { name: 'Volume' })).toBeInTheDocument();
+  });
+});
+
+describe('PlayerView — review regressions', () => {
+  it('the muted-autoplay notice wins over the Muted/Playing transitions (browser event order)', async () => {
+    setup({}, (media) => {
+      media.deferEvents = true;
+      media.rejectPlay('NotAllowedError');
+    });
+    await flush();
+    await flush();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Playing without sound. Use Unmute to turn the sound on.',
+    );
+  });
+
+  it('holding Esc closes once; holding → keeps seeking', async () => {
+    const onClose = vi.fn();
+    const t = setup({ onClose });
+    await flush();
+    act(() => {
+      t.media.setDuration(600);
+      t.media.setTime(100);
+    });
+    fireEvent.keyDown(t.region(), { key: 'Escape' });
+    fireEvent.keyDown(t.region(), { key: 'Escape', repeat: true });
+    fireEvent.keyDown(t.region(), { key: 'Escape', repeat: true });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(t.region(), { key: 'm', repeat: true });
+    expect(t.media.video.muted).toBe(false);
+    fireEvent.keyDown(t.region(), { key: 'ArrowRight' });
+    act(() => t.media.setTime(110));
+    fireEvent.keyDown(t.region(), { key: 'ArrowRight', repeat: true });
+    expect(t.media.seeks).toEqual([110, 120]);
+  });
+
+  it('events of the previous stream during zapping do not mark the new load ready', async () => {
+    vi.useFakeTimers();
+    const t = setup({ descriptor: LIVE });
+    await flush();
+    let finish = () => {};
+    t.controller.play.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    t.rerender({ descriptor: { ...LIVE, url: 'https://example.test/next.m3u8' } });
+    await flush();
+    // The old stream is still attached until the controller tears it down.
+    act(() => {
+      t.media.emit('loadeddata');
+      t.media.emit('playing');
+    });
+    act(() => vi.advanceTimersByTime(BUFFERING_SPINNER_DELAY_MS));
+    expect(screen.getByTestId('player-spinner')).toBeInTheDocument();
+    // The new stream already has data when load() resolves.
+    t.media.readyState = 4;
+    finish();
+    await flush();
+    expect(screen.queryByTestId('player-spinner')).toBeNull();
+  });
+
+  it('does not hide while a mouse pointer rests over the control bars; a touch does not pin', async () => {
+    vi.useFakeTimers();
+    const t = setup();
+    await flush();
+    const mute = screen.getByRole('button', { name: 'Mute' });
+    fireEvent.pointerMove(mute, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(AUTO_HIDE_DELAY_MS * 3));
+    expect(t.controls()).toHaveAttribute('data-visible', 'true');
+    // Pointer over the bare video area (not a bar): the countdown applies.
+    fireEvent.pointerMove(t.region(), { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(AUTO_HIDE_DELAY_MS));
+    expect(t.controls()).toHaveAttribute('data-visible', 'false');
+    // Pointer leaves the player from a bar.
+    fireEvent.pointerMove(mute, { pointerType: 'mouse' });
+    fireEvent.pointerLeave(t.region(), { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(AUTO_HIDE_DELAY_MS));
+    expect(t.controls()).toHaveAttribute('data-visible', 'false');
+    // A tap on a control has no hover state.
+    fireEvent.pointerDown(mute, { pointerType: 'touch' });
+    expect(t.controls()).toHaveAttribute('data-visible', 'true');
+    act(() => vi.advanceTimersByTime(AUTO_HIDE_DELAY_MS));
+    expect(t.controls()).toHaveAttribute('data-visible', 'false');
+  });
+
+  it('volume 0 is shown as muted; Unmute restores the last non-zero volume', async () => {
+    const t = setup();
+    await flush();
+    const volume = screen.getByRole('slider', { name: 'Volume' });
+    expect(volume).toHaveAttribute('aria-valuetext', '100%');
+    fireEvent.change(volume, { target: { value: '0.6' } });
+    expect(t.media.video.volume).toBe(0.6);
+    fireEvent.change(volume, { target: { value: '0' } });
+    expect(t.media.video.volume).toBe(0);
+    expect(t.media.video.muted).toBe(false);
+    expect(screen.getByRole('status')).toHaveTextContent('Muted');
+    fireEvent.click(screen.getByRole('button', { name: 'Unmute' }));
+    expect(t.media.video.volume).toBe(0.6);
+    expect(t.media.video.muted).toBe(false);
+    expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument();
+  });
+
+  it('unmuting a volume left at 0 with no earlier volume restores 1', async () => {
+    const t = setup();
+    await flush();
+    act(() => {
+      t.media.video.volume = 0;
+    });
+    key(t.region(), 'm');
+    expect(t.media.video.volume).toBe(1);
   });
 });

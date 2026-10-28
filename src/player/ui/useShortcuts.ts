@@ -111,6 +111,10 @@ export function useShortcuts(region: HTMLElement | null, handlers: ShortcutHandl
       }
       if (!action) return;
       event.preventDefault();
+      // Holding a key auto-repeats it: only seeking (←/→) may repeat; toggles, zapping and
+      // close act once per press.
+      const repeatable = event.key === 'ArrowLeft' || event.key === 'ArrowRight';
+      if (event.repeat && !repeatable) return;
       action();
     };
     region.addEventListener('keydown', onKeyDown);

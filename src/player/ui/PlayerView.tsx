@@ -5,13 +5,22 @@ import VolumeOffRounded from '@mui/icons-material/VolumeOffRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
+import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
 import { describePlaybackError } from './describePlaybackError';
-import { playMedia, seekMedia, setMediaMuted, setMediaVolume, startPlayback } from './media';
+import {
+  isSilent,
+  liveEdgePosition,
+  playMedia,
+  seekMedia,
+  setMediaMuted,
+  setMediaVolume,
+  startPlayback,
+} from './media';
 import { PlayerControls, type SeekWindow } from './PlayerControls';
 import { useAutoHide } from './useAutoHide';
 import { useMediaState } from './useMediaState';
@@ -46,8 +55,6 @@ export interface PlayerViewProps {
   /** Controller factory (tests inject a fake). Default: `createPlayerController`. */
   createController?: ControllerFactory;
 }
-
-const errorName = (e: unknown) => (e instanceof Error ? e.name : typeof e);
 
 export function PlayerView({
   descriptor,
@@ -97,47 +104,60 @@ export function PlayerView({
       failed = true;
       setFailure({ load, error: e });
     });
+    // Readiness listeners are attached only once controller.play() resolved: by then the
+    // previous stream has been torn down, so its late events cannot mark this load ready.
     const markReady = () => {
       if (current) setReadyFor(load);
     };
     const READY = ['loadeddata', 'canplay', 'playing'] as const;
-    for (const type of READY) video.addEventListener(type, markReady);
+    let listening = false;
+    const HAVE_CURRENT_DATA = 2;
 
     const options = load.startAt !== undefined ? { startAt: load.startAt } : {};
     void controller
       .play(load.descriptor, options)
       .then(async () => {
         if (!current || failed) return;
-        const outcome = await startPlayback(video);
-        if (!current) return;
-        if (outcome === 'muted') {
-          setAutoplayMuted(true);
-          setAnnouncement(t.player.announce.mutedAutoplay);
-        }
+        for (const type of READY) video.addEventListener(type, markReady);
+        listening = true;
+        if (video.readyState >= HAVE_CURRENT_DATA) markReady();
+        const outcome = await startPlayback(video, () => {
+          // Before the muted retry fires its events, so the announcer gives the autoplay
+          // notice priority over a plain "Muted" / "Playing".
+          if (current) setAutoplayMuted(true);
+        });
+        if (current && outcome === 'blocked') setAutoplayMuted(false);
       })
       .catch((e: unknown) => log.error('player: start failed', { error: errorName(e) }));
 
     return () => {
       current = false;
       offError();
-      for (const type of READY) video.removeEventListener(type, markReady);
+      if (listening) for (const type of READY) video.removeEventListener(type, markReady);
     };
   }, [controller, video, load]);
 
   // --- announcements (polite live region) -------------------------------------------------
   const buffering = (loading || (media.waiting && !media.paused)) && error === undefined;
   const showSpinner = useDelayedFlag(buffering, BUFFERING_SPINNER_DELAY_MS);
+  // Volume 0 is presented (icon, label, announcement) exactly like muted.
+  const silent = media.muted || media.volume === 0;
   const [seen, setSeen] = useState({
     paused: media.paused,
-    muted: media.muted,
+    silent,
     spinner: showSpinner,
   });
-  if (seen.paused !== media.paused || seen.muted !== media.muted || seen.spinner !== showSpinner) {
+  if (seen.paused !== media.paused || seen.silent !== silent || seen.spinner !== showSpinner) {
     // Adjusting state while rendering (React's documented pattern for derived transitions).
-    setSeen({ paused: media.paused, muted: media.muted, spinner: showSpinner });
+    setSeen({ paused: media.paused, silent, spinner: showSpinner });
     const a = t.player.announce;
+    const mutedNow = silent && !seen.silent;
+    const startedNow = !media.paused && seen.paused;
     if (showSpinner && !seen.spinner) setAnnouncement(a.buffering);
-    else if (seen.muted !== media.muted) setAnnouncement(media.muted ? a.muted : a.unmuted);
+    else if (autoplayMuted && silent && (mutedNow || startedNow)) {
+      // Transitions caused by the muted-autoplay fallback: the notice wins.
+      setAnnouncement(a.mutedAutoplay);
+    } else if (seen.silent !== silent) setAnnouncement(silent ? a.muted : a.unmuted);
     else if (seen.paused !== media.paused && !(media.paused && loading)) {
       setAnnouncement(media.paused ? a.paused : a.playing);
     }
@@ -160,18 +180,23 @@ export function PlayerView({
     if (video.paused) playMedia(video);
     else video.pause();
   };
+  // Last audible volume, restored when unmuting after the slider was dragged to 0.
+  const lastVolume = useRef(1);
   const setMuted = (muted: boolean) => {
     if (!video) return;
-    setMediaMuted(video, muted);
+    setMediaMuted(video, muted, lastVolume.current);
     if (!muted) setAutoplayMuted(false);
   };
   const toggleMute = () => {
-    if (video) setMuted(!video.muted);
+    if (video) setMuted(!isSilent(video));
   };
   const setVolume = (volume: number) => {
     if (!video) return;
     setMediaVolume(video, volume);
-    if (volume > 0) setAutoplayMuted(false);
+    if (volume > 0) {
+      lastVolume.current = volume;
+      setAutoplayMuted(false);
+    }
   };
   const seekTo = (time: number) => {
     if (video && seek) seekMedia(video, time, seek.min, seek.max);
@@ -181,7 +206,9 @@ export function PlayerView({
   };
   const goLive = () => {
     if (!video) return;
-    seekMedia(video, media.seekableEnd, media.seekableStart, media.seekableEnd);
+    // TODO(PLY-05/engines): pass the HLS target duration once the controller exposes it.
+    const edge = liveEdgePosition(media.seekableStart, media.seekableEnd);
+    seekMedia(video, edge, media.seekableStart, media.seekableEnd);
     if (video.paused) playMedia(video);
   };
   const retry = () => setRetries((n) => n + 1);
@@ -211,7 +238,7 @@ export function PlayerView({
   }, [autoFocus, region]);
 
   const errorText = error ? describePlaybackError(error) : undefined;
-  const showUnmute = autoplayMuted && media.muted && error === undefined;
+  const showUnmute = autoplayMuted && silent && error === undefined;
 
   return (
     <Box
@@ -265,7 +292,7 @@ export function PlayerView({
         visible={visible}
         minimal={error !== undefined}
         paused={media.paused}
-        muted={media.muted}
+        muted={silent}
         volume={media.volume}
         seek={seek}
         dvr={dvr}

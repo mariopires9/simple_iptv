@@ -21,7 +21,9 @@ import { alpha } from '@mui/material/styles';
 import type { Theme } from '@mui/material/styles';
 import type { ReactNode, Ref } from 'react';
 import { t } from '@/i18n';
-import { formatTime } from './formatTime';
+import { formatPercent, formatTime } from './formatTime';
+import { AUTO_HIDE_KEEP_ATTR } from './useAutoHide';
+import { SEEK_STEP_S } from './useShortcuts';
 import { ProgressBar } from './ProgressBar';
 
 export interface SeekWindow {
@@ -62,7 +64,8 @@ const liveColor = (theme: Theme) =>
   (theme.palette.tokens as Theme['palette']['tokens'] | undefined)?.live ??
   theme.palette.error.main;
 
-const percent = new Intl.NumberFormat(undefined, { style: 'percent' });
+/** The pointer resting over these parts keeps the controls visible (useAutoHide). */
+const keep = { [AUTO_HIDE_KEEP_ATTR]: '' };
 
 const iconButtonSx = { color: 'common.white', minWidth: 44, minHeight: 44 } as const;
 
@@ -167,6 +170,7 @@ export function PlayerControls({
     >
       {/* Top: back · title · live indicator */}
       <Box
+        {...keep}
         sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, bgcolor: scrim, minWidth: 0 }}
       >
         {onClose && (
@@ -188,7 +192,10 @@ export function PlayerControls({
       {!minimal && (
         <>
           {/* Center: previous · play/pause · next (live) or −10 s · play/pause · +10 s (VOD) */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 3 }}>
+          <Box
+            {...keep}
+            sx={{ display: 'flex', alignSelf: 'center', alignItems: 'center', gap: 3 }}
+          >
             {isLive
               ? onPrevious && (
                   <Control label={c.previousChannel} onClick={onPrevious}>
@@ -196,7 +203,7 @@ export function PlayerControls({
                   </Control>
                 )
               : seek && (
-                  <Control label={c.back10} onClick={() => onSeekBy(-10)}>
+                  <Control label={c.back10} onClick={() => onSeekBy(-SEEK_STEP_S)}>
                     <Replay10Rounded />
                   </Control>
                 )}
@@ -210,14 +217,14 @@ export function PlayerControls({
                   </Control>
                 )
               : seek && (
-                  <Control label={c.forward10} onClick={() => onSeekBy(10)}>
+                  <Control label={c.forward10} onClick={() => onSeekBy(SEEK_STEP_S)}>
                     <Forward10Rounded />
                   </Control>
                 )}
           </Box>
 
           {/* Bottom: progress · volume · channel list · fullscreen */}
-          <Box sx={{ px: 1, pb: 1, bgcolor: scrim }}>
+          <Box {...keep} sx={{ px: 1, pb: 1, bgcolor: scrim }}>
             {seek && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pt: 1 }}>
                 {!isLive && (
@@ -244,7 +251,7 @@ export function PlayerControls({
                 step={0.05}
                 value={muted ? 0 : volume}
                 aria-label={c.volume}
-                getAriaValueText={(v) => percent.format(v)}
+                getAriaValueText={(v) => formatPercent(v)}
                 onChange={(_, v) => onVolume(v)}
                 sx={{ width: 96, color: 'common.white', mx: 1 }}
               />

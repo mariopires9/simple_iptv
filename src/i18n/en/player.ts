@@ -1,5 +1,7 @@
 // Player view, controls and announcements (PLY-02, docs/UX_UI.md §4.5).
 export const player = {
+  /** BCP 47 tag used to format numbers (times, percentages) in the player. */
+  locale: 'en',
   /** Accessible name of the player region. Argument: the stream title. */
   region: (title: string) => `Player: ${title}`,
   live: 'Live',

@@ -2,6 +2,7 @@ import type { player as base } from '../en/player';
 import type { MessageShape } from '../types';
 
 export const player = {
+  locale: 'pt-PT',
   region: (title: string) => `Leitor: ${title}`,
   live: 'Em direto',
   controls: {

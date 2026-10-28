@@ -1,9 +1,12 @@
 // Auto-hiding player controls (PLY-02 AC3, docs/UX_UI.md §4.5): while playing, the controls hide
 // after `delayMs` without interaction and reappear on pointer movement, tap or key. They never
-// hide while keyboard focus is inside the controls or while `pinned` (e.g. a menu is open).
-import { useEffect, useMemo, useState } from 'react';
+// hide while keyboard focus is inside the controls, while the pointer rests over a control bar
+// (elements marked with AUTO_HIDE_KEEP_ATTR) or while `pinned` (e.g. a menu is open).
+import { useEffect, useState } from 'react';
 
 export const AUTO_HIDE_DELAY_MS = 3000;
+/** Attribute marking the parts of the controls that keep them visible while hovered. */
+export const AUTO_HIDE_KEEP_ATTR = 'data-autohide-keep';
 
 export interface AutoHideOptions {
   /** Hiding is only allowed while true (typically: playing, no error). */
@@ -12,7 +15,7 @@ export interface AutoHideOptions {
   pinned?: boolean;
   /** Element whose pointer/key/focus activity reveals the controls (the player region). */
   container: HTMLElement | null;
-  /** Controls element: keyboard focus inside it keeps them visible. */
+  /** Controls element: keyboard focus or the pointer over its bars keeps them visible. */
   controls: HTMLElement | null;
   delayMs?: number;
 }
@@ -25,18 +28,20 @@ export function useAutoHide({
   controls,
   delayMs = AUTO_HIDE_DELAY_MS,
 }: AutoHideOptions): boolean {
-  // A new session whenever the inputs change: a `hidden` flag from an earlier session (e.g.
-  // before a pause) is stale, so the controls start visible without a state reset in the effect.
-  const session = useMemo(
-    () => ({ enabled, pinned, container, controls, delayMs }),
-    [enabled, pinned, container, controls, delayMs],
-  );
-  const [hiddenIn, setHiddenIn] = useState<object | null>(null);
+  const [hidden, setHidden] = useState(false);
+  // Any change of the hiding conditions (pause/play, menu) starts over with visible controls.
+  // Adjusted while rendering (React's pattern for state derived from props), not in an effect.
+  const [conditions, setConditions] = useState({ enabled, pinned });
+  if (conditions.enabled !== enabled || conditions.pinned !== pinned) {
+    setConditions({ enabled, pinned });
+    setHidden(false);
+  }
 
   useEffect(() => {
     if (!container) return undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let keyboard = false;
+    let hovering = false;
 
     const keyboardFocusInside = () =>
       keyboard && controls !== null && controls.contains(document.activeElement);
@@ -47,16 +52,28 @@ export function useAutoHide({
       if (!enabled || pinned) return;
       timer = setTimeout(() => {
         timer = undefined;
-        if (!keyboardFocusInside()) setHiddenIn(session);
+        if (!hovering && !keyboardFocusInside()) setHidden(true);
       }, delayMs);
     };
     const activity = () => {
-      setHiddenIn(null);
+      setHidden(false);
       arm();
     };
-    const onPointer = () => {
+    const onPointer = (event: Event) => {
       keyboard = false;
+      const target = event.target;
+      // A touch has no hover (and no pointerleave to end it): only mouse/pen rest over a bar.
+      hovering =
+        (event as PointerEvent).pointerType !== 'touch' &&
+        controls !== null &&
+        target instanceof Element &&
+        controls.contains(target) &&
+        target.closest(`[${AUTO_HIDE_KEEP_ATTR}]`) !== null;
       activity();
+    };
+    const onPointerLeave = () => {
+      hovering = false;
+      arm();
     };
     const onKey = () => {
       keyboard = true;
@@ -65,6 +82,7 @@ export function useAutoHide({
 
     container.addEventListener('pointermove', onPointer);
     container.addEventListener('pointerdown', onPointer);
+    container.addEventListener('pointerleave', onPointerLeave);
     container.addEventListener('keydown', onKey);
     container.addEventListener('focusin', activity);
     container.addEventListener('focusout', arm);
@@ -73,11 +91,12 @@ export function useAutoHide({
       clearTimeout(timer);
       container.removeEventListener('pointermove', onPointer);
       container.removeEventListener('pointerdown', onPointer);
+      container.removeEventListener('pointerleave', onPointerLeave);
       container.removeEventListener('keydown', onKey);
       container.removeEventListener('focusin', activity);
       container.removeEventListener('focusout', arm);
     };
-  }, [session, enabled, pinned, container, controls, delayMs]);
+  }, [enabled, pinned, container, controls, delayMs]);
 
-  return !enabled || pinned || hiddenIn !== session;
+  return !enabled || pinned || !hidden;
 }

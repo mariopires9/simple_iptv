@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { log } from '@/core/log';
 import { createPlayerController } from '../controller';
+import { errorName } from '../errors';
 import type { PlayerController } from '../controller';
 
 export type ControllerFactory = (video: HTMLVideoElement) => PlayerController;
@@ -32,9 +33,7 @@ export function usePlayerController(factory: ControllerFactory = defaultFactory)
     return () => {
       setBound((current) => (current?.controller === controller ? undefined : current));
       controller.stop().catch((e: unknown) => {
-        log.warn('player: stop on unmount failed', {
-          error: e instanceof Error ? e.name : typeof e,
-        });
+        log.warn('player: stop on unmount failed', { error: errorName(e) });
       });
     };
   }, []);

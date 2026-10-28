@@ -20,6 +20,13 @@ export interface FakeMedia {
   emit(type: string): void;
   /** Values assigned to `currentTime` by the UI. */
   readonly seeks: number[];
+  /** `HTMLMediaElement.readyState` (0 by default). */
+  readyState: number;
+  /**
+   * When true, `play()` resolves first and fires `play`/`playing` in a later microtask (the
+   * order real browsers use: events are queued tasks). Default false (events fire inside play).
+   */
+  deferEvents: boolean;
 }
 
 export function installFakeMedia(video: HTMLVideoElement): FakeMedia {
@@ -32,14 +39,24 @@ export function installFakeMedia(video: HTMLVideoElement): FakeMedia {
   const rejections: string[] = [];
   const seeks: number[] = [];
   const emit = (type: string) => video.dispatchEvent(new Event(type));
+  const state = { readyState: 0, deferEvents: false };
 
   const play = vi.fn(async () => {
     const name = rejections.shift();
     if (name !== undefined) throw new DOMException('play() refused', name);
     if (paused) {
       paused = false;
-      emit('play');
-      emit('playing');
+      const fire = () => {
+        emit('play');
+        emit('playing');
+      };
+      if (state.deferEvents) {
+        // Several hops so the events land after the awaiting caller has resumed.
+        void Promise.resolve()
+          .then(() => undefined)
+          .then(() => undefined)
+          .then(fire);
+      } else fire();
     }
   });
   const pause = vi.fn(() => {
@@ -54,6 +71,7 @@ export function installFakeMedia(video: HTMLVideoElement): FakeMedia {
   define('pause', { value: pause });
   define('load', { value: vi.fn() });
   define('paused', { get: () => paused });
+  define('readyState', { get: () => state.readyState });
   define('ended', { get: () => false });
   define('duration', { get: () => duration });
   define('muted', {
@@ -91,6 +109,18 @@ export function installFakeMedia(video: HTMLVideoElement): FakeMedia {
   });
 
   return {
+    get readyState() {
+      return state.readyState;
+    },
+    set readyState(value: number) {
+      state.readyState = value;
+    },
+    get deferEvents() {
+      return state.deferEvents;
+    },
+    set deferEvents(value: boolean) {
+      state.deferEvents = value;
+    },
     video,
     play,
     pause,

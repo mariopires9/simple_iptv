@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PlaybackError } from '../types';
 import { describePlaybackError } from './describePlaybackError';
-import { formatTime } from './formatTime';
+import { messages } from '@/i18n';
+import { formatPercent, formatTime } from './formatTime';
+import { liveEdgePosition } from './media';
 import { AUTO_HIDE_DELAY_MS, useAutoHide } from './useAutoHide';
 import { useShortcuts, type ShortcutHandlers } from './useShortcuts';
 
@@ -217,8 +219,30 @@ describe('useAutoHide', () => {
     const remove = vi.spyOn(container, 'removeEventListener');
     unmount();
     expect(remove.mock.calls.map(([type]) => type).sort()).toEqual(
-      ['focusin', 'focusout', 'keydown', 'pointerdown', 'pointermove'].sort(),
+      ['focusin', 'focusout', 'keydown', 'pointerdown', 'pointerleave', 'pointermove'].sort(),
     );
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('review regressions', () => {
+  it('formats numbers in the given UI locale (pt-PT) and defaults to the active one', () => {
+    expect(messages('pt-PT').player.locale).toBe('pt-PT');
+    expect(formatPercent(0.5, 'pt-PT')).toBe(
+      new Intl.NumberFormat('pt-PT', { style: 'percent' }).format(0.5),
+    );
+    // The locale is honoured (CLDR: pt-PT happens to print "50%", de prints "50 %").
+    expect(formatPercent(0.5, 'de')).toMatch(/^50\s%$/);
+    expect(formatPercent(0.5, 'en')).toBe('50%');
+    expect(formatTime(3725, 'pt-PT')).toBe('1:02:05');
+    // Tests run with an English navigator: the default is the active locale, `en`.
+    expect(formatPercent(0.25)).toBe('25%');
+  });
+
+  it('liveEdgePosition stays max(3 × target duration, 10 s) behind the edge, inside the window', () => {
+    expect(liveEdgePosition(100, 400)).toBe(390);
+    expect(liveEdgePosition(100, 400, 6)).toBe(382);
+    expect(liveEdgePosition(100, 400, 2)).toBe(390);
+    expect(liveEdgePosition(395, 400)).toBe(395);
   });
 });

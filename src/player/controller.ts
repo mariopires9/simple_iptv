@@ -8,7 +8,7 @@ import type { Capabilities } from '@/core/platform';
 import { createHlsEngine } from './engines/hls';
 import { createMpegtsEngine } from './engines/mpegts';
 import { createNativeEngine } from './engines/native';
-import { currentPageProtocol, toPlaybackError } from './errors';
+import { currentPageProtocol, errorName, toPlaybackError } from './errors';
 import { planPlayback } from './select';
 import type { PlaybackCandidate } from './select';
 import { PlaybackError } from './types';
@@ -72,8 +72,6 @@ const DEFAULT_ENGINES: Record<EngineId, EngineFactory> = {
 };
 
 type Listeners = { [K in keyof PlayerEvents]: Set<(payload: PlayerEvents[K]) => void> };
-
-const errorName = (e: unknown) => (e instanceof Error ? e.name : typeof e);
 
 export function createPlayerController(
   video: HTMLVideoElement,
