@@ -9,6 +9,8 @@ const base = process.env.VITE_BASE ?? '/';
 export default defineConfig({
   base,
   plugins: [react()],
+  // Workers como módulos ES: permite import() dinâmico dentro das tarefas (FND-07).
+  worker: { format: 'es' },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
@@ -17,6 +19,7 @@ export default defineConfig({
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
+    exclude: ['**/node_modules/**', '.claude/**'],
     coverage: { provider: 'v8', include: ['src/**'], reporter: ['text-summary', 'html'] },
   },
 });
