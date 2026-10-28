@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="pt-PT">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="no-referrer" />
-    <title>S-00 · Teste de compatibilidade</title>
+    <title>S-00 · Compatibility test</title>
     <style>
       :root { color-scheme: dark; --bg: #0b0e13; --s1: #12161d; --t: #e8ecf1; --m: #9aa6b4; --a: #3ddcb0; --d: #ff6b6b; --w: #f5b544; }
       body { margin: 0; background: var(--bg); color: var(--t); font: 15px/1.5 system-ui, sans-serif; }
@@ -23,30 +23,30 @@
   </head>
   <body>
     <main>
-      <h1>S-00 · Teste de compatibilidade do fornecedor</h1>
+      <h1>S-00 · Provider compatibility test</h1>
       <p class="note">
-        Os dados são usados só nesta página, em memória. Não são guardados nem enviados para mais nenhum sítio
-        além do teu servidor IPTV. O relatório mascara o servidor e as credenciais.
+        The data is used only on this page, in memory. It is not stored or sent anywhere other than
+        your IPTV server. The report masks the server and the credentials.
       </p>
       <form id="form">
         <fieldset>
-          <label>Servidor <input name="server" required placeholder="http://exemplo.com:8080" autocomplete="off" /></label>
-          <label>Utilizador <input name="username" required autocomplete="off" /></label>
-          <label>Palavra-passe <input name="password" required type="password" autocomplete="off" /></label>
-          <label>ID de um canal live (opcional — por omissão usa o primeiro da lista)
+          <label>Server <input name="server" required placeholder="http://example.com:8080" autocomplete="off" /></label>
+          <label>Username <input name="username" required autocomplete="off" /></label>
+          <label>Password <input name="password" required type="password" autocomplete="off" /></label>
+          <label>Live channel ID (optional — defaults to the first in the list)
             <input name="streamId" inputmode="numeric" autocomplete="off" />
           </label>
           <div class="row">
-            <button type="submit">1. Testar API</button>
-            <button type="button" id="play-hls" disabled>2a. Reproduzir HLS (hls.js)</button>
-            <button type="button" id="play-native" disabled>2b. HLS nativo</button>
+            <button type="submit">1. Test API</button>
+            <button type="button" id="play-hls" disabled>2a. Play HLS (hls.js)</button>
+            <button type="button" id="play-native" disabled>2b. Native HLS</button>
             <button type="button" id="play-ts" disabled>2c. TS (mpegts.js)</button>
           </div>
         </fieldset>
       </form>
       <video id="video" controls playsinline muted></video>
-      <h2>Relatório</h2>
-      <p class="note">Copia este texto para o Claude. Não contém credenciais nem o endereço completo do servidor.</p>
+      <h2>Report</h2>
+      <p class="note">Copy this text to Claude. It contains neither credentials nor the full server address.</p>
       <pre id="report"></pre>
     </main>
     <script type="module" src="./spike.ts"></script>

@@ -1,16 +1,16 @@
-// Abertura, fecho e eliminação da base de dados. Módulo interno de core/db:
-// as features usam apenas os repositórios exportados por `./index.ts`.
+// Opening, closing and deleting the database. Internal module of core/db:
+// features only use the repositories exported by `./index.ts`.
 //
-// Nota sobre downgrade: se a base instalada tiver uma versão superior (criada por uma versão mais
-// recente da app), o Dexie 4 não rejeita com VersionError — abre-a na versão existente e cria as
-// tabelas em falta (fazendo upgrade de versão se necessário). Por isso não existe um motivo
-// "version" em `DatabaseUnavailableReason`; um VersionError residual cai em 'open-failed'.
+// Note on downgrade: if the installed database has a higher version (created by a newer version
+// of the app), Dexie 4 does not reject with VersionError — it opens it at the existing version and
+// creates the missing tables (upgrading the version if needed). That is why there is no "version"
+// reason in `DatabaseUnavailableReason`; a residual VersionError falls into 'open-failed'.
 import { SimpleIptvDb } from './schema';
 
-/** Motivo técnico; a UI converte-o em texto (src/i18n/pt-PT/db.ts, ADR-012). */
+/** Technical reason; the UI turns it into text (src/i18n/en/db.ts, ADR-015). */
 export type DatabaseUnavailableReason = 'unsupported' | 'open-failed' | 'timeout';
 
-/** IndexedDB indisponível ou inacessível. A mensagem é diagnóstica (inglês), não para a UI. */
+/** IndexedDB unavailable or inaccessible. The message is diagnostic, not for the UI. */
 export class DatabaseUnavailableError extends Error {
   override readonly name = 'DatabaseUnavailableError';
   readonly reason: DatabaseUnavailableReason;
@@ -21,7 +21,7 @@ export class DatabaseUnavailableError extends Error {
   }
 }
 
-/** A abertura em curso foi cancelada por `closeDatabase()`/`wipeAll()`. */
+/** The pending open was cancelled by `closeDatabase()`/`wipeAll()`. */
 export class DatabaseClosedError extends Error {
   override readonly name = 'DatabaseClosedError';
 
@@ -31,10 +31,10 @@ export class DatabaseClosedError extends Error {
 }
 
 export interface OpenDatabaseOptions {
-  /** Fábrica alternativa (testes com fake-indexeddb). Por omissão usa `globalThis.indexedDB`. */
+  /** Alternative factory (tests with fake-indexeddb). Defaults to `globalThis.indexedDB`. */
   indexedDB?: IDBFactory;
   IDBKeyRange?: typeof IDBKeyRange;
-  /** Tempo máximo de abertura (ms) antes de desistir. Por omissão 10 s. */
+  /** Maximum time to open (ms) before giving up. Defaults to 10 s. */
   timeoutMs?: number;
 }
 
@@ -43,7 +43,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 let current: SimpleIptvDb | undefined;
 let lastOptions: OpenDatabaseOptions = {};
 let opening: Promise<SimpleIptvDb> | undefined;
-/** Incrementada em cada fecho/wipe: uma abertura de uma geração anterior nunca fica em `current`. */
+/** Incremented on every close/wipe: an open from a previous generation never ends up in `current`. */
 let generation = 0;
 
 function classify(error: unknown): DatabaseUnavailableReason {
@@ -86,12 +86,12 @@ async function doOpen(options: OpenDatabaseOptions, gen: number): Promise<Simple
     throw new DatabaseUnavailableError(classify(error), { cause: error });
   }
   if (gen !== generation) {
-    // Entretanto houve closeDatabase()/wipeAll(): esta ligação não pode sobreviver.
+    // closeDatabase()/wipeAll() happened in the meantime: this connection must not survive.
     db.close();
     throw new DatabaseClosedError();
   }
   const opened = db;
-  // Fecho inesperado (ex.: outro separador apagou a base): a próxima chamada volta a abrir.
+  // Unexpected close (e.g. another tab deleted the database): the next call reopens it.
   opened.on('close', () => {
     if (current === opened) current = undefined;
   });
@@ -100,9 +100,9 @@ async function doOpen(options: OpenDatabaseOptions, gen: number): Promise<Simple
 }
 
 /**
- * Abre (ou devolve já aberta) a base `simple-iptv` v1.
- * Rejeita com `DatabaseUnavailableError` se o IndexedDB não estiver disponível.
- * As opções só têm efeito na primeira abertura (ou depois de `closeDatabase()`).
+ * Opens (or returns the already open) `simple-iptv` v1 database.
+ * Rejects with `DatabaseUnavailableError` if IndexedDB is not available.
+ * Options only take effect on the first open (or after `closeDatabase()`).
  */
 export function openDatabase(options: OpenDatabaseOptions = {}): Promise<SimpleIptvDb> {
   if (current) return Promise.resolve(current);
@@ -117,8 +117,9 @@ export function openDatabase(options: OpenDatabaseOptions = {}): Promise<SimpleI
 }
 
 /**
- * Fecha a ligação atual e cancela uma abertura em curso (essa ligação é fechada assim que
- * concluir e a promessa rejeita com `DatabaseClosedError`). Devolve quando nada fica aberto.
+ * Closes the current connection and cancels a pending open (that connection is closed as soon
+ * as it completes and the promise rejects with `DatabaseClosedError`). Resolves when nothing is
+ * left open.
  */
 export async function closeDatabase(): Promise<void> {
   generation += 1;
@@ -129,13 +130,13 @@ export async function closeDatabase(): Promise<void> {
   if (pending) await pending.catch(() => undefined);
 }
 
-/** Apaga toda a base de dados (SRC-10 "Apagar todos os dados"). */
+/** Deletes the whole database (SRC-10 "Delete all data"). */
 export async function wipeAll(): Promise<void> {
   await closeDatabase();
   await createDb(lastOptions).delete();
 }
 
-/** Usado pelos repositórios: abre a base se ainda não estiver aberta. */
+/** Used by the repositories: opens the database if it is not open yet. */
 export function getDb(): Promise<SimpleIptvDb> {
   return openDatabase();
 }

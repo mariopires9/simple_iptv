@@ -1,5 +1,5 @@
-// Modelo de erros de rede (FND-06, docs/ARCHITECTURE.md §4 e §8).
-// A UI mapeia `kind` → mensagem pt-PT; a `message` aqui é para diagnóstico e nunca contém credenciais.
+// Network error model (FND-06, docs/ARCHITECTURE.md §4 and §8).
+// The UI maps `kind` → a localized message; the `message` here is for diagnostics and never contains credentials.
 import { MASK, redact, toLogJson } from '@/core/log';
 
 export type NetErrorKind =
@@ -11,22 +11,22 @@ export interface NetErrorInit {
   kind: NetErrorKind;
   status?: number;
   hint?: NetErrorHint;
-  /** URL do pedido. Nunca é guardado: só a forma encurtada e redigida (`target`). */
+  /** Request URL. Never stored: only the shortened, redacted form (`target`). */
   url?: string;
   cause?: unknown;
 }
 
 const DESCRIPTIONS: Record<NetErrorKind, string> = {
-  offline: 'Sem ligação à rede',
-  timeout: 'Tempo de espera esgotado',
-  aborted: 'Pedido cancelado',
-  blocked: 'Pedido bloqueado pelo browser',
-  http: 'Resposta HTTP inesperada',
-  auth: 'Autenticação recusada',
-  parse: 'Resposta inválida',
+  offline: 'No network connection',
+  timeout: 'Request timed out',
+  aborted: 'Request aborted',
+  blocked: 'Request blocked by the browser',
+  http: 'Unexpected HTTP response',
+  auth: 'Authentication rejected',
+  parse: 'Invalid response',
 };
 
-/** Primeiros segmentos conhecidos (endpoints Xtream e tipos de stream) que podem ficar visíveis. */
+/** Known first segments (Xtream endpoints and stream types) that may stay visible. */
 const SAFE_FIRST_SEGMENTS = new Set([
   'player_api.php',
   'get.php',
@@ -38,10 +38,10 @@ const SAFE_FIRST_SEGMENTS = new Set([
 ]);
 const EXTENSION = /\.([A-Za-z0-9]{1,5})$/;
 
-// Encurta um URL para diagnóstico. Regra: o host (com porta e userinfo) passa a `***`; a query e o
-// fragmento são descartados; do caminho só fica o primeiro segmento se for conhecido
-// (`SAFE_FIRST_SEGMENTS`) e a extensão do último segmento — todos os outros segmentos passam a `***`.
-// Exemplos (comentário de linha porque `***/` fecharia um bloco /** */):
+// Shortens a URL for diagnostics. Rule: the host (with port and userinfo) becomes `***`; the query and
+// fragment are dropped; of the path, only the first segment is kept if it is known
+// (`SAFE_FIRST_SEGMENTS`) plus the extension of the last segment — every other segment becomes `***`.
+// Examples (line comment because `***/` would close a /** */ block):
 //   http://h:8080/player_api.php?username=… → http://***/player_api.php
 //   http://h/live/u/p/1.ts                  → http://***/live/***/***/***.ts
 //   http://h/u/p/1.ts                       → http://***/***/***/***.ts
@@ -66,8 +66,8 @@ export function shortenUrl(url: string): string | undefined {
 const MAX_CAUSE_DEPTH = 3;
 
 /**
- * A causa original pode trazer o URL completo na mensagem: guarda-se só uma cópia redigida,
- * incluindo a cadeia de `cause` até `MAX_CAUSE_DEPTH` níveis.
+ * The original cause may carry the full URL in its message: only a redacted copy is kept,
+ * including the `cause` chain up to `MAX_CAUSE_DEPTH` levels.
  */
 function sanitizeCause(cause: unknown, depth = 1): unknown {
   if (cause === undefined || depth > MAX_CAUSE_DEPTH) return undefined;
@@ -90,7 +90,7 @@ export class NetError extends Error {
   readonly kind: NetErrorKind;
   readonly status?: number;
   readonly hint?: NetErrorHint;
-  /** URL encurtado e redigido (esquema + `***` + caminho, sem query). */
+  /** Shortened, redacted URL (scheme + `***` + path, no query). */
   readonly target?: string;
 
   constructor({ kind, status, hint, url, cause }: NetErrorInit) {

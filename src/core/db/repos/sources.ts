@@ -1,10 +1,10 @@
-// Repositório de fontes IPTV, incluindo a remoção em cascata (FND-05 CA4).
+// IPTV sources repository, including cascading removal (FND-05 CA4).
 import { getDb } from '../database';
 import { sourcePrefix } from '../keys';
 import type { Source } from '../types';
 
 export const sourcesRepo = {
-  /** Todas as fontes pela ordem de criação. */
+  /** All sources in creation order. */
   async list(): Promise<Source[]> {
     const db = await getDb();
     return db.sources.orderBy('createdAt').toArray();
@@ -15,22 +15,22 @@ export const sourcesRepo = {
     return db.sources.get(id);
   },
 
-  /** Cria ou substitui uma fonte. */
+  /** Creates or replaces a source. */
   async put(source: Source): Promise<void> {
     const db = await getDb();
     await db.sources.put(source);
   },
 
-  /** Atualiza campos de uma fonte existente; devolve `false` se não existir. */
+  /** Updates fields of an existing source; returns `false` if it does not exist. */
   async update(id: string, changes: Partial<Omit<Source, 'id'>>): Promise<boolean> {
     const db = await getDb();
     return (await db.sources.update(id, changes)) > 0;
   },
 
   /**
-   * Remove a fonte e todos os registos com o seu `sourceId` numa única transação:
-   * catálogo, categorias, detalhes de séries, favoritos, histórico, EPG, índice de pesquisa,
-   * segredo do cofre (`secretRef`) e definições que apontem para ela.
+   * Removes the source and every record with its `sourceId` in a single transaction:
+   * catalog, categories, series details, favorites, history, EPG, search index,
+   * vault secret (`secretRef`) and settings that point to it.
    */
   async remove(id: string): Promise<void> {
     const db = await getDb();
@@ -55,7 +55,7 @@ export const sourcesRepo = {
         const source = await db.sources.get(id);
         if (source?.secretRef !== undefined) await db.secrets.delete(source.secretRef);
         await Promise.all([
-          // Intervalos da chave primária (`${sourceId}:…`) → `deleteRange` nativo.
+          // Primary-key ranges (`${sourceId}:…`) → native `deleteRange`.
           db.categories.where('key').startsWith(prefix).delete(),
           db.channels.where('key').startsWith(prefix).delete(),
           db.movies.where('key').startsWith(prefix).delete(),

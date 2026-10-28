@@ -1,7 +1,7 @@
-// Chaves compostas do catálogo — docs/ARCHITECTURE.md §5.
-// Item: `${sourceId}:${type}:${externalId}` · Categoria: `${sourceId}:${type}:cat:${externalId}`.
-// São determinísticas: a mesma fonte produz as mesmas chaves em cada sincronização,
-// por isso favoritos e histórico sobrevivem a re-sincronizações.
+// Composite catalog keys — docs/ARCHITECTURE.md §5.
+// Item: `${sourceId}:${type}:${externalId}` · Category: `${sourceId}:${type}:cat:${externalId}`.
+// They are deterministic: the same source produces the same keys on every sync,
+// so favorites and history survive re-syncs.
 import { CONTENT_TYPES, type ContentType } from './types';
 
 const SEP = ':';
@@ -18,13 +18,13 @@ export type ParsedCategoryKey = ParsedItemKey;
 
 function assertParts(sourceId: string, type: ContentType, externalId: string): void {
   if (sourceId === '' || sourceId.includes(SEP)) {
-    throw new TypeError(`sourceId inválido para chave composta: "${sourceId}"`);
+    throw new TypeError(`Invalid sourceId for composite key: "${sourceId}"`);
   }
   if (!CONTENT_TYPES.includes(type)) {
-    throw new TypeError(`Tipo de conteúdo inválido: "${String(type)}"`);
+    throw new TypeError(`Invalid content type: "${String(type)}"`);
   }
   if (externalId === '') {
-    throw new TypeError('externalId vazio em chave composta');
+    throw new TypeError('Empty externalId in composite key');
   }
 }
 
@@ -33,19 +33,19 @@ export function isContentType(value: string): value is ContentType {
 }
 
 /**
- * Chave de um item do catálogo (canal, filme ou série). Um `externalId` começado por `cat:` é
- * rejeitado: a chave seria indistinguível de uma chave de categoria.
+ * Key of a catalog item (channel, movie or series). An `externalId` starting with `cat:` is
+ * rejected: the key would be indistinguishable from a category key.
  */
 export function itemKey(sourceId: string, type: ContentType, externalId: string | number): string {
   const ext = String(externalId);
   assertParts(sourceId, type, ext);
   if (ext.startsWith(CATEGORY_PREFIX)) {
-    throw new TypeError(`externalId de item não pode começar por "${CATEGORY_PREFIX}"`);
+    throw new TypeError(`Item externalId must not start with "${CATEGORY_PREFIX}"`);
   }
   return `${sourceId}${SEP}${type}${SEP}${ext}`;
 }
 
-/** Chave de uma categoria. */
+/** Key of a category. */
 export function categoryKey(
   sourceId: string,
   type: ContentType,
@@ -56,17 +56,17 @@ export function categoryKey(
   return `${sourceId}${SEP}${type}${SEP}${CATEGORY_MARKER}${SEP}${ext}`;
 }
 
-/** Prefixo comum a todas as chaves de uma fonte (útil para apagar por prefixo). */
+/** Prefix shared by all keys of a source (useful for deleting by prefix). */
 export function sourcePrefix(sourceId: string): string {
   return `${sourceId}${SEP}`;
 }
 
-/** Prefixo comum às chaves de itens e categorias de uma fonte+tipo. */
+/** Prefix shared by the item and category keys of a source+type. */
 export function typePrefix(sourceId: string, type: ContentType): string {
   return `${sourceId}${SEP}${type}${SEP}`;
 }
 
-/** Decompõe `${sourceId}:${type}:${resto}` sem validar o resto. */
+/** Splits `${sourceId}:${type}:${rest}` without validating the rest. */
 function splitKey(key: string): ParsedItemKey | undefined {
   const first = key.indexOf(SEP);
   if (first <= 0) return undefined;
@@ -78,8 +78,8 @@ function splitKey(key: string): ParsedItemKey | undefined {
 }
 
 /**
- * Decompõe uma chave de item. O `externalId` pode conter `:` (tudo o que vem depois do tipo).
- * Devolve `undefined` se a chave não for válida ou se for uma chave de categoria (`…:cat:…`).
+ * Parses an item key. The `externalId` may contain `:` (everything after the type).
+ * Returns `undefined` if the key is invalid or is a category key (`…:cat:…`).
  */
 export function parseItemKey(key: string): ParsedItemKey | undefined {
   const parsed = splitKey(key);
@@ -89,7 +89,7 @@ export function parseItemKey(key: string): ParsedItemKey | undefined {
   return parsed;
 }
 
-/** Decompõe uma chave de categoria; `undefined` se não for uma chave de categoria válida. */
+/** Parses a category key; `undefined` if it is not a valid category key. */
 export function parseCategoryKey(key: string): ParsedCategoryKey | undefined {
   const parsed = splitKey(key);
   if (!parsed || !parsed.externalId.startsWith(CATEGORY_PREFIX)) return undefined;
@@ -99,8 +99,8 @@ export function parseCategoryKey(key: string): ParsedCategoryKey | undefined {
 }
 
 /**
- * Normaliza um nome para pesquisa/ordenação: minúsculas, sem acentos, espaços colapsados.
- * Remove só marcas combinatórias (`\p{M}`) após NFD; outros símbolos (ex.: `^`, `` ` ``) mantêm-se.
+ * Normalizes a name for search/sorting: lowercase, no diacritics, collapsed whitespace.
+ * Only removes combining marks (`\p{M}`) after NFD; other symbols (e.g. `^`, `` ` ``) are kept.
  */
 export function normalizeName(name: string): string {
   return name.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();

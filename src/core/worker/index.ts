@@ -1,5 +1,5 @@
-// Módulo core/worker — ver docs/ARCHITECTURE.md §3 e ADR-009 (FND-07).
-// A thread principal usa só o cliente; data.worker.ts é carregado pelo próprio cliente.
+// core/worker module — see docs/ARCHITECTURE.md §3 and ADR-009 (FND-07).
+// The main thread uses only the client; data.worker.ts is loaded by the client itself.
 export {
   getDataWorker,
   runTask,

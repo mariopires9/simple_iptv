@@ -1,6 +1,6 @@
-// Schema Dexie da base `simple-iptv` — docs/ARCHITECTURE.md §5.
-// Ficheiro serializado (docs/AGENT_WORKFLOW.md §5): cada alteração de schema é uma story própria
-// e acrescenta uma nova `version(n)` com `upgrade()`; nunca editar uma versão já publicada.
+// Dexie schema of the `simple-iptv` database — docs/ARCHITECTURE.md §5.
+// Serialized file (docs/AGENT_WORKFLOW.md §5): every schema change is its own story
+// and adds a new `version(n)` with `upgrade()`; never edit an already published version.
 import { Dexie, type DexieOptions, type Table } from 'dexie';
 import type {
   Category,
@@ -21,7 +21,7 @@ import type {
 export const DB_NAME = 'simple-iptv';
 export const DB_VERSION = 1;
 
-/** Primeiro campo = chave primária; restantes = índices (`[a+b]` = índice composto). */
+/** First field = primary key; the rest = indexes (`[a+b]` = compound index). */
 export const SCHEMA_V1 = {
   sources: 'id, createdAt',
   secrets: 'ref',

@@ -1,11 +1,11 @@
-// Tipos persistidos na base `simple-iptv` — docs/ARCHITECTURE.md §5.
-// Campos opcionais quando as fontes (Xtream/M3U) podem não os fornecer.
+// Types persisted in the `simple-iptv` database — docs/ARCHITECTURE.md §5.
+// Fields are optional when sources (Xtream/M3U) may not provide them.
 
 export type ContentType = 'live' | 'movie' | 'series';
 export const CONTENT_TYPES: readonly ContentType[] = ['live', 'movie', 'series'];
 
 // ---------------------------------------------------------------------------
-// Fontes
+// Sources
 // ---------------------------------------------------------------------------
 
 export type SourceKind = 'xtream' | 'm3u-url' | 'm3u-file';
@@ -29,20 +29,20 @@ export interface Source {
   name: string;
   serverUrl?: string;
   username?: string;
-  /** Referência para o cofre (tabela `secrets`); ausente em fontes sem segredo (ex.: ficheiro M3U). */
+  /** Reference into the vault (`secrets` table); absent for sources without a secret (e.g. M3U file). */
   secretRef?: string;
   epgUrl?: string;
   prefs: SourcePrefs;
   createdAt: number;
   lastSyncAt?: number;
   lastSyncStatus: SyncStatus;
-  /** Código de erro da última sincronização (nunca dados sensíveis). */
+  /** Error code of the last sync (never sensitive data). */
   lastSyncError?: string;
   stats: SourceStats;
 }
 
 // ---------------------------------------------------------------------------
-// Cofre (core/crypto)
+// Vault (core/crypto)
 // ---------------------------------------------------------------------------
 
 export interface SecretRecord {
@@ -53,12 +53,12 @@ export interface SecretRecord {
 
 export interface KeyRecord {
   id: string;
-  /** CryptoKey não exportável (guardada por structured clone). */
+  /** Non-extractable CryptoKey (stored via structured clone). */
   key: CryptoKey;
 }
 
 // ---------------------------------------------------------------------------
-// Catálogo
+// Catalog
 // ---------------------------------------------------------------------------
 
 export interface Category {
@@ -68,29 +68,29 @@ export interface Category {
   type: ContentType;
   externalId: string;
   name: string;
-  /** Posição na lista original da fonte. */
+  /** Position in the source's original list. */
   order: number;
 }
 
 interface CatalogItemBase {
-  /** `${sourceId}:${type}:${externalId}` — estável entre sincronizações. */
+  /** `${sourceId}:${type}:${externalId}` — stable across syncs. */
   key: string;
   sourceId: string;
   externalId: string;
   categoryKey?: string;
   name: string;
-  /** Posição na lista original da fonte. */
+  /** Position in the source's original list. */
   order: number;
 }
 
 export interface Channel extends CatalogItemBase {
   type: 'live';
-  /** Nome normalizado (minúsculas, sem acentos) para pesquisa/ordenação. */
+  /** Normalized name (lowercase, no diacritics) for search/sorting. */
   nameNorm: string;
   logo?: string;
   number?: number;
   epgId?: string;
-  /** Xtream: id + extensão; M3U: URL em claro (ver ARCHITECTURE.md §5). */
+  /** Xtream: id + extension; M3U: plain URL (see ARCHITECTURE.md §5). */
   streamPath: string;
   catchup?: { days?: number; source?: string };
 }
@@ -124,10 +124,10 @@ export interface CatalogItemByType {
 
 export type CatalogItem = CatalogItemByType[ContentType];
 
-/** Campos calculados pelo repositório (chaves, ordem, nome normalizado). */
+/** Fields computed by the repository (keys, order, normalized name). */
 type DerivedField = 'key' | 'sourceId' | 'type' | 'order' | 'categoryKey' | 'nameNorm';
 
-/** Item tal como vem do provider: o repositório constrói as chaves compostas. */
+/** Item as it comes from the provider: the repository builds the composite keys. */
 export type CatalogItemInput<T extends ContentType> = Omit<CatalogItemByType[T], DerivedField> & {
   categoryExternalId?: string;
 };
@@ -143,7 +143,7 @@ export interface CatalogReplacement<T extends ContentType> {
 }
 
 export interface Episode {
-  /** Chave do episódio (usada em `HistoryEntry.episodeKey`). */
+  /** Episode key (used in `HistoryEntry.episodeKey`). */
   key: string;
   externalId: string;
   season: number;
@@ -171,7 +171,7 @@ export interface SeriesDetails {
 }
 
 // ---------------------------------------------------------------------------
-// Favoritos, histórico, EPG, definições, pesquisa
+// Favorites, history, EPG, settings, search
 // ---------------------------------------------------------------------------
 
 export interface Favorite {
@@ -192,14 +192,14 @@ export interface HistoryEntry {
   completed: boolean;
 }
 
-/** Campos omitidos mantêm o valor guardado; numa entrada nova `completed` é `false` por omissão. */
+/** Omitted fields keep the stored value; on a new entry `completed` defaults to `false`. */
 export interface HistoryUpsert {
   itemKey: string;
   positionSec?: number;
   durationSec?: number;
   episodeKey?: string;
   completed?: boolean;
-  /** Por omissão `Date.now()`. */
+  /** Defaults to `Date.now()`. */
   lastWatchedAt?: number;
 }
 
@@ -214,7 +214,7 @@ export interface EpgProgram {
 
 export type Theme = 'system' | 'light' | 'dark';
 
-/** Valores tipados por chave da tabela `settings`. */
+/** Typed values per key of the `settings` table. */
 export interface SettingsMap {
   theme: Theme;
   activeSourceId: string;
@@ -232,7 +232,7 @@ export interface SettingsEntry<K extends SettingsKey = SettingsKey> {
 
 export interface SearchIndexEntry {
   sourceId: string;
-  /** Índice MiniSearch serializado (`JSON.stringify(index)`). */
+  /** Serialized MiniSearch index (`JSON.stringify(index)`). */
   data: string;
   builtAt: number;
 }

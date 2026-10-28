@@ -1,5 +1,5 @@
-// Armazenamento bruto do cofre (tabelas `secrets` e `keys`) para core/crypto (SRC-01).
-// Só guarda dados já cifrados e a CryptoKey não exportável; nunca segredos em claro.
+// Raw vault storage (`secrets` and `keys` tables) for core/crypto (SRC-01).
+// Only stores already-encrypted data and the non-extractable CryptoKey; never plaintext secrets.
 import { getDb } from '../database';
 import type { KeyRecord, SecretRecord } from '../types';
 
@@ -29,7 +29,7 @@ export const vaultStore = {
     await db.keys.put(record);
   },
 
-  /** Apaga todos os segredos e chaves (CredentialVault.wipe). */
+  /** Deletes all secrets and keys (CredentialVault.wipe). */
   async clear(): Promise<void> {
     const db = await getDb();
     await db.transaction('rw', db.secrets, db.keys, async () => {

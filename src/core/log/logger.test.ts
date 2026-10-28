@@ -22,30 +22,30 @@ afterEach(() => {
 });
 
 describe('log', () => {
-  it('redige mensagem e contexto antes da consola e do buffer', () => {
+  it('redacts message and context before the console and the buffer', () => {
     registerSecret('s3gr3d0');
-    log.error('Falha em http://h.test/live/joao/abc/1.ts', {
+    log.error('Failure at http://h.test/live/joao/abc/1.ts', {
       url: 'http://h.test/get.php?username=joao&password=abc',
-      extra: 'valor s3gr3d0',
+      extra: 'value s3gr3d0',
     });
 
     const [entry] = getLogEntries();
     expect(entry?.level).toBe('error');
-    expect(entry?.message).toBe('Falha em http://h.test/live/***/***/1.ts');
+    expect(entry?.message).toBe('Failure at http://h.test/live/***/***/1.ts');
     expect(entry?.context).toBe(
-      '{"url":"http://h.test/get.php?username=***&password=***","extra":"valor ***"}',
+      '{"url":"http://h.test/get.php?username=***&password=***","extra":"value ***"}',
     );
 
     const printed = vi.mocked(console.error).mock.calls.flat().join(' ');
     expect(printed).not.toMatch(/joao|abc|s3gr3d0/);
   });
 
-  it('serializa Error (name/message/stack/cause) e redige-o', () => {
+  it('serializes Error (name/message/stack/cause) and redacts it', () => {
     registerSecret('s3gr3d0');
-    const err = new Error('pedido a http://h.test/?password=abc', {
+    const err = new Error('request to http://h.test/?password=abc', {
       cause: new TypeError('s3gr3d0'),
     });
-    log.warn('erro', { err });
+    log.warn('error', { err });
     const context = getLogEntries()[0]?.context ?? '';
     expect(context).toContain('"name":"Error"');
     expect(context).toContain('"stack":');
@@ -54,14 +54,14 @@ describe('log', () => {
     expect(context).not.toMatch(/abc|s3gr3d0/);
   });
 
-  it('suporta referências circulares e bigint', () => {
+  it('supports circular references and bigint', () => {
     const a: Record<string, unknown> = { n: 1n };
     a.self = a;
-    log.info('ciclo', { a });
+    log.info('cycle', { a });
     expect(getLogEntries()[0]?.context).toBe('{"a":{"n":"1","self":"[Circular]"}}');
   });
 
-  it('escreve na consola do nível correspondente', () => {
+  it('writes to the console method of the matching level', () => {
     log.debug('d');
     log.info('i');
     log.warn('w');
@@ -72,28 +72,28 @@ describe('log', () => {
     expect(console.error).toHaveBeenCalledWith('[error] e');
   });
 
-  it('debug fica silencioso em produção mas continua no buffer', () => {
+  it('debug is silent in production but still goes to the buffer', () => {
     vi.stubEnv('PROD', true);
     try {
-      log.debug('só no buffer');
+      log.debug('buffer only');
       expect(console.debug).not.toHaveBeenCalled();
-      expect(getLogEntries()[0]?.message).toBe('só no buffer');
+      expect(getLogEntries()[0]?.message).toBe('buffer only');
     } finally {
       vi.unstubAllEnvs();
     }
   });
 
-  it('o buffer circular guarda no máximo 500 entradas (as mais recentes)', () => {
-    for (let i = 0; i < LOG_BUFFER_SIZE + 120; i++) log.info(`entrada ${i}`);
+  it('the ring buffer keeps at most 500 entries (the most recent)', () => {
+    for (let i = 0; i < LOG_BUFFER_SIZE + 120; i++) log.info(`entry ${i}`);
     const entries = getLogEntries();
     expect(LOG_BUFFER_SIZE).toBe(500);
     expect(entries).toHaveLength(500);
-    expect(entries[0]?.message).toBe('entrada 120');
-    expect(entries.at(-1)?.message).toBe(`entrada ${LOG_BUFFER_SIZE + 119}`);
-    expect(exportDiagnostics()).toContain('Entradas: 500');
+    expect(entries[0]?.message).toBe('entry 120');
+    expect(entries.at(-1)?.message).toBe(`entry ${LOG_BUFFER_SIZE + 119}`);
+    expect(exportDiagnostics()).toContain('Entries: 500');
   });
 
-  it('clearLogBuffer esvazia o buffer', () => {
+  it('clearLogBuffer empties the buffer', () => {
     log.info('x');
     clearLogBuffer();
     expect(getLogEntries()).toHaveLength(0);
@@ -101,17 +101,17 @@ describe('log', () => {
 });
 
 describe('exportDiagnostics', () => {
-  it('produz texto com timestamps ISO, nível, mensagem e contexto', () => {
+  it('produces text with ISO timestamps, level, message and context', () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 28, 12, 0, 0));
-    log.warn('aviso', { n: 1 });
+    log.warn('warning', { n: 1 });
     const report = exportDiagnostics();
-    expect(report).toContain('Relatório de diagnóstico');
-    expect(report).toContain('2026-10-28T12:00:00.000Z WARN  aviso');
-    expect(report).toContain('    contexto: {"n":1}');
+    expect(report).toContain('Diagnostics report');
+    expect(report).toContain('2026-10-28T12:00:00.000Z WARN  warning');
+    expect(report).toContain('    context: {"n":1}');
   });
 
-  it('aplica os mesmos filtros, incluindo segredos registados depois do log', () => {
-    log.info('palavra tardia: t4rd10');
+  it('applies the same filters, including secrets registered after logging', () => {
+    log.info('late secret: t4rd10');
     expect(exportDiagnostics()).toContain('t4rd10');
     registerSecret('t4rd10');
     const report = exportDiagnostics();
@@ -120,8 +120,8 @@ describe('exportDiagnostics', () => {
   });
 });
 
-describe('propriedade: segredos aleatórios nunca sobrevivem', () => {
-  // PRNG determinístico (mulberry32) para resultados reprodutíveis sem dependências novas.
+describe('property: random secrets never survive', () => {
+  // Deterministic PRNG (mulberry32) for reproducible results without new dependencies.
   function mulberry32(seed: number) {
     let a = seed;
     return () => {
@@ -143,10 +143,10 @@ describe('propriedade: segredos aleatórios nunca sobrevivem', () => {
     (u, p) => `http://${u}:${p}@h.test/`,
     (u, p) => `https://proxy.test/?url=${encodeURIComponent(`http://h.test/${u}/${p}/1.ts`)}`,
     (u, p) => `Authorization: Basic ${btoa(u)} ${btoa(p)}`,
-    (u, p) => `texto livre ${u} e ${p}.`,
+    (u, p) => `free text ${u} and ${p}.`,
   ];
 
-  it('200 segredos registados não aparecem em redact nem em exportDiagnostics', () => {
+  it('200 registered secrets appear neither in redact nor in exportDiagnostics', () => {
     const rand = mulberry32(0x5eed);
     const pick = (n: number) => Math.floor(rand() * n);
     const secret = () =>
@@ -173,17 +173,17 @@ describe('propriedade: segredos aleatórios nunca sobrevivem', () => {
   });
 });
 
-describe('regressões da revisão', () => {
-  it('Error com ciclo (e.cause = e) não perde o contexto', () => {
-    const e = new Error('ciclo');
+describe('review regressions', () => {
+  it('Error with a cycle (e.cause = e) does not lose the context', () => {
+    const e = new Error('cycle');
     (e as { cause?: unknown }).cause = e;
     log.error('x', { e });
     const context = getLogEntries()[0]?.context ?? '';
-    expect(context).toContain('"message":"ciclo"');
+    expect(context).toContain('"message":"cycle"');
     expect(context).toContain('"cause":"[Circular]"');
   });
 
-  it('Errors A↔B não perdem o contexto', () => {
+  it('Errors A↔B do not lose the context', () => {
     const a = new Error('A');
     const b = new Error('B', { cause: a });
     (a as { cause?: unknown }).cause = b;
@@ -193,22 +193,22 @@ describe('regressões da revisão', () => {
     expect(context).toContain('"cause":"[Circular]"');
   });
 
-  it('referências partilhadas não cíclicas são serializadas em ambos os sítios', () => {
+  it('shared non-cyclic references are serialized in both places', () => {
     const s = { v: 1 };
     log.info('x', { a: s, b: s, list: [s, s] });
     expect(getLogEntries()[0]?.context).toBe('{"a":{"v":1},"b":{"v":1},"list":[{"v":1},{"v":1}]}');
   });
 
-  it('o cabeçalho do relatório não é estragado por segredos curtos', () => {
+  it('the report header is not mangled by short secrets', () => {
     registerSecret('IPTV');
-    registerSecret('Gerado');
-    log.info('serviço IPTV');
+    registerSecret('Generated');
+    log.info('IPTV service');
     const report = exportDiagnostics();
-    expect(report.startsWith('Relatório de diagnóstico — Simple IPTV\nGerado em: ')).toBe(true);
-    expect(report).toContain('INFO  serviço ***');
+    expect(report.startsWith('Diagnostics report — Simple IPTV\nGenerated at: ')).toBe(true);
+    expect(report).toContain('INFO  *** service');
   });
 
-  it('toLogJson nunca lança e redige', () => {
+  it('toLogJson never throws and redacts', () => {
     expect(toLogJson({ password: 'abc', n: 1n })).toBe('{"password":"***","n":"1"}');
     expect(toLogJson(undefined)).toBe('undefined');
   });

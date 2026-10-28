@@ -1,6 +1,6 @@
 import { t } from '@/i18n';
 
-/** Ecrã provisório até FND-03 (tema e AppShell) e FND-04 (routing). */
+/** Temporary screen until FND-03 (theme and AppShell) and FND-04 (routing). */
 export function App() {
   return (
     <main>

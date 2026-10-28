@@ -21,7 +21,7 @@ function channels(n: number, catCount = 10, tag = ''): CatalogItemInput<'live'>[
   return Array.from({ length: n }, (_, i) => ({
     externalId: String(i + 1),
     categoryExternalId: String((i % catCount) + 1),
-    name: `Canal ${tag}${i + 1}`,
+    name: `Channel ${tag}${i + 1}`,
     streamPath: `${i + 1}.ts`,
   }));
 }
@@ -30,30 +30,30 @@ function movies(n: number): CatalogItemInput<'movie'>[] {
   return Array.from({ length: n }, (_, i) => ({
     externalId: String(i + 1),
     categoryExternalId: '1',
-    name: `Filme ${i + 1}`,
+    name: `Movie ${i + 1}`,
     streamPath: `${i + 1}.mp4`,
   }));
 }
 
 describe('catalogRepo.replaceForSource (CA3)', () => {
-  it('grava categorias e itens com chaves compostas, ordem e nome normalizado', async () => {
+  it('writes categories and items with composite keys, order and normalized name', async () => {
     const res = await catalogRepo.replaceForSource('s1', 'live', {
       categories: [
-        { externalId: '9', name: 'Desporto' },
-        { externalId: '3', name: 'Notícias' },
+        { externalId: '9', name: 'Sports' },
+        { externalId: '3', name: 'News' },
       ],
       items: [
-        { externalId: '20', categoryExternalId: '3', name: 'RTP Notícias', streamPath: '20.ts' },
+        { externalId: '20', categoryExternalId: '3', name: 'RTP Café', streamPath: '20.ts' },
         { externalId: '10', categoryExternalId: '3', name: 'SIC', streamPath: '10.ts' },
-        { externalId: '30', name: 'Sem categoria', streamPath: '30.ts' },
+        { externalId: '30', name: 'Uncategorized', streamPath: '30.ts' },
       ],
     });
     expect(res).toEqual({ categories: 2, items: 3, duplicates: 0 });
 
     const list = await catalogRepo.listCategories('s1', 'live');
     expect(list.map((c) => [c.key, c.name, c.order])).toEqual([
-      ['s1:live:cat:9', 'Desporto', 0],
-      ['s1:live:cat:3', 'Notícias', 1],
+      ['s1:live:cat:9', 'Sports', 0],
+      ['s1:live:cat:3', 'News', 1],
     ]);
 
     const ch = await catalogRepo.get('live', 's1:live:20');
@@ -63,14 +63,14 @@ describe('catalogRepo.replaceForSource (CA3)', () => {
       type: 'live',
       externalId: '20',
       categoryKey: 's1:live:cat:3',
-      nameNorm: 'rtp noticias',
+      nameNorm: 'rtp cafe',
       order: 0,
     });
     expect(ch).not.toHaveProperty('categoryExternalId');
     expect(await catalogRepo.get('live', 's1:live:30')).not.toHaveProperty('categoryKey');
   });
 
-  it('remove os itens antigos da fonte+tipo e não toca noutros tipos nem noutras fontes', async () => {
+  it('removes the old items of the source+type and does not touch other types or sources', async () => {
     await catalogRepo.replaceForSource('s1', 'live', {
       categories: cats(2),
       items: channels(50, 2),
@@ -82,14 +82,14 @@ describe('catalogRepo.replaceForSource (CA3)', () => {
     });
 
     await catalogRepo.replaceForSource('s1', 'live', {
-      categories: cats(1, 'Nova'),
+      categories: cats(1, 'New'),
       items: channels(5, 1, 'v2-'),
     });
 
     expect(await catalogRepo.count('s1', 'live')).toBe(5);
     expect(await catalogRepo.get('live', itemKey('s1', 'live', 6))).toBeUndefined();
-    expect((await catalogRepo.listCategories('s1', 'live')).map((c) => c.name)).toEqual(['Nova 1']);
-    expect((await catalogRepo.get('live', 's1:live:1'))?.name).toBe('Canal v2-1');
+    expect((await catalogRepo.listCategories('s1', 'live')).map((c) => c.name)).toEqual(['New 1']);
+    expect((await catalogRepo.get('live', 's1:live:1'))?.name).toBe('Channel v2-1');
 
     expect(await catalogRepo.count('s1', 'movie')).toBe(7);
     expect(await catalogRepo.listCategories('s1', 'movie')).toHaveLength(1);
@@ -97,63 +97,63 @@ describe('catalogRepo.replaceForSource (CA3)', () => {
     expect(await catalogRepo.listCategories('s2', 'live')).toHaveLength(3);
   });
 
-  it('chaves duplicadas: o último prevalece e as contagens refletem o que foi gravado', async () => {
+  it('duplicate keys: the last one wins and counts reflect what was written', async () => {
     const res = await catalogRepo.replaceForSource('s1', 'live', {
       categories: [
         { externalId: '1', name: 'A' },
-        { externalId: '1', name: 'A (repetida)' },
+        { externalId: '1', name: 'A (repeated)' },
       ],
       items: [
-        { externalId: '1', categoryExternalId: '1', name: 'Primeiro', streamPath: 'a.ts' },
-        { externalId: '2', categoryExternalId: '1', name: 'Outro', streamPath: 'b.ts' },
-        { externalId: '1', categoryExternalId: '1', name: 'Último', streamPath: 'c.ts' },
+        { externalId: '1', categoryExternalId: '1', name: 'First', streamPath: 'a.ts' },
+        { externalId: '2', categoryExternalId: '1', name: 'Other', streamPath: 'b.ts' },
+        { externalId: '1', categoryExternalId: '1', name: 'Last', streamPath: 'c.ts' },
       ],
     });
     expect(res).toEqual({ categories: 1, items: 2, duplicates: 1 });
     expect(await catalogRepo.count('s1', 'live')).toBe(res.items);
-    expect(await catalogRepo.get('live', 's1:live:1')).toMatchObject({ name: 'Último', order: 2 });
+    expect(await catalogRepo.get('live', 's1:live:1')).toMatchObject({ name: 'Last', order: 2 });
     expect((await catalogRepo.listCategories('s1', 'live')).map((c) => c.name)).toEqual([
-      'A (repetida)',
+      'A (repeated)',
     ]);
     const list = await catalogRepo.listByCategory('live', categoryKey('s1', 'live', 1));
-    expect(list.map((c) => c.name)).toEqual(['Outro', 'Último']);
+    expect(list.map((c) => c.name)).toEqual(['Other', 'Last']);
   });
 
-  it('uma falha a meio da transação deixa os dados antigos intactos', async () => {
+  it('a failure mid-transaction leaves the old data intact', async () => {
     await catalogRepo.replaceForSource('s1', 'live', {
       categories: cats(2),
       items: channels(100, 2),
     });
 
     const db = await getDb();
-    // O repositório usa a instância devolvida por `db.table()` (distinta de `db.channels` no Dexie).
+    // The repository uses the instance returned by `db.table()` (distinct from `db.channels` in Dexie).
     const table = db.table('channels');
     const original = table.bulkPut.bind(table);
-    // Grava o lote (depois de as categorias e os itens antigos terem sido apagados) e só então falha.
+    // Writes the batch (after the categories and old items were deleted) and only then fails.
     const spy = vi.spyOn(table, 'bulkPut').mockImplementation((...args) =>
       original(...(args as Parameters<typeof original>)).then(() => {
-        throw new Error('falha simulada');
+        throw new Error('simulated failure');
       }),
     );
 
     await expect(
       catalogRepo.replaceForSource('s1', 'live', {
-        categories: cats(1, 'Nova'),
+        categories: cats(1, 'New'),
         items: channels(60, 1, 'v2-'),
       }),
-    ).rejects.toThrow('falha simulada');
+    ).rejects.toThrow('simulated failure');
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
 
     expect(await catalogRepo.count('s1', 'live')).toBe(100);
-    expect((await catalogRepo.get('live', 's1:live:1'))?.name).toBe('Canal 1');
+    expect((await catalogRepo.get('live', 's1:live:1'))?.name).toBe('Channel 1');
     expect((await catalogRepo.listCategories('s1', 'live')).map((c) => c.name)).toEqual([
       'Cat 1',
       'Cat 2',
     ]);
   });
 
-  it('substitui 100 000 itens numa única transação', async () => {
+  it('replaces 100 000 items in a single transaction', async () => {
     const N = 100_000;
     const db = await getDb();
     const txSpy = vi.spyOn(db, 'transaction');
@@ -170,22 +170,22 @@ describe('catalogRepo.replaceForSource (CA3)', () => {
 
     const t0 = performance.now();
     const res = await catalogRepo.replaceForSource('s1', 'live', {
-      categories: cats(50, 'Nova'),
+      categories: cats(50, 'New'),
       items: channels(N, 50, 'v2-'),
     });
     const ms = Math.round(performance.now() - t0);
-    // Medição registada no relatório da story (fake-indexeddb em Node; não representa um browser).
+    // Measurement recorded in the story report (fake-indexeddb on Node; not representative of a browser).
     process.stdout.write(`[FND-05] replaceForSource 100k (fake-indexeddb): ${ms} ms\n`);
 
     expect(res).toEqual({ categories: 50, items: N, duplicates: 0 });
     expect(txSpy).toHaveBeenCalledTimes(1);
     expect(await catalogRepo.count('s1', 'live')).toBe(N);
-    expect((await catalogRepo.get('live', 's1:live:100000'))?.name).toBe('Canal v2-100000');
+    expect((await catalogRepo.get('live', 's1:live:100000'))?.name).toBe('Channel v2-100000');
     expect(await catalogRepo.count('s2', 'live')).toBe(3);
   }, 60_000);
 });
 
-describe('catalogRepo — consultas', () => {
+describe('catalogRepo — queries', () => {
   beforeEach(async () => {
     await catalogRepo.replaceForSource('s1', 'live', {
       categories: cats(3),
@@ -193,7 +193,7 @@ describe('catalogRepo — consultas', () => {
     });
   });
 
-  it('lista itens de uma categoria pela ordem original, com paginação', async () => {
+  it('lists items of a category in original order, with pagination', async () => {
     const cat = categoryKey('s1', 'live', 2);
     const all = await catalogRepo.listByCategory('live', cat);
     expect(all.map((c) => c.externalId)).toEqual([
@@ -213,28 +213,28 @@ describe('catalogRepo — consultas', () => {
     expect(await catalogRepo.countByCategory('live', cat)).toBe(10);
   });
 
-  it('a paginação usa o índice [categoryKey+order] e só lê a página pedida', async () => {
+  it('pagination uses the [categoryKey+order] index and only reads the requested page', async () => {
     const db = await getDb();
     const table = db.table('channels');
     const where = vi.spyOn(table, 'where');
     const cat = categoryKey('s1', 'live', 1);
     const page = await catalogRepo.listByCategory('live', cat, { offset: 9, limit: 5 });
-    expect(page.map((c) => c.externalId)).toEqual(['28']); // 10 itens na categoria: só resta 1
+    expect(page.map((c) => c.externalId)).toEqual(['28']); // 10 items in the category: only 1 left
     expect(where).toHaveBeenCalledWith('[categoryKey+order]');
   });
 
-  it('chave de categoria inválida ou de outro tipo devolve vazio', async () => {
+  it('an invalid category key or one of another type returns empty', async () => {
     expect(await catalogRepo.listByCategory('movie', categoryKey('s1', 'live', 2))).toEqual([]);
-    expect(await catalogRepo.listByCategory('live', 'lixo')).toEqual([]);
-    expect(await catalogRepo.countByCategory('live', 'lixo')).toBe(0);
+    expect(await catalogRepo.listByCategory('live', 'garbage')).toEqual([]);
+    expect(await catalogRepo.countByCategory('live', 'garbage')).toBe(0);
   });
 
-  it('getMany preserva a ordem e omite inexistentes', async () => {
+  it('getMany preserves order and omits missing keys', async () => {
     const list = await catalogRepo.getMany('live', ['s1:live:3', 's1:live:999', 's1:live:1']);
     expect(list.map((c) => c.externalId)).toEqual(['3', '1']);
   });
 
-  it('getCategory, detalhes de séries e índice de pesquisa', async () => {
+  it('getCategory, series details and search index', async () => {
     expect((await catalogRepo.getCategory('s1:live:cat:1'))?.name).toBe('Cat 1');
     await catalogRepo.putSeriesDetails({
       seriesKey: 's1:series:7',

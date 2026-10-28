@@ -9,7 +9,7 @@ async function boundaryErrors(filePath: string, source: string) {
   return (result?.messages ?? []).filter((m) => m.ruleId === 'no-restricted-imports');
 }
 
-describe('fronteiras entre módulos (FND-01 CA5)', () => {
+describe('module boundaries (FND-01 AC5)', () => {
   it.each([
     ['src/core/db/x.ts', "import { a } from '@/features/live';"],
     ['src/core/net/x.ts', "import { a } from '@/providers/xtream';"],
@@ -17,7 +17,7 @@ describe('fronteiras entre módulos (FND-01 CA5)', () => {
     ['src/player/x.ts', "import { a } from '@/features/live';"],
     ['src/ui/x.ts', "import { a } from '@/app/App';"],
     ['src/features/movies/x.ts', "import { a } from '@/features/series';"],
-  ])('%s não pode fazer %s', async (file, src) => {
+  ])('%s cannot do %s', async (file, src) => {
     expect(await boundaryErrors(file, `${src}\nexport const b = a;\n`)).toHaveLength(1);
   });
 
@@ -26,7 +26,7 @@ describe('fronteiras entre módulos (FND-01 CA5)', () => {
     ['src/features/live/x.ts', "import { a } from '@/player';"],
     ['src/providers/xtream/x.ts', "import { a } from '@/core/net';"],
     ['src/app/x.ts', "import { a } from '@/features/live';"],
-  ])('%s pode fazer %s', async (file, src) => {
+  ])('%s can do %s', async (file, src) => {
     expect(await boundaryErrors(file, `${src}\nexport const b = a;\n`)).toHaveLength(0);
   });
 });

@@ -1,16 +1,16 @@
-// Repositório do histórico de visualização e progresso ("Continuar a ver").
+// Watch history and progress repository ("Continue watching").
 import { getDb } from '../database';
 import { parseItemKey } from '../keys';
 import type { ContentType, HistoryEntry, HistoryUpsert } from '../types';
 
 export const historyRepo = {
   /**
-   * Cria ou atualiza a entrada do item (uma por item). Os campos omitidos mantêm o valor guardado;
-   * `lastWatchedAt` é sempre atualizado (por omissão `Date.now()`).
+   * Creates or updates the item's entry (one per item). Omitted fields keep the stored value;
+   * `lastWatchedAt` is always updated (defaults to `Date.now()`).
    */
   async upsert(entry: HistoryUpsert): Promise<HistoryEntry> {
     const parsed = parseItemKey(entry.itemKey);
-    if (!parsed) throw new TypeError(`Chave de item inválida: "${entry.itemKey}"`);
+    if (!parsed) throw new TypeError(`Invalid item key: "${entry.itemKey}"`);
     const db = await getDb();
     return db.transaction('rw', db.history, async () => {
       const existing = await db.history.get(entry.itemKey);
@@ -40,7 +40,7 @@ export const historyRepo = {
     await db.history.delete(itemKey);
   },
 
-  /** Entradas de uma fonte+tipo por `lastWatchedAt` descendente. */
+  /** Entries of a source+type by descending `lastWatchedAt`. */
   async listRecent(sourceId: string, type: ContentType, limit = 20): Promise<HistoryEntry[]> {
     const db = await getDb();
     const list = await db.history.where('[sourceId+type]').equals([sourceId, type]).toArray();

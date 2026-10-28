@@ -1,4 +1,4 @@
-// Módulo core/log — logger com redação de credenciais (FND-06, docs/ARCHITECTURE.md §8).
+// core/log module — logger with credential redaction (FND-06, docs/ARCHITECTURE.md §8).
 export { MASK, redact, registerSecret, unregisterSecret, clearSecrets } from './redact';
 export {
   log,

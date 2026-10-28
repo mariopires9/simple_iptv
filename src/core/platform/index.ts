@@ -1,2 +1,2 @@
-// Módulo core/platform — ver docs/ARCHITECTURE.md §3. Preenchido pelas stories correspondentes.
+// Module core/platform — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
 export {};

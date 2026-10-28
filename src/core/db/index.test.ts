@@ -1,5 +1,5 @@
 // @vitest-environment node
-// API pública de core/db (FND-05 CA2): só repositórios, tipos e helpers — nunca a instância Dexie.
+// Public API of core/db (FND-05 CA2): only repositories, types and helpers — never the Dexie instance.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -14,8 +14,8 @@ function walk(dir: string): string[] {
   });
 }
 
-describe('core/db — API pública', () => {
-  it('exporta os repositórios tipados e não expõe a base de dados', () => {
+describe('core/db — public API', () => {
+  it('exports the typed repositories and does not expose the database', () => {
     for (const repo of [
       'sourcesRepo',
       'catalogRepo',
@@ -33,7 +33,7 @@ describe('core/db — API pública', () => {
     expect(typeof api.itemKey).toBe('function');
   });
 
-  it('nenhum ficheiro fora de src/core/db usa Dexie, db.table() ou módulos internos de core/db', () => {
+  it('no file outside src/core/db uses Dexie, db.table() or core/db internal modules', () => {
     const offenders = walk(SRC)
       .filter((f) => /\.(ts|tsx)$/.test(f))
       .filter((f) => !relative(SRC, f).startsWith(join('core', 'db')))
