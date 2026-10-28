@@ -178,12 +178,13 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Story:** As a user with an M3U list, I want the list read correctly, including logos and groups, so that I see the channels organized.
 - **AC:**
   1. Given `#EXTINF` with `tvg-id`, `tvg-name`, `tvg-logo`, `group-title`, `tvg-chno`, `catchup*`, Then all attributes are extracted (single/double quotes, spaces, commas in the name).
-  2. Given a `#EXTM3U url-tvg="..."` or `x-tvg-url` header, Then the EPG URL is captured.
+  2. Given a `#EXTM3U url-tvg="..."` or `x-tvg-url` header, Then the EPG URL(s) are captured — the value may hold several comma-separated URLs (seen in real lists).
   3. Given `#EXTVLCOPT`/`#KODIPROP`/`#EXTGRP` lines, Then they are attached to the next entry (EXTGRP as the group if there is no group-title) or ignored without error.
   4. Given a UTF-8 BOM, CRLF, empty lines, entries without `#EXTINF`, Then the parser is tolerant.
   5. Given entries with a `javascript:`, `data:`, `file:` or invalid URL, Then they are discarded and counted as "skipped".
   6. Given a text stream of 50,000 entries, Then it processes in chunks, emits progress and does not hold the whole file twice in memory.
   7. Given entries, Then each is classified `live|movie|series` (VOD-04 heuristic — initially everything `live` except URLs with `/movie/` or `/series/`).
+  8. Given playback requirements the browser cannot honour, Then they are recorded on the entry instead of being dropped: `#KODIPROP:inputstream.adaptive.license_*` → `drm: true`; `#EXTVLCOPT:http-user-agent|http-referrer|http-origin` → `requiredHeaders: [...]`; `.mpd` URLs → container `dash`; `radio="true"` → `audioOnly: true`. (Real list M3UPT, 2026-10-28: 60 DRM entries, 66 DASH, 78/57/33 entries needing UA/Referer/Origin, 85 radios out of 929.)
 - **Dependencies:** FND-07.
 - **Tests:** unit with synthetic fixtures (valid, malformed, huge generated ones), property-based (fast-check) for robustness; benchmark.
 
@@ -308,6 +309,8 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
   4. Given 401/403/`max_connections` reached (when detectable), Then an account/connections message.
   5. Given `blocked`, Then an HTTPS/CORS message with a link to diagnostics (SRC-09).
   6. Given the error screen, Then "Try again" and (live) "Next channel".
+  7. Given an entry flagged `drm` or container `dash` (SRC-04 AC8), Then the player does not attempt playback and shows "This channel uses DRM / DASH, which this app does not support" (no DRM circumvention — SECURITY.md §8).
+  8. Given an entry with `requiredHeaders` that fails with 401/403, Then the message explains the provider restricts playback to its own site/app (browsers cannot send custom Referer/User-Agent).
 - **Dependencies:** PLY-01, FND-06.
 - **Tests:** unit tests of the error→message mapping; integration with corrupted/invalid-codec test streams.
 
@@ -471,7 +474,7 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Priority:** Should · **Effort:** 5 · **Value:** Medium
 - **Story:** As an M3U user, I want the EPG referenced by the list (or a URL I provide) to be loaded, so that I can see the schedule.
 - **AC:**
-  1. Given `url-tvg` or a manual URL (`.xml` or `.xml.gz`), Then it downloads as a stream, decompresses with `DecompressionStream` and SAX-parses in the worker.
+  1. Given `url-tvg` or a manual URL (`.xml`, `.xml.gz` or `.xml.xz`), Then it downloads as a stream, decompresses (`DecompressionStream` for gzip; a small permissively-licensed xz decoder for `.xz`, which browsers cannot decompress natively — real lists such as M3UPT publish `.xml.xz`) and SAX-parses in the worker.
   2. Given the configured window (−2 h to +48 h), Then only those programs are stored.
   3. Given a 100 MB decompressed file, Then the UI stays responsive and worker memory < 200 MB (measured on desktop).
   4. Given a 12 h refresh, Then finished programs are purged.
