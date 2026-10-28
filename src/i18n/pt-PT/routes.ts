@@ -24,8 +24,8 @@ export const routes = {
     sources: { title: 'As minhas listas', empty: 'As suas listas IPTV vão aparecer aqui.' },
     onboarding: { title: 'Bem-vindo', empty: 'Adicione a sua primeira lista IPTV para começar.' },
   },
-  category: 'Categoria',
-  item: 'Item',
+  categoryLabel: (id: string) => `Categoria: ${id}`,
+  itemLabel: (id: string) => `Item: ${id}`,
   notFound: {
     title: 'Página não encontrada',
     message: 'A página que procura não existe.',

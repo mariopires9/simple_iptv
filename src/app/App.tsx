@@ -1,21 +1,21 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { ThemeModeProvider } from '@/ui/theme';
+import { installChunkReload } from './chunkReload';
 import { DatabaseUnavailableScreen, useDatabaseCheck } from './DatabaseUnavailableScreen';
-import { AppRouter, createAppRouter } from './router';
+import { AppRouter, getAppRouter } from './router';
 
-/** Theme + hash router (AppShell and lazy screens), or a full-screen message without storage. */
+/**
+ * Theme, then the start-up storage check, then the hash router (AppShell + lazy screens).
+ * While the check runs nothing but the themed background is shown (UX_UI §5: short loads do not
+ * flash a spinner); it normally takes one IndexedDB open.
+ */
 export function App() {
-  // One router for the app's lifetime, created on first render (it reads `window.location`).
-  const [router] = useState(createAppRouter);
-  const dbUnavailable = useDatabaseCheck();
+  const db = useDatabaseCheck();
+  useEffect(() => installChunkReload(), []);
 
-  return (
-    <ThemeModeProvider>
-      {dbUnavailable ? (
-        <DatabaseUnavailableScreen reason={dbUnavailable} />
-      ) : (
-        <AppRouter router={router} />
-      )}
-    </ThemeModeProvider>
-  );
+  let content = null;
+  if (db.status === 'unavailable') content = <DatabaseUnavailableScreen reason={db.reason} />;
+  else if (db.status === 'ready') content = <AppRouter router={getAppRouter()} />;
+
+  return <ThemeModeProvider>{content}</ThemeModeProvider>;
 }

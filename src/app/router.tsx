@@ -12,6 +12,7 @@ import { searchRoutes } from '@/features/search';
 import { seriesRoutes } from '@/features/series';
 import { settingsRoutes } from '@/features/settings';
 import { sourcesRoutes } from '@/features/sources';
+import { lazyScreen } from '@/ui/lazyScreen';
 import { FullScreenLayout, RouteFallback, ShellLayout } from './routes/layouts';
 import { NotFoundScreen } from './routes/NotFoundScreen';
 import { RootErrorBoundary, RouteErrorBoundary } from './routes/RouteErrorBoundary';
@@ -23,11 +24,9 @@ function screen(route: RouteObject): RouteObject {
   return { ...route, ErrorBoundary: RouteErrorBoundary, HydrateFallback: RouteFallback };
 }
 
-// `lazy` as a function, never as an object: React Router mutates a lazy *object* in place, so
-// route objects shared by several routers (tests, StrictMode) would lose their screens.
 const homeRoute: RouteObject = {
   index: true,
-  lazy: async () => ({ Component: (await import('./routes/HomeScreen')).HomeScreen }),
+  lazy: lazyScreen(() => import('./routes/HomeScreen'), 'HomeScreen'),
 };
 
 /** The whole route tree; exported for tests (memory router). */
@@ -57,8 +56,21 @@ export const appRoutes: RouteObject[] = [
   },
 ];
 
-export function createAppRouter(): Router {
-  return createHashRouter(appRoutes);
+let appRouter: Router | undefined;
+
+/**
+ * The app's single hash router, created on first use outside React state: StrictMode's double
+ * render (or a remount) must not create a second router listening to `popstate`.
+ */
+export function getAppRouter(): Router {
+  appRouter ??= createHashRouter(appRoutes);
+  return appRouter;
+}
+
+/** Tests only: dispose the router so the next `getAppRouter()` reads `window.location` again. */
+export function resetAppRouter(): void {
+  appRouter?.dispose();
+  appRouter = undefined;
 }
 
 /** Called once per error (loader, lazy import or render): the boundary itself never logs. */

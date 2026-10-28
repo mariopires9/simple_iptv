@@ -185,6 +185,8 @@ describe('AppShell — accessibility and selection', () => {
     ['/favorites', 'Favorites'],
     ['/settings', 'Settings'],
     ['/settings/sources', 'Settings'],
+    ['/Movies/category/1', 'Movies'],
+    ['/SETTINGS/sources', 'Settings'],
   ])('rail: at %s the current item is %s', (path, name) => {
     renderAt(1400, path);
     const current = within(mainNav()).getAllByRole('link', { current: 'page' });

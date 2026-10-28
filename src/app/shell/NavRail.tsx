@@ -2,7 +2,7 @@
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import Typography from '@mui/material/Typography';
-import { Link } from 'react-router';
+import { NavLink } from 'react-router';
 import { t } from '@/i18n';
 import { navSize, radii } from '@/ui/theme/tokens';
 import { PRIMARY_NAV_ITEMS, SETTINGS_NAV_ITEM, type NavId, type NavItem } from './navItems';
@@ -24,9 +24,9 @@ function RailLink({
 }) {
   return (
     <ButtonBase
-      component={Link}
+      component={NavLink}
       to={item.to}
-      aria-current={selected ? 'page' : undefined}
+      end={item.to === '/'}
       sx={{
         width: '100%',
         minHeight: expanded ? 48 : 64, // both ≥ the 44 px touch target

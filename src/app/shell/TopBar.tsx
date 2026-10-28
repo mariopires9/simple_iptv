@@ -14,7 +14,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useId, useState, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { NavLink } from 'react-router';
 import { t } from '@/i18n';
 import { THEME_PREFERENCES, useThemeMode } from '@/ui/theme';
 import { navSize } from '@/ui/theme/tokens';
@@ -88,8 +88,7 @@ export function TopBar({
           <MenuItem
             key="settings"
             selected={settingsSelected}
-            aria-current={settingsSelected ? 'page' : undefined}
-            component={Link}
+            component={NavLink}
             to={SETTINGS_NAV_ITEM.to}
             onClick={closeMenu}
           >

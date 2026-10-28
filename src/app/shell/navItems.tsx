@@ -43,7 +43,11 @@ const SECTION_IDS: readonly NavId[] = ['live', 'movies', 'series', 'favorites', 
  * unknown page) → null: no item is current.
  */
 export function navIdForPath(pathname: string): NavId | null {
-  const first = pathname.split('/').find((segment) => segment !== '');
+  // Lower-cased: React Router matches paths case-insensitively (`/Movies` renders Movies).
+  const first = pathname
+    .toLowerCase()
+    .split('/')
+    .find((segment) => segment !== '');
   if (first === undefined) return 'home';
   return SECTION_IDS.find((id) => id === first) ?? null;
 }

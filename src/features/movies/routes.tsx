@@ -1,21 +1,18 @@
-// Routes of features/movies (FND-04). Registered by the feature and composed by
-// src/app/router.tsx inside the AppShell layout (paths are relative to `/`).
-// Every screen is lazy-loaded (its own chunk). Use the `lazy` *function* form: React Router
-// mutates a `lazy` *object* in place, which breaks when several routers share these route
-// objects (tests, React StrictMode).
-import type { RouteObject } from 'react-router';
+// Routes of features/movies (FND-04), composed by src/app/router.tsx
+// inside the AppShell layout (paths relative to `/`).
+import { redirect, type RouteObject } from 'react-router';
+import { lazyScreen } from '@/ui/lazyScreen';
 
 export const moviesRoutes: RouteObject[] = [
-  {
-    path: 'movies',
-    lazy: async () => ({ Component: (await import('./MoviesScreen')).MoviesScreen }),
-  },
+  { path: 'movies', lazy: lazyScreen(() => import('./MoviesScreen'), 'MoviesScreen') },
+  // A category path without an id is not an item id: back to the list.
+  { path: 'movies/category', loader: () => redirect('/movies') },
   {
     path: 'movies/category/:categoryId',
-    lazy: async () => ({ Component: (await import('./MoviesScreen')).MoviesScreen }),
+    lazy: lazyScreen(() => import('./MoviesScreen'), 'MoviesScreen'),
   },
   {
     path: 'movies/:movieId',
-    lazy: async () => ({ Component: (await import('./MovieDetailsScreen')).MovieDetailsScreen }),
+    lazy: lazyScreen(() => import('./MovieDetailsScreen'), 'MovieDetailsScreen'),
   },
 ];

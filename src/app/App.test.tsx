@@ -1,10 +1,19 @@
 import 'fake-indexeddb/auto';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { StrictMode } from 'react';
+import { createHashRouter } from 'react-router';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { wipeAll } from '@/core/db';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { App } from './App';
+import { resetAppRouter } from './router';
+
+// Pass-through spy: counts the routers the app creates.
+vi.mock('react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router')>();
+  return { ...actual, createHashRouter: vi.fn(actual.createHashRouter) };
+});
 
 let media: ReturnType<typeof installMatchMedia> | undefined;
 
@@ -17,10 +26,32 @@ function renderApp(hash: string, width = 1400) {
 const heading = (name: string) => screen.findByRole('heading', { level: 1, name });
 
 afterEach(async () => {
+  resetAppRouter();
+  vi.mocked(createHashRouter).mockClear();
   media?.restore();
   media = undefined;
   window.location.hash = '';
   await wipeAll();
+});
+
+describe('App — router lifetime', () => {
+  it('creates a single hash router under StrictMode (double render, effects re-run)', async () => {
+    window.location.hash = '#/favorites';
+    media = installMatchMedia({ width: 1400 });
+    const { unmount } = render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await heading('Favorites');
+    expect(createHashRouter).toHaveBeenCalledTimes(1);
+
+    // A remount reuses the same router instead of creating another popstate listener.
+    unmount();
+    render(<App />);
+    await heading('Favorites');
+    expect(createHashRouter).toHaveBeenCalledTimes(1);
+  });
 });
 
 // jsdom reports navigator.languages = ['en-US'], so `t` resolves to the base locale (en).

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, type RouteObject } from 'react-router';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { wipeAll } from '@/core/db';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
@@ -89,7 +89,7 @@ describe('router — routes', () => {
 
 // FND-04 AC3
 describe('router — not found', () => {
-  it.each(['/nope', '/movies/42/extra', '/live/category/1/extra', '/live/category'])(
+  it.each(['/nope', '/movies/42/extra', '/live/category/1/extra', '/series/category/1/x'])(
     '%s shows "Page not found" with a link to Home',
     async (path) => {
       const user = userEvent.setup();
@@ -102,6 +102,54 @@ describe('router — not found', () => {
       expect(router.state.location.pathname).toBe('/');
     },
   );
+
+  // Without the explicit routes, `/movies/category` would render the details of movie "category".
+  it.each([
+    ['/movies/category', '/movies', 'Movies'],
+    ['/series/category', '/series', 'Series'],
+    ['/live/category', '/live', 'Live TV'],
+    ['/movies/category/', '/movies', 'Movies'],
+  ])('%s (no id) redirects to the list %s', async (path, target, title) => {
+    const router = renderRoute(path);
+    await heading(title);
+    expect(router.state.location.pathname).toBe(target);
+    expect(screen.queryByText(/^Item:/)).toBeNull();
+  });
+
+  it('paths match case-insensitively and the nav follows (/Movies/category/1)', async () => {
+    renderRoute('/Movies/category/1');
+    await heading('Movies');
+    expect(screen.getByText('Category: 1')).toBeInTheDocument();
+    expect(screen.getByRole('link', { current: 'page' })).toHaveAccessibleName('Movies');
+  });
+});
+
+// Review finding 4: new screens start at the top; back restores the previous position.
+describe('router — scroll restoration', () => {
+  it('scrolls to the top on forward navigation and restores the position on back', async () => {
+    const user = userEvent.setup();
+    const scrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', scrollTo);
+    window.sessionStorage.clear();
+    const router = renderRoute('/movies');
+    await heading('Movies');
+
+    // The user scrolled down the movies list.
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 640 });
+    scrollTo.mockClear();
+    await user.click(screen.getByRole('link', { name: 'Series' }));
+    await heading('Series');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
+    scrollTo.mockClear();
+    await act(() => router.navigate(-1));
+    await heading('Movies');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640);
+
+    vi.unstubAllGlobals();
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
+  });
 });
 
 // FND-04 AC4

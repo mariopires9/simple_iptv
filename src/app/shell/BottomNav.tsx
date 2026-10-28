@@ -1,7 +1,7 @@
 // Mobile (< 600 px) bottom navigation bar.
 import BottomNavigationAction from '@mui/material/BottomNavigationAction';
 import Box from '@mui/material/Box';
-import { Link } from 'react-router';
+import { NavLink } from 'react-router';
 import { t } from '@/i18n';
 import { PRIMARY_NAV_ITEMS, type NavId } from './navItems';
 
@@ -39,9 +39,9 @@ export function BottomNav({ selected }: BottomNavProps) {
                 icon={item.icon}
                 selected={isSelected}
                 showLabel
-                component={Link}
+                component={NavLink}
                 to={item.to}
-                aria-current={isSelected ? 'page' : undefined}
+                end={item.to === '/'}
                 sx={{ flex: 1, maxWidth: 'none' }}
               />
             </Box>

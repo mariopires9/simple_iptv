@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearLogBuffer, getLogEntries } from '@/core/log';
 import { App } from './App';
+import { resetAppRouter } from './router';
 
 const openDatabase = vi.hoisted(() => vi.fn());
 
@@ -20,6 +21,7 @@ beforeEach(() => {
 
 afterEach(() => {
   openDatabase.mockReset();
+  resetAppRouter();
   vi.restoreAllMocks();
 });
 
@@ -58,5 +60,26 @@ describe('App — database unavailable at start-up', () => {
     render(<App />);
     expect(await screen.findByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument();
     expect(screen.queryByText('Storage unavailable')).toBeNull();
+  });
+
+  // Review finding 6: the check runs before the router mounts, so a late failure (the open
+  // times out after 10 s) can never unmount a screen the user is already using.
+  it('mounts the router only after the check settles', async () => {
+    let fail: (error: unknown) => void = () => undefined;
+    openDatabase.mockReturnValue(
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+    );
+    render(<App />);
+    await vi.waitFor(() => expect(openDatabase).toHaveBeenCalled());
+    expect(screen.queryByRole('navigation')).toBeNull();
+    expect(screen.queryByRole('heading')).toBeNull();
+
+    await act(async () => fail(new DatabaseUnavailableError('timeout')));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Storage unavailable' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).toBeNull();
   });
 });

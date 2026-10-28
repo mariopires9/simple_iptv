@@ -3,11 +3,12 @@ import { useTheme } from '@mui/material/styles';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { settingsRepo, wipeAll } from '@/core/db';
+import { settingsRepo, THEMES, wipeAll } from '@/core/db';
 import { installMatchMedia } from '../test-utils/matchMedia';
 import { colors } from './tokens';
 import {
   THEME_CACHE_KEY,
+  THEME_PREFERENCES,
   ThemeModeProvider,
   useThemeMode,
   type ThemePreference,
@@ -201,5 +202,9 @@ describe('ThemeModeProvider', () => {
   it('useThemeMode throws outside the provider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<Probe />)).toThrow(/ThemeModeProvider/);
+  });
+
+  it('THEME_PREFERENCES (local copy, keeps Dexie out of the initial chunk) equals THEMES', () => {
+    expect(THEME_PREFERENCES).toEqual(THEMES);
   });
 });

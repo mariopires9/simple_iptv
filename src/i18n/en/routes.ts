@@ -21,8 +21,8 @@ export const routes = {
     onboarding: { title: 'Welcome', empty: 'Add your first IPTV list to get started.' },
   },
   /** Labels for the route parameter shown by the placeholder screens. */
-  category: 'Category',
-  item: 'Item',
+  categoryLabel: (id: string) => `Category: ${id}`,
+  itemLabel: (id: string) => `Item: ${id}`,
   notFound: {
     title: 'Page not found',
     message: 'The page you are looking for does not exist.',

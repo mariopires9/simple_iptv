@@ -7,9 +7,15 @@ import { wipeAll } from '@/core/db';
 import { clearLogBuffer, getLogEntries } from '@/core/log';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
+import { page } from './chunkReload';
 import { AppRouter, appRoutes } from './router';
 
-const failures = vi.hoisted(() => ({ render: false, importsToFail: 0 }));
+const CHUNK_MESSAGE = 'Failed to fetch dynamically imported module: /assets/SearchScreen-x.js';
+const failures = vi.hoisted(() => ({
+  render: false,
+  importsToFail: 0,
+  importMessage: 'Failed to fetch dynamically imported module: /assets/SearchScreen-x.js',
+}));
 
 // A screen that throws while rendering (the stack must never reach the UI).
 vi.mock('@/features/movies/MovieDetailsScreen', () => ({
@@ -19,14 +25,18 @@ vi.mock('@/features/movies/MovieDetailsScreen', () => ({
   },
 }));
 
-// A lazy chunk that fails to load (e.g. offline after a deploy).
-vi.mock('@/features/search/SearchScreen', () => {
-  if (failures.importsToFail > 0) {
-    failures.importsToFail -= 1;
-    throw new Error('Failed to fetch dynamically imported module');
-  }
-  return { SearchScreen: () => <h1>Search OK</h1> };
-});
+// A lazy screen that fails to load. The failure is raised when the export is read (inside the
+// route's `lazy`), with the browser's exact message: a throwing vi.mock factory would be
+// rewrapped by Vitest with its own message.
+vi.mock('@/features/search/SearchScreen', () => ({
+  get SearchScreen() {
+    if (failures.importsToFail > 0) {
+      failures.importsToFail -= 1;
+      throw new Error(failures.importMessage);
+    }
+    return () => <h1>Search OK</h1>;
+  },
+}));
 
 let media: ReturnType<typeof installMatchMedia> | undefined;
 
@@ -53,6 +63,7 @@ beforeEach(() => {
 afterEach(async () => {
   failures.render = false;
   failures.importsToFail = 0;
+  failures.importMessage = CHUNK_MESSAGE;
   vi.restoreAllMocks();
   media?.restore();
   media = undefined;
@@ -110,10 +121,11 @@ describe('router — route error boundary', () => {
     expect(router.state.location.pathname).toBe('/');
   });
 
-  it('a lazy chunk that fails to load shows the error state; "Try again" retries the import', async () => {
+  it('a chunk that fails to load (redeploy): "Try again" reloads the whole page', async () => {
     const user = userEvent.setup();
+    const reload = vi.spyOn(page, 'reload').mockImplementation(() => undefined);
     failures.importsToFail = 1;
-    renderRoute('/search');
+    const router = renderRoute('/search');
 
     await heading('Something went wrong');
     expect(getLogEntries().some((e) => e.level === 'error' && e.message === 'Route error')).toBe(
@@ -121,6 +133,20 @@ describe('router — route error boundary', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(router.state.historyAction).toBe('POP'); // no in-app re-navigation
+  });
+
+  it('another lazy-load failure keeps the in-app retry (no page reload)', async () => {
+    const user = userEvent.setup();
+    const reload = vi.spyOn(page, 'reload').mockImplementation(() => undefined);
+    failures.importsToFail = 1;
+    failures.importMessage = 'Unexpected token in module';
+    renderRoute('/search');
+
+    await heading('Something went wrong');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     await heading('Search OK');
+    expect(reload).not.toHaveBeenCalled();
   });
 });

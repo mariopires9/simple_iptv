@@ -3,6 +3,7 @@
 import Button from '@mui/material/Button';
 import { isRouteErrorResponse, Link, useLocation, useNavigate, useRouteError } from 'react-router';
 import { t } from '@/i18n';
+import { isChunkLoadError, page } from '../chunkReload';
 import { NotFoundScreen } from './NotFoundScreen';
 import { FullScreen, StatusView } from './StatusView';
 
@@ -21,11 +22,15 @@ export function RouteErrorBoundary() {
       message={t.routes.error.message}
       actions={
         <>
-          {/* A new navigation to the same location clears the error state and retries the
-              screen (including a lazy chunk that failed to load). */}
+          {/* A chunk that failed to load is most likely gone after a redeploy: only a full
+              reload fetches the new index.html. Otherwise a new navigation to the same
+              location clears the error state and renders the screen again. */}
           <Button
             variant="contained"
-            onClick={() => void navigate({ pathname, search, hash }, { replace: true })}
+            onClick={() => {
+              if (isChunkLoadError(error)) page.reload();
+              else void navigate({ pathname, search, hash }, { replace: true });
+            }}
           >
             {t.routes.error.retry}
           </Button>
