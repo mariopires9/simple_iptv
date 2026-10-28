@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LOG_BUFFER_SIZE, clearLogBuffer, exportDiagnostics, getLogEntries, log } from './logger';
+import {
+  LOG_BUFFER_SIZE,
+  clearLogBuffer,
+  exportDiagnostics,
+  getLogEntries,
+  log,
+  toLogJson,
+} from './logger';
 import { clearSecrets, redact, registerSecret } from './redact';
 
 beforeEach(() => {
@@ -163,5 +170,46 @@ describe('propriedade: segredos aleatórios nunca sobrevivem', () => {
       expect(report).not.toContain(s);
       expect(report).not.toContain(btoa(s));
     }
+  });
+});
+
+describe('regressões da revisão', () => {
+  it('Error com ciclo (e.cause = e) não perde o contexto', () => {
+    const e = new Error('ciclo');
+    (e as { cause?: unknown }).cause = e;
+    log.error('x', { e });
+    const context = getLogEntries()[0]?.context ?? '';
+    expect(context).toContain('"message":"ciclo"');
+    expect(context).toContain('"cause":"[Circular]"');
+  });
+
+  it('Errors A↔B não perdem o contexto', () => {
+    const a = new Error('A');
+    const b = new Error('B', { cause: a });
+    (a as { cause?: unknown }).cause = b;
+    log.error('x', { a });
+    const context = getLogEntries()[0]?.context ?? '';
+    expect(context).toContain('"message":"B"');
+    expect(context).toContain('"cause":"[Circular]"');
+  });
+
+  it('referências partilhadas não cíclicas são serializadas em ambos os sítios', () => {
+    const s = { v: 1 };
+    log.info('x', { a: s, b: s, list: [s, s] });
+    expect(getLogEntries()[0]?.context).toBe('{"a":{"v":1},"b":{"v":1},"list":[{"v":1},{"v":1}]}');
+  });
+
+  it('o cabeçalho do relatório não é estragado por segredos curtos', () => {
+    registerSecret('IPTV');
+    registerSecret('Gerado');
+    log.info('serviço IPTV');
+    const report = exportDiagnostics();
+    expect(report.startsWith('Relatório de diagnóstico — Simple IPTV\nGerado em: ')).toBe(true);
+    expect(report).toContain('INFO  serviço ***');
+  });
+
+  it('toLogJson nunca lança e redige', () => {
+    expect(toLogJson({ password: 'abc', n: 1n })).toBe('{"password":"***","n":"1"}');
+    expect(toLogJson(undefined)).toBe('undefined');
   });
 });

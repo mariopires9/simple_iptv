@@ -169,13 +169,95 @@ describe('redact — texto sem segredos', () => {
 
 describe('redact — desempenho', () => {
   // Regressão: padrões que arrancavam em cada `-`, `_` ou `.` tinham custo quadrático (~1 s para 80 KB).
-  it.each(['a-', 'a_', 'b.', '"a-', '%2Flive%2F'])(
-    'texto longo com "%s" repetido é linear',
-    (unit) => {
-      const text = unit.repeat(40_000) + '=x';
-      const start = performance.now();
-      redact(text);
-      expect(performance.now() - start).toBeLessThan(250);
-    },
-  );
+  it.each([
+    'a-',
+    'a_',
+    'b.',
+    '"a-',
+    '%2Flive%2F',
+    'http://a/',
+    '"key":[',
+    'aKey=',
+    '%3A%2F%2Fa%2F',
+  ])('texto longo com "%s" repetido é linear', (unit) => {
+    const text = unit.repeat(40_000) + '=x';
+    const start = performance.now();
+    redact(text);
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+});
+
+describe('redact — regressões da revisão', () => {
+  it('redige nomes camelCase e compostos (accessToken, apiKey, refreshToken, Authorization)', () => {
+    expect(redact('?accessToken=t1&apiKey=k1&refreshToken=r1&Authorization=a1&userName=joao')).toBe(
+      '?accessToken=***&apiKey=***&refreshToken=***&Authorization=***&userName=***',
+    );
+    expect(redact('url=%3Fx%3D1%26apiKey%3Dk1%26y%3D2')).toBe(
+      'url=%3Fx%3D1%26apiKey%3D***%26y%3D2',
+    );
+  });
+
+  it('continua a não confundir passport, bypass, monkey, keyboard, turnkey ou APIKEY', () => {
+    const text = '?passport=1&bypass=2&monkey=3&keyboard=4&turnkey=5&Passport=6&APIKEY=7';
+    expect(redact(text)).toBe(text);
+  });
+
+  it('redige parâmetros sensíveis dentro do valor de outro parâmetro', () => {
+    expect(redact('url=http://h.test/?a=1&password=abc')).toBe(
+      'url=http://h.test/?a=1&password=***',
+    );
+  });
+
+  it('redige o cabeçalho Authorization em JSON e em texto livre', () => {
+    expect(redact('{"Authorization":"Basic dXNlcjpwYXNz"}')).toBe('{"Authorization":"***"}');
+    expect(redact('headers: Authorization: Basic dXNlcjpwYXNz; ok')).toBe(
+      'headers: Authorization: Basic ***; ok',
+    );
+    expect(redact('authorization: Bearer eyJhbGciOi.x.y')).toBe('authorization: Bearer ***');
+    expect(redact('com Bearer abc.def-ghi fim')).toBe('com Bearer *** fim');
+  });
+
+  it('redige a forma application/x-www-form-urlencoded de um segredo registado', () => {
+    const secret = "p ss!(x)'~*";
+    registerSecret(secret);
+    const form = new URLSearchParams({ q: secret }).toString();
+    expect(form).not.toBe(`q=${encodeURIComponent(secret)}`);
+    expect(redact(form)).toBe('q=***');
+    registerSecret('p ss!(x)');
+    expect(redact(new URLSearchParams({ q: 'p ss!(x)' }).toString())).toBe('q=***');
+  });
+
+  it.each([
+    ['http://h.test:8080/joao/abc/12345.ts', 'http://h.test:8080/***/***/12345.ts'],
+    ['http://h.test/joao/abc/12345', 'http://h.test/***/***/12345'],
+    [
+      '#EXTINF:-1,Canal\nhttp://h.test/joao/abc/7.m3u8\n',
+      '#EXTINF:-1,Canal\nhttp://h.test/***/***/7.m3u8\n',
+    ],
+    [
+      'u=http%3A%2F%2Fh.test%2Fjoao%2Fabc%2F99.ts%26x',
+      'u=http%3A%2F%2Fh.test%2F***%2F***%2F99.ts%26x',
+    ],
+  ])('redige caminho Xtream sem prefixo: %s', (input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+
+  it('não redige caminhos com outra forma', () => {
+    for (const text of [
+      'http://h.test/a/b/c/1.ts',
+      'http://h.test/a/1.ts',
+      'http://h.test/a/b/x.ts',
+    ]) {
+      expect(redact(text)).toBe(text);
+    }
+  });
+
+  it('redige valores JSON não-string, objetos e arrays inteiros', () => {
+    expect(
+      redact(
+        '{"pass":1234,"token":true,"auth":null,"apiKey":{"a":"}","b":[1,2]},"key":[1,[2]],"n":5}',
+      ),
+    ).toBe('{"pass":"***","token":"***","auth":"***","apiKey":"***","key":"***","n":5}');
+    expect(redact('{ "password" : -1.5e3 }')).toBe('{ "password" : "***" }');
+  });
 });

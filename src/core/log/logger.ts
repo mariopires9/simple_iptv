@@ -16,26 +16,48 @@ export const LOG_BUFFER_SIZE = 500;
 
 const buffer: LogEntry[] = [];
 
-/** Serializa o contexto em JSON, incluindo `Error` (name/message/stack/cause) e referências circulares. */
-function serialize(context: Record<string, unknown>): string {
-  const seen = new WeakSet<object>();
-  const replacer = (_key: string, value: unknown): unknown => {
-    if (typeof value === 'bigint') return value.toString();
-    if (typeof value === 'function' || typeof value === 'symbol') return String(value);
-    if (value instanceof Error) {
-      const { name, message, stack } = value;
-      const own = Object.fromEntries(Object.entries(value));
-      const cause = (value as { cause?: unknown }).cause;
-      return { name, message, stack, ...own, ...(cause !== undefined ? { cause } : {}) };
-    }
-    if (value !== null && typeof value === 'object') {
-      if (seen.has(value)) return '[Circular]';
-      seen.add(value);
-    }
-    return value;
-  };
+const MAX_DEPTH = 12;
+
+/**
+ * Converte um valor arbitrário numa árvore serializável em JSON. Só os antepassados contam como
+ * ciclo (`{a: s, b: s}` serializa `s` duas vezes); `Error` entra no mesmo controlo (`e.cause = e`).
+ */
+function toPlain(value: unknown, ancestors: object[]): unknown {
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'function' || typeof value === 'symbol') return String(value);
+  if (value === null || typeof value !== 'object') return value;
+  if (ancestors.includes(value)) return '[Circular]';
+  if (ancestors.length >= MAX_DEPTH) return '[…]';
+  ancestors.push(value);
   try {
-    return JSON.stringify(context, replacer) ?? '';
+    if (value instanceof Error) {
+      const out: Record<string, unknown> = {
+        name: value.name,
+        message: value.message,
+        stack: value.stack,
+      };
+      for (const [k, v] of Object.entries(value)) out[k] = toPlain(v, ancestors);
+      const cause = (value as { cause?: unknown }).cause;
+      if (cause !== undefined) out.cause = toPlain(cause, ancestors);
+      return out;
+    }
+    const withJson = value as { toJSON?: unknown };
+    if (typeof withJson.toJSON === 'function') {
+      return toPlain((withJson.toJSON as () => unknown).call(value), ancestors);
+    }
+    if (Array.isArray(value)) return value.map((v) => toPlain(v, ancestors));
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = toPlain(v, ancestors);
+    return out;
+  } finally {
+    ancestors.pop();
+  }
+}
+
+/** JSON redigido de qualquer valor (contexto de log, causas de erro). Nunca lança. */
+export function toLogJson(value: unknown): string {
+  try {
+    return redact(JSON.stringify(toPlain(value, [])) ?? String(value));
   } catch {
     return '[contexto não serializável]';
   }
@@ -43,7 +65,7 @@ function serialize(context: Record<string, unknown>): string {
 
 function write(level: LogLevel, message: string, context?: Record<string, unknown>): void {
   const entry: LogEntry = { at: Date.now(), level, message: redact(String(message)) };
-  if (context !== undefined) entry.context = redact(serialize(context));
+  if (context !== undefined) entry.context = toLogJson(context);
 
   buffer.push(entry);
   if (buffer.length > LOG_BUFFER_SIZE) buffer.splice(0, buffer.length - LOG_BUFFER_SIZE);
@@ -75,15 +97,17 @@ export function clearLogBuffer(): void {
  * para remover também segredos registados depois de a entrada ter sido escrita.
  */
 export function exportDiagnostics(): string {
-  const lines = [
+  // O cabeçalho é texto fixo da app: não é redigido, para um segredo curto (ex.: "IPTV") não o estragar.
+  const header = [
     'Relatório de diagnóstico — Simple IPTV',
     `Gerado em: ${new Date().toISOString()}`,
     `Entradas: ${buffer.length}`,
     '',
   ];
+  const lines: string[] = [];
   for (const e of buffer) {
     lines.push(`${new Date(e.at).toISOString()} ${e.level.toUpperCase().padEnd(5)} ${e.message}`);
     if (e.context !== undefined) lines.push(`    contexto: ${e.context}`);
   }
-  return redact(lines.join('\n') + '\n');
+  return [...header, ...lines.map(redact)].join('\n') + '\n';
 }

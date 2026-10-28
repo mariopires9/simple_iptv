@@ -56,13 +56,31 @@ describe('NetError', () => {
       status: 401,
       url: `https://${HOST}/live/${USER}/${PASS}/1.ts`,
     });
-    expect(e.target).toBe('https://***/live/***/***/1.ts');
+    expect(e.target).toBe('https://***/live/***/***/***.ts');
     expect(e.message).toContain('(auth, HTTP 401)');
   });
 
-  it('redige segredos registados que apareçam no caminho', () => {
-    registerSecret(PASS);
-    expect(shortenUrl(`http://${HOST}/${USER}/${PASS}/1.ts`)).toBe('http://***/joao/***/1.ts');
+  // Regressão (revisão): só o primeiro segmento conhecido e a extensão final ficam visíveis.
+  it.each([
+    [`http://${HOST}/${USER}/${PASS}/1.ts`, 'http://***/***/***/***.ts'],
+    [`http://${HOST}/player_api.php?username=${USER}`, 'http://***/player_api.php'],
+    [`http://${HOST}/get.php?username=${USER}`, 'http://***/get.php'],
+    [`http://${HOST}/xmltv.php?password=${PASS}`, 'http://***/xmltv.php'],
+    [
+      `http://${HOST}/timeshift/${USER}/${PASS}/60/x/5.ts`,
+      'http://***/timeshift/***/***/***/***/***.ts',
+    ],
+    [`http://${HOST}/painel/${USER}/conta`, 'http://***/***/***/***'],
+    [`http://${HOST}/a/${USER}.php`, 'http://***/***/***.php'],
+    [`http://${HOST}/`, 'http://***/'],
+    [`http://${HOST}/x/`, 'http://***/***/'],
+  ])('shortenUrl(%s) → %s', (url, expected) => {
+    expect(shortenUrl(url)).toBe(expected);
+  });
+
+  it('não mantém segmentos desconhecidos mesmo sem segredo registado', () => {
+    const e = new NetError({ kind: 'http', url: `http://${HOST}/${USER}/${PASS}/1.ts` });
+    expect(exposed(e)).not.toMatch(new RegExp(`${USER}|${PASS}`));
   });
 
   it('sem URL ou com URL inválido não tem target', () => {
@@ -80,6 +98,40 @@ describe('NetError', () => {
     expect((e.cause as Error).message).not.toContain(PASS);
     expect((e.cause as Error).stack ?? '').not.toContain(PASS);
     expect(new NetError({ kind: 'parse', cause: `password=${PASS}` }).cause).toBe('password=***');
+  });
+
+  // Regressão (revisão): a cadeia de causas é preservada (redigida) até 3 níveis.
+  it('mantém a cadeia de causas redigida, limitada a 3 níveis', () => {
+    const l4 = new Error(`nível 4 password=${PASS}`);
+    const l3 = new Error(`nível 3 password=${PASS}`, { cause: l4 });
+    const l2 = new RangeError(`nível 2 /live/${USER}/${PASS}/1.ts`, { cause: l3 });
+    const l1 = new TypeError(`nível 1 token=${PASS}`, { cause: l2 });
+    const e = new NetError({ kind: 'blocked', cause: l1 });
+
+    const c1 = e.cause as Error;
+    const c2 = c1.cause as Error;
+    const c3 = c2.cause as Error;
+    expect([c1.name, c2.name, c3.name]).toEqual(['TypeError', 'RangeError', 'Error']);
+    expect(c1.message).toBe('nível 1 token=***');
+    expect(c2.message).toBe('nível 2 /live/***/***/1.ts');
+    expect(c3.message).toBe('nível 3 password=***');
+    expect(c3.cause).toBeUndefined();
+  });
+
+  it('não entra em ciclo com causas circulares', () => {
+    const a = new Error('a');
+    (a as { cause?: unknown }).cause = a;
+    const e = new NetError({ kind: 'parse', cause: a });
+    expect((e.cause as Error).message).toBe('a');
+  });
+
+  // Regressão (revisão): causa objeto vira JSON redigido, não "[object Object]".
+  it('serializa causas objeto como JSON redigido', () => {
+    const e = new NetError({
+      kind: 'http',
+      cause: { status: 500, url: `http://${HOST}/get.php?username=${USER}&password=${PASS}` },
+    });
+    expect(e.cause).toBe(`{"status":500,"url":"http://${HOST}/get.php?username=***&password=***"}`);
   });
 });
 
