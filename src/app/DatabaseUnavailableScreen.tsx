@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import type { DatabaseUnavailableReason } from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
-import { FullScreen, StatusView } from './routes/StatusView';
+import { StateView } from '@/ui/state';
+import { FullScreen } from './routes/FullScreen';
 
 export type DatabaseCheck =
   | { status: 'checking' }
@@ -55,7 +56,9 @@ export function useDatabaseCheck(): DatabaseCheck {
 export function DatabaseUnavailableScreen({ reason }: { reason: DatabaseUnavailableReason }) {
   return (
     <FullScreen>
-      <StatusView
+      <StateView
+        variant="error"
+        headingLevel={1}
         title={t.routes.dbUnavailable.title}
         message={t.db.errors[reason]}
         actions={

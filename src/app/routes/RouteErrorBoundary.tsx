@@ -1,11 +1,13 @@
-// Route-level error boundaries (FND-04). They never show the error itself (no message, no stack
-// trace): logging happens once per error in the RouterProvider `onError` handler (router.tsx).
+// Route-level error boundaries (FND-04, UX-02). They never show the error itself — not even in a
+// "Details" disclosure: a render error message may echo list data that `redact()` does not know
+// about. Logging happens once per error in the RouterProvider `onError` handler (router.tsx).
 import Button from '@mui/material/Button';
 import { isRouteErrorResponse, Link, useLocation, useNavigate, useRouteError } from 'react-router';
 import { t } from '@/i18n';
+import { StateView } from '@/ui/state';
 import { isChunkLoadError, page } from '../chunkReload';
 import { NotFoundScreen } from './NotFoundScreen';
-import { FullScreen, StatusView } from './StatusView';
+import { FullScreen } from './FullScreen';
 
 /** Rendered in place of a failing screen, inside the AppShell (the navigation stays usable). */
 export function RouteErrorBoundary() {
@@ -17,7 +19,9 @@ export function RouteErrorBoundary() {
   if (isRouteErrorResponse(error) && error.status === 404) return <NotFoundScreen />;
 
   return (
-    <StatusView
+    <StateView
+      variant="error"
+      headingLevel={1}
       title={t.routes.error.title}
       message={t.routes.error.message}
       actions={
