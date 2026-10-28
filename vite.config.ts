@@ -40,6 +40,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
+    // Integration tests (fake IndexedDB paging, whole-app boot, ESLint API) run in parallel under
+    // coverage on CI; 15 s per test is a ceiling, well above the 5 s async-wait ceiling in setup.ts.
+    testTimeout: 15_000,
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
     exclude: ['**/node_modules/**', '.claude/**'],
     coverage: { provider: 'v8', include: ['src/**'], reporter: ['text-summary', 'html'] },

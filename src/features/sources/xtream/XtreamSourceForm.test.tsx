@@ -129,7 +129,9 @@ describe('SRC-03 AC2 + UX-01 AC3 — test and save', () => {
 
     // Test steps in a progress panel (live region announces the phase).
     expect(await screen.findByRole('group', { name: text.steps.contacting })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: text.result.title })).toHaveFocus();
+    // Focus moves in an effect after the panel renders: wait for it rather than racing it.
+    const resultTitle = await screen.findByRole('heading', { name: text.result.title });
+    await waitFor(() => expect(resultTitle).toHaveFocus());
 
     // Account info (status, expiry formatted in the active locale, connections) + http warning.
     expect(screen.getByText(text.result.status('Active'))).toBeInTheDocument();
@@ -220,7 +222,7 @@ describe('SRC-03 AC3 — failures keep the form data', () => {
     expect(within(failure).getByText(text.problems['auth-failed'].message)).toBeInTheDocument();
     expect(within(failure).getByText(text.fixes['check-credentials'])).toBeInTheDocument();
     expect(within(failure).queryByRole('button', { name: text.saveAnyway })).toBeNull();
-    expect(failure).toHaveFocus();
+    await waitFor(() => expect(failure).toHaveFocus());
     // Details are redacted: the password never appears on screen.
     expect(document.body.textContent).not.toContain('wrong');
 
