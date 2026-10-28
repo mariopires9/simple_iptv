@@ -23,7 +23,8 @@ Documented limitations:
 
 ## 3. Importing lists and URLs
 - Accepted schemes: `http:` and `https:` only. Rejected: `javascript:`, `data:`, `file:`, external `blob:`, `ftp:`, etc.
-- URLs with `user:pass@host` are accepted for playback, but never shown in full in the UI.
+- URLs with embedded credentials (`user:pass@host`) are rejected (`credentials` reason): browsers refuse `fetch()` of such URLs and block subresource requests carrying them, so accepting them would only produce confusing failures. Xtream credentials go in the source form, never in the URL.
+- URLs shown in the UI go through `displayUrl()` (no userinfo, query or fragment; Xtream credential paths masked).
 - Names, groups, synopses: plain text; truncated to a maximum length (e.g. 512 chars for names, 8 KB for synopses).
 - External images: `<img>` with `referrerpolicy="no-referrer"`, without `crossorigin` (avoids CORS); failures → fallback.
 - Imported files (M3U, JSON export): treated as untrusted, validated by schema.
