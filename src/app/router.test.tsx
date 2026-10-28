@@ -2,11 +2,17 @@ import 'fake-indexeddb/auto';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, type RouteObject } from 'react-router';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { wipeAll } from '@/core/db';
+import { invalidateSourcesPresence, setSourcesPresent } from '@/features/sources';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { AppRouter, appRoutes } from './router';
+
+// These suites cover routing with a source configured; the onboarding guard (UX-01) has its own
+// tests (routes/onboardingGuard.test.tsx).
+beforeEach(() => setSourcesPresent(true));
+afterEach(() => invalidateSourcesPresence());
 
 let media: ReturnType<typeof installMatchMedia> | undefined;
 
@@ -56,7 +62,7 @@ describe('router — routes', () => {
 
   it('/onboarding renders full screen, without the AppShell navigation', async () => {
     renderRoute('/onboarding');
-    await heading('Welcome');
+    await heading('Welcome to Simple IPTV');
     expect(screen.getByRole('main')).toBeInTheDocument();
     expect(mainNav()).toBeNull();
     expect(screen.queryByRole('banner')).toBeNull();

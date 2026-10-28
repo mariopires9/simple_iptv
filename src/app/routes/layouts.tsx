@@ -1,18 +1,21 @@
 import { Outlet, ScrollRestoration } from 'react-router';
 import { AppShell } from '../AppShell';
 import { FullScreen } from './FullScreen';
+import { OnboardingGuard } from './onboardingGuard';
 
 // <ScrollRestoration> (data routers, SPA: renders nothing, no inline script): new navigations
 // start at the top; back/forward restore the saved window scroll position (sessionStorage).
 // Each top-level layout renders it, so exactly one is mounted at any time.
 
-/** Screens inside the AppShell (top bar + main navigation). */
+/** Screens inside the AppShell (top bar + main navigation); without sources → onboarding. */
 export function ShellLayout() {
   return (
-    <AppShell>
-      <ScrollRestoration />
-      <Outlet />
-    </AppShell>
+    <OnboardingGuard>
+      <AppShell>
+        <ScrollRestoration />
+        <Outlet />
+      </AppShell>
+    </OnboardingGuard>
   );
 }
 
