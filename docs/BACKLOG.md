@@ -23,7 +23,7 @@ Allowed statuses (exactly one per story):
 | QA-01 | Fixtures, mocks and test streams | E13 | Must | 3 | FND-01 | 1 | M0 | Done |
 | FND-04 | Routing and skeleton | E0 | Must | 2 | FND-03 | 2 | M0 | In Progress |
 | UX-02 | State components | E11 | Must | 3 | FND-03 | 2 | M0 | Backlog |
-| SRC-01 | Credential vault | E1 | Must | 3 | FND-05, FND-06 | 2 | M1 | In Progress |
+| SRC-01 | Credential vault | E1 | Must | 3 | FND-05, FND-06 | 2 | M1 | Done |
 | SRC-02 | Xtream client: auth/account | E1 | Must | 3 | FND-06 | 2 | M1 | In Progress |
 | SRC-04 | Streaming M3U parser | E1 | Must | 5 | FND-07 | 2 | M1 | Backlog |
 | PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | Backlog |
