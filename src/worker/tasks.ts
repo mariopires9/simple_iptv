@@ -9,6 +9,12 @@ import {
   type SyncXtreamInput,
   type SyncXtreamResult,
 } from '@/providers/xtream';
+import {
+  syncM3uSource,
+  waitForM3uSourceIdle,
+  type SyncM3uInput,
+  type SyncM3uResult,
+} from '@/providers/m3u';
 
 export interface SelfTestInput {
   steps: number;
@@ -43,16 +49,25 @@ export function syncXtream(input: SyncXtreamInput, ctx: TaskContext): Promise<Sy
 }
 
 /**
+ * SRC-04/SRC-05: downloads, parses and stores an M3U-URL source (the list URL is read from the
+ * vault in here and never crosses postMessage).
+ */
+export function syncM3u(input: SyncM3uInput, ctx: TaskContext): Promise<SyncM3uResult> {
+  return syncM3uSource(input, ctx);
+}
+
+/**
  * Resolves once no sync of the source is running or queued in this worker (used after a
  * client-side abort, which rejects before the worker has actually stopped).
  */
 export async function waitSyncIdle(input: { sourceId: string }, _ctx: TaskContext): Promise<void> {
-  await waitForSourceIdle(input.sourceId);
+  await Promise.all([waitForSourceIdle(input.sourceId), waitForM3uSourceIdle(input.sourceId)]);
 }
 
 export const tasks = {
   selfTest,
   syncXtream,
+  syncM3u,
   waitSyncIdle,
 } satisfies TaskRegistry;
 

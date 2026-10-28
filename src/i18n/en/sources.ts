@@ -1,11 +1,107 @@
 // Sources (SRC-03, docs/UX_UI.md §4.2): the add-Xtream form, its connection test, problem and
-// suggested-fix texts (mapped from the stable codes of the connection report), and the
-// "coming soon" placeholders for the M3U options (SRC-05/SRC-06).
+// suggested-fix texts (mapped from the stable codes of the connection report), the add-M3U-by-URL
+// import (SRC-05) and the "coming soon" placeholder for the local M3U file (SRC-06).
 export const sources = {
   addXtream: {
     title: 'Add Xtream list',
     intro: 'Enter the details your provider gave you.',
     back: 'Back',
+    prefilled: 'The details were filled in from your list address. Check them, then test and save.',
+  },
+  /** SRC-05: add an M3U list by URL. */
+  addM3uUrl: {
+    title: 'Add M3U list (URL)',
+    intro: 'Paste the address of your M3U list. It is downloaded and read on this device only.',
+    back: 'Back',
+    fields: {
+      url: 'List address (URL)',
+      urlHelp: 'For example https://example.com/list.m3u',
+      name: 'Name (optional)',
+      nameHelp: 'If empty, the server name is used.',
+    },
+    validation: {
+      urlRequired: 'Enter the list address.',
+      /** By `parseExternalUrl` rejection reason. */
+      url: {
+        empty: 'Enter the list address.',
+        invalid: 'This is not a valid address.',
+        scheme: 'The address must start with http:// or https://.',
+        'too-long': 'This address is too long.',
+        credentials:
+          'Addresses with a username and password before the server name (user:pass@…) are not supported.',
+      },
+    },
+    submit: 'Import',
+    xtreamSuggestion: {
+      title: 'This URL looks like an Xtream server',
+      message:
+        'Use Xtream mode (recommended): it loads more details, and only your password is stored, encrypted, instead of every channel address.',
+      action: 'Use Xtream mode',
+    },
+    steps: {
+      saving: 'Saving…',
+      download: 'Downloading list…',
+      write: 'Saving channels…',
+    },
+    /** Arguments are already formatted. */
+    progress: {
+      downloaded: (size: string) => `${size} downloaded`,
+      downloadedOf: (size: string, total: string) => `${size} of ${total} downloaded`,
+      entries: (count: string) => `${count} entries read`,
+    },
+    /** Byte sizes; the argument is already formatted. */
+    units: {
+      kb: (n: string) => `${n} KB`,
+      mb: (n: string) => `${n} MB`,
+    },
+    result: {
+      title: 'List imported',
+      live: (n: string) => `Channels: ${n}`,
+      movies: (n: string) => `Movies: ${n}`,
+      series: (n: string) => `Series episodes: ${n}`,
+      skipped: (n: string) => `${n} entries could not be used and were skipped.`,
+      continue: 'Continue',
+    },
+    /** By import error code (providers/m3u M3uSyncErrorCode); blocked/offline/timeout reuse `problems`. */
+    errors: {
+      'not-m3u': {
+        title: 'Not an M3U list',
+        message: 'The URL did not return an M3U list.',
+      },
+      'empty-list': {
+        title: 'No usable channels',
+        message: 'The list was read, but it has no entries this app can use.',
+      },
+      'too-large': {
+        title: 'List too large',
+        message: 'This list is too large to load on this device.',
+      },
+      auth: {
+        title: 'Access refused',
+        message: 'The server refused access to the list. The address may have expired.',
+      },
+      'invalid-url': {
+        title: 'Invalid list address',
+        message: 'The saved list address is not valid. Delete this list and add it again.',
+      },
+      'credentials-lost': {
+        title: 'List address unavailable',
+        message:
+          'The saved list address can no longer be read on this device. Delete this list and add it again.',
+      },
+      storage: {
+        title: 'Could not save the channels',
+        message: 'The device storage refused the data (it may be full).',
+      },
+    },
+    /** Shown with the blocked (CORS / mixed content) messages. */
+    localFileSoon: 'Adding a local file is coming soon.',
+    retry: 'Try again',
+    delete: 'Delete this list',
+    toasts: {
+      imported: 'List imported.',
+      deleted: 'List deleted.',
+    },
   },
   fields: {
     name: 'Name (optional)',
@@ -127,10 +223,6 @@ export const sources = {
     'use-proxy': 'Use a proxy that serves this server over HTTPS.',
   },
   comingSoon: {
-    m3uUrl: {
-      title: 'M3U list (URL)',
-      message: 'Adding an M3U list by URL is coming soon.',
-    },
     m3uFile: {
       title: 'Local M3U file',
       message: 'Adding a local M3U file is coming soon.',

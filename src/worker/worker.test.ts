@@ -25,6 +25,7 @@ import {
   type TaskProgress,
 } from '@/core/worker';
 import { isSourceSyncing, type SyncXtreamResult } from '@/providers/xtream';
+import { isM3uSourceSyncing, type M3uSyncProgress, type SyncM3uResult } from '@/providers/m3u';
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
 import {
@@ -78,8 +79,13 @@ function source(id: string, extra: Partial<Source> = {}): Source {
 }
 
 describe('registry and client', () => {
-  it('registers selfTest and syncXtream', () => {
-    expect(Object.keys(tasks).sort()).toEqual(['selfTest', 'syncXtream', 'waitSyncIdle']);
+  it('registers selfTest, syncXtream and syncM3u', () => {
+    expect(Object.keys(tasks).sort()).toEqual([
+      'selfTest',
+      'syncM3u',
+      'syncXtream',
+      'waitSyncIdle',
+    ]);
   });
 
   it('runs selfTest through the real registry', async () => {
@@ -168,6 +174,62 @@ describe('syncXtream through the worker API (SRC-07)', () => {
     // Let the worker side notice the cancellation and settle.
     await new Promise((r) => setTimeout(r, 400));
     expect(await catalogRepo.count('w1', 'live')).toBe(6);
+  });
+});
+
+describe('syncM3u through the worker API (SRC-04/SRC-05)', () => {
+  const GET_PHP = `${XTREAM_TEST_BASE_URL}/get.php?username=${XTREAM_TEST_CREDENTIALS.username}&password=${XTREAM_TEST_CREDENTIALS.password}&type=m3u_plus`;
+  beforeEach(async () => {
+    await openFreshDatabase();
+    await sourcesRepo.put(
+      source('m1', {
+        kind: 'm3u-url',
+        serverUrl: undefined,
+        username: undefined,
+        secretRef: 'source:m1:url',
+      }),
+    );
+    await credentialVault.put('source:m1:url', GET_PHP);
+  });
+  afterEach(async () => {
+    await closeDatabase();
+    clearSecrets();
+  });
+
+  it('imports with bytes/entries progress; only the source id crosses the boundary', async () => {
+    const seen: TaskProgress[] = [];
+    const result = await runTaskOn<SyncM3uResult>(
+      connect(),
+      'syncM3u',
+      { sourceId: 'm1' },
+      { onProgress: (p) => seen.push(p) },
+    );
+    expect(result).toMatchObject({
+      sourceId: 'm1',
+      status: 'ok',
+      stats: { live: 3, movies: 1, series: 1 },
+    });
+    const phases = new Set(seen.map((p) => p.phase as M3uSyncProgress['phase']));
+    // The worker's progress throttle keeps only the latest message per 50 ms window.
+    expect([...phases]).toEqual(expect.arrayContaining(['download', 'done']));
+    expect(seen.at(-1)).toMatchObject({ phase: 'done' });
+    const serialized = JSON.stringify([seen, result]);
+    expect(serialized).not.toContain(XTREAM_TEST_CREDENTIALS.password);
+    expect(serialized).not.toContain(XTREAM_TEST_CREDENTIALS.username);
+  });
+
+  it('an expected failure resolves with its code (not a rejection)', async () => {
+    server.use(...xtreamHandlers({ error: 'html', errorOn: ['get.php'] }));
+    const result = await runTaskOn<SyncM3uResult>(connect(), 'syncM3u', { sourceId: 'm1' });
+    expect(result).toMatchObject({ status: 'error', error: 'not-m3u' });
+  });
+
+  it('waitSyncIdle also waits for M3U imports', async () => {
+    const api = connect();
+    const run = runTaskOn(api, 'syncM3u', { sourceId: 'm1' });
+    await runTaskOn(api, 'waitSyncIdle', { sourceId: 'm1' });
+    expect(isM3uSourceSyncing('m1')).toBe(false);
+    await run;
   });
 });
 

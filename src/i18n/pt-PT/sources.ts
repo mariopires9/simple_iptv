@@ -6,6 +6,97 @@ export const sources = {
     title: 'Adicionar lista Xtream',
     intro: 'Introduza os dados que o seu fornecedor lhe deu.',
     back: 'Voltar',
+    prefilled:
+      'Os dados foram preenchidos a partir do endereço da sua lista. Verifique-os e depois teste e guarde.',
+  },
+  addM3uUrl: {
+    title: 'Adicionar lista M3U (URL)',
+    intro: 'Cole o endereço da sua lista M3U. É descarregada e lida apenas neste dispositivo.',
+    back: 'Voltar',
+    fields: {
+      url: 'Endereço da lista (URL)',
+      urlHelp: 'Por exemplo https://exemplo.com/lista.m3u',
+      name: 'Nome (opcional)',
+      nameHelp: 'Se ficar vazio, é usado o nome do servidor.',
+    },
+    validation: {
+      urlRequired: 'Introduza o endereço da lista.',
+      url: {
+        empty: 'Introduza o endereço da lista.',
+        invalid: 'Este endereço não é válido.',
+        scheme: 'O endereço tem de começar por http:// ou https://.',
+        'too-long': 'Este endereço é demasiado longo.',
+        credentials:
+          'Endereços com utilizador e palavra-passe antes do nome do servidor (utilizador:senha@…) não são suportados.',
+      },
+    },
+    submit: 'Importar',
+    xtreamSuggestion: {
+      title: 'Este URL parece ser de um servidor Xtream',
+      message:
+        'Use o modo Xtream (recomendado): carrega mais detalhes e só a sua palavra-passe é guardada, cifrada, em vez do endereço de cada canal.',
+      action: 'Usar modo Xtream',
+    },
+    steps: {
+      saving: 'A guardar…',
+      download: 'A descarregar a lista…',
+      write: 'A guardar os canais…',
+    },
+    progress: {
+      downloaded: (size: string) => `${size} descarregados`,
+      downloadedOf: (size: string, total: string) => `${size} de ${total} descarregados`,
+      entries: (count: string) => `${count} entradas lidas`,
+    },
+    units: {
+      kb: (n: string) => `${n} KB`,
+      mb: (n: string) => `${n} MB`,
+    },
+    result: {
+      title: 'Lista importada',
+      live: (n: string) => `Canais: ${n}`,
+      movies: (n: string) => `Filmes: ${n}`,
+      series: (n: string) => `Episódios de séries: ${n}`,
+      skipped: (n: string) => `${n} entradas não puderam ser usadas e foram ignoradas.`,
+      continue: 'Continuar',
+    },
+    errors: {
+      'not-m3u': {
+        title: 'Não é uma lista M3U',
+        message: 'O URL não devolveu uma lista M3U.',
+      },
+      'empty-list': {
+        title: 'Sem canais utilizáveis',
+        message: 'A lista foi lida, mas não tem entradas que esta aplicação possa usar.',
+      },
+      'too-large': {
+        title: 'Lista demasiado grande',
+        message: 'Esta lista é demasiado grande para carregar neste dispositivo.',
+      },
+      auth: {
+        title: 'Acesso recusado',
+        message: 'O servidor recusou o acesso à lista. O endereço pode ter expirado.',
+      },
+      'invalid-url': {
+        title: 'Endereço da lista inválido',
+        message: 'O endereço guardado não é válido. Apague esta lista e adicione-a novamente.',
+      },
+      'credentials-lost': {
+        title: 'Endereço da lista indisponível',
+        message:
+          'O endereço guardado já não pode ser lido neste dispositivo. Apague esta lista e adicione-a novamente.',
+      },
+      storage: {
+        title: 'Não foi possível guardar os canais',
+        message: 'O armazenamento do dispositivo recusou os dados (pode estar cheio).',
+      },
+    },
+    localFileSoon: 'Adicionar um ficheiro local estará disponível em breve.',
+    retry: 'Tentar novamente',
+    delete: 'Apagar esta lista',
+    toasts: {
+      imported: 'Lista importada.',
+      deleted: 'Lista apagada.',
+    },
   },
   fields: {
     name: 'Nome (opcional)',
@@ -125,10 +216,6 @@ export const sources = {
     'use-proxy': 'Use um proxy que sirva este servidor por HTTPS.',
   },
   comingSoon: {
-    m3uUrl: {
-      title: 'Lista M3U (URL)',
-      message: 'Adicionar uma lista M3U por URL estará disponível em breve.',
-    },
     m3uFile: {
       title: 'Ficheiro M3U local',
       message: 'Adicionar um ficheiro M3U local estará disponível em breve.',

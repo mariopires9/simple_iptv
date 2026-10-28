@@ -10,6 +10,10 @@ export const sourcesRoutes: RouteObject[] = [
     path: 'settings/sources/add/xtream',
     lazy: lazyScreen(() => import('./AddXtreamScreen'), 'AddXtreamScreen'),
   },
+  {
+    path: 'settings/sources/add/m3u-url',
+    lazy: lazyScreen(() => import('./AddM3uUrlScreen'), 'AddM3uUrlScreen'),
+  },
 ];
 
 /** Full screen, in the onboarding flow (UX-01): one route per source type. */
@@ -20,7 +24,7 @@ export const sourcesOnboardingRoutes: RouteObject[] = [
   },
   {
     path: '/onboarding/m3u-url',
-    lazy: lazyScreen(() => import('./ComingSoonScreen'), 'M3uUrlComingSoonScreen'),
+    lazy: lazyScreen(() => import('./AddM3uUrlScreen'), 'OnboardingM3uUrlScreen'),
   },
   {
     path: '/onboarding/m3u-file',
