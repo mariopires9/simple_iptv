@@ -47,6 +47,31 @@ describe('fixtures are synthetic only (QA-01 AC4)', () => {
   });
 });
 
+// Review finding 4: git must never normalise line endings of any committed fixture.
+describe('.gitattributes keeps fixtures byte-exact', () => {
+  let gitAvailable = true;
+  try {
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: ROOT, stdio: 'ignore' });
+  } catch {
+    gitAvailable = false;
+  }
+  const files = walk(FIXTURES)
+    .map((f) => relative(ROOT, f).split('\\').join('/'))
+    .filter((f) => !f.endsWith('.gitkeep') && !f.endsWith('README.md'));
+
+  it.skipIf(!gitAvailable)('every fixture has text unset (-text or binary)', () => {
+    const out = execFileSync('git', ['check-attr', 'text', '--', ...files], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    });
+    const notUnset = out
+      .trim()
+      .split('\n')
+      .filter((line) => !line.endsWith(': text: unset'));
+    expect(notUnset).toEqual([]);
+  });
+});
+
 describe('xtream fixtures', () => {
   const json = (p) => JSON.parse(text(`xtream/${p}`));
 

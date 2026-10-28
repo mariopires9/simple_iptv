@@ -49,8 +49,20 @@ export const XTREAM_ACTIONS = [
 ] as const;
 export type XtreamAction = (typeof XTREAM_ACTIONS)[number];
 
-/** `auth` = `player_api.php` without `action`. */
-export type XtreamEndpoint = 'auth' | XtreamAction | 'get.php' | 'xmltv.php';
+export function isXtreamAction(name: string | null): name is XtreamAction {
+  return name !== null && (XTREAM_ACTIONS as readonly string[]).includes(name);
+}
+
+/**
+ * Endpoints `errorOn` can target:
+ * - `auth`: `player_api.php` without `action`
+ * - an {@link XtreamAction}
+ * - `unknown-action`: `player_api.php` with an action not in {@link XTREAM_ACTIONS}
+ * - `get.php` / `xmltv.php`
+ */
+export type XtreamEndpoint = 'auth' | XtreamAction | 'unknown-action' | 'get.php' | 'xmltv.php';
+
+const PANEL_PATHS = ['player_api.php', 'get.php', 'xmltv.php'] as const;
 
 export interface XtreamHandlerOptions {
   /** Panel origin (+ optional path prefix). Default `http://panel.example.test:8080`. `'*'` matches any origin. */
@@ -69,7 +81,10 @@ export interface XtreamHandlerOptions {
   cors?: boolean;
   /** Error to return instead of the fixture. */
   error?: XtreamErrorMode;
-  /** Endpoints the `error` applies to. Default: all. */
+  /**
+   * Endpoints the `error` applies to. Default: all (including `unknown-action`). Unknown actions
+   * are only affected when `errorOn` is omitted or lists `'unknown-action'` explicitly.
+   */
   errorOn?: readonly XtreamEndpoint[];
   /** Credentials the fake panel accepts. Default `jdoe` / `testpass`. */
   credentials?: { username: string; password: string };
@@ -214,19 +229,15 @@ export function xtreamHandlers(options: XtreamHandlerOptions = {}): HttpHandler[
     http.get(`${base}/player_api.php`, async ({ request }) => {
       const url = new URL(request.url);
       const name = url.searchParams.get('action');
-      const endpoint: XtreamEndpoint | undefined =
-        name === null
-          ? 'auth'
-          : (XTREAM_ACTIONS as readonly string[]).includes(name)
-            ? (name as XtreamAction)
-            : undefined;
-      const early = await prelude(endpoint ?? 'auth');
+      const endpoint: XtreamEndpoint =
+        name === null ? 'auth' : isXtreamAction(name) ? name : 'unknown-action';
+      const early = await prelude(endpoint);
       if (early) return early;
       const mode = effectiveAuth(url);
-      if (name === null || !usable(mode)) return json(authBody(mode));
+      if (endpoint === 'auth' || !usable(mode)) return json(authBody(mode));
       // Unknown actions: panels typically answer an empty array.
-      if (endpoint === undefined || endpoint === 'auth') return json([]);
-      return json(action(endpoint as XtreamAction, url.searchParams));
+      if (endpoint === 'unknown-action') return json([]);
+      return json(action(endpoint, url.searchParams));
     }),
 
     http.get(`${base}/get.php`, async ({ request }) => {
@@ -252,12 +263,15 @@ export function xtreamHandlers(options: XtreamHandlerOptions = {}): HttpHandler[
   ];
 
   if (cors) {
-    handlers.push(
-      http.options(
-        `${base}/*`,
-        () => new HttpResponse(null, { status: 204, headers: corsHeaders }),
-      ),
-    );
+    // Preflights only for the panel endpoints, so other hosts stay unhandled even with baseUrl '*'.
+    for (const path of PANEL_PATHS) {
+      handlers.push(
+        http.options(
+          `${base}/${path}`,
+          () => new HttpResponse(null, { status: 204, headers: corsHeaders }),
+        ),
+      );
+    }
   }
   return handlers;
 }

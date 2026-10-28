@@ -42,28 +42,53 @@ export const MIME_TYPES = {
 const PREFIXES = new Set(['slow', 'error500', 'auth401', 'redirect', 'cors', 'nocors']);
 
 /**
- * Parses a single `bytes=` range against a file size.
- * @returns {{start: number, end: number} | 'invalid' | null} null = ignore header (serve 200)
+ * Parses a `Range` header against a file size, following RFC 9110 §14.
+ * - `null`: no header, unknown unit, malformed syntax or multiple ranges → ignore, serve 200
+ * - `'unsatisfiable'`: a syntactically valid single `bytes=` range outside the file → 416
+ * @returns {{start: number, end: number} | 'unsatisfiable' | null}
  */
 export function parseRange(header, size) {
   if (!header) return null;
-  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  if (!m) return header.includes(',') ? null : 'invalid'; // multi-range: fall back to 200
+  const m = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());
+  if (!m) return null;
   const [, a, b] = m;
-  if (a === '' && b === '') return 'invalid';
-  let start;
-  let end;
+  if (a === '' && b === '') return null; // "bytes=-" is not a valid range-spec
   if (a === '') {
     const suffix = Number(b);
-    if (suffix === 0) return 'invalid';
-    start = Math.max(0, size - suffix);
-    end = size - 1;
-  } else {
-    start = Number(a);
-    end = b === '' ? size - 1 : Math.min(Number(b), size - 1);
+    if (suffix === 0 || size === 0) return 'unsatisfiable';
+    return { start: Math.max(0, size - suffix), end: size - 1 };
   }
-  if (start >= size || start > end) return 'invalid';
-  return { start, end };
+  const start = Number(a);
+  if (b !== '' && Number(b) < start) return null; // last-pos < first-pos: invalid, ignore
+  if (start >= size) return 'unsatisfiable';
+  return { start, end: b === '' ? size - 1 : Math.min(Number(b), size - 1) };
+}
+
+/**
+ * Splits a raw request target into decoded-later path segments and the query string,
+ * without URL resolution (so `//host/path` is a path, not an authority).
+ */
+export function splitRequestTarget(target = '/') {
+  const q = target.indexOf('?');
+  const path = q === -1 ? target : target.slice(0, q);
+  const search = q === -1 ? '' : target.slice(q);
+  return { segments: path.split('/').filter(Boolean), search };
+}
+
+/**
+ * Opens a read stream and waits until the file is open, so a file that disappeared after
+ * `stat` can still be answered with a 500 instead of crashing the server.
+ */
+function openStream(filePath, options) {
+  const stream = createReadStream(filePath, options);
+  return new Promise((resolveOpen, rejectOpen) => {
+    const onError = (error) => rejectOpen(error);
+    stream.once('error', onError);
+    stream.once('ready', () => {
+      stream.off('error', onError);
+      resolveOpen(stream);
+    });
+  });
 }
 
 /**
@@ -79,10 +104,10 @@ export function startTestStreamServer(options = {}) {
     slowBps = 64 * 1024,
   } = options;
   const rootDir = resolve(root);
+  const redirectBase = (options.redirectTo ?? '').replace(/\/+$/, '');
 
   const server = createServer(async (req, res) => {
-    const url = new URL(req.url ?? '/', 'http://localhost');
-    const segments = url.pathname.split('/').filter(Boolean);
+    const { segments, search } = splitRequestTarget(req.url);
     const modes = new Set();
     while (segments.length > 0 && PREFIXES.has(segments[0])) modes.add(segments.shift());
 
@@ -107,14 +132,13 @@ export function startTestStreamServer(options = {}) {
       return;
     }
     // Redirect first: the remaining modes are carried over to the target URL.
-    const rest = '/' + segments.join('/') + url.search;
     if (modes.has('redirect')) {
       const remaining = [...modes]
         .filter((m) => m !== 'redirect')
         .map((m) => `/${m}`)
         .join('');
-      const base = options.redirectTo ?? '';
-      res.writeHead(302, { Location: `${base}${remaining}${rest}` }).end();
+      const rest = '/' + segments.join('/') + search;
+      res.writeHead(302, { Location: `${redirectBase}${remaining}${rest}` }).end();
       return;
     }
     if (modes.has('error500')) {
@@ -158,7 +182,7 @@ export function startTestStreamServer(options = {}) {
       'Accept-Ranges': 'bytes',
     };
     const range = parseRange(req.headers.range, size);
-    if (range === 'invalid') {
+    if (range === 'unsatisfiable') {
       res.writeHead(416, { ...headers, 'Content-Range': `bytes */${size}` }).end();
       return;
     }
@@ -167,25 +191,38 @@ export function startTestStreamServer(options = {}) {
     const length = size === 0 ? 0 : end - start + 1;
     if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
     headers['Content-Length'] = String(length);
-    res.writeHead(range ? 206 : 200, headers);
     if (req.method === 'HEAD' || length === 0) {
-      res.end();
+      res.writeHead(range ? 206 : 200, headers).end();
       return;
     }
 
-    if (!modes.has('slow')) {
-      const stream = createReadStream(filePath, { start, end });
-      res.on('close', () => stream.destroy());
+    const slow = modes.has('slow');
+    let stream;
+    try {
+      stream = await openStream(filePath, {
+        start,
+        end,
+        ...(slow ? { highWaterMark: Math.max(1, Math.floor(slowBps / 10)) } : {}),
+      });
+    } catch {
+      // The file vanished (or became unreadable) between stat and open.
+      if (!res.headersSent) {
+        res
+          .writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
+          .end('Read error (test server)');
+      } else res.destroy();
+      return;
+    }
+    // Late read errors: the status line is already out, so abort the response.
+    stream.on('error', () => res.destroy());
+    res.on('close', () => stream.destroy());
+    res.writeHead(range ? 206 : 200, headers);
+
+    if (!slow) {
       stream.pipe(res);
       return;
     }
     // Throttle: one chunk of slowBps/10 bytes every 100 ms.
-    const stream = createReadStream(filePath, {
-      start,
-      end,
-      highWaterMark: Math.max(1, Math.floor(slowBps / 10)),
-    });
-    res.on('close', () => stream.destroy());
     try {
       for await (const chunk of stream) {
         if (res.destroyed) return;
@@ -201,6 +238,11 @@ export function startTestStreamServer(options = {}) {
   return new Promise((resolvePromise, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {
+      server.off('error', reject);
+      // Keep the process alive on runtime server errors (e.g. clientError bursts); just log them.
+      server.on('error', (error) => {
+        process.stderr.write(`test-stream-server error: ${error?.message ?? error}\n`);
+      });
       const address = server.address();
       const actualPort = typeof address === 'object' && address ? address.port : port;
       resolvePromise({
@@ -241,7 +283,7 @@ function parseArgs(argv) {
         i++;
         break;
       case '--redirect-to':
-        opts.redirectTo = value?.replace(/\/$/, '');
+        opts.redirectTo = value;
         i++;
         break;
       case '--slow-bps':

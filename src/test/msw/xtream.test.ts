@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   XTREAM_ACTIONS,
+  isXtreamAction,
   XTREAM_TEST_BASE_URL,
   xmltvFixtures,
   xtreamFixtures,
@@ -272,5 +273,52 @@ describe('xtreamHandlers — error modes', () => {
         'get_short_epg',
       ].sort(),
     );
+  });
+});
+
+describe('xtreamHandlers — review findings', () => {
+  // Finding 7: preflights are scoped to the panel endpoints, even with baseUrl '*'.
+  it("baseUrl '*' answers preflights for panel paths only", async () => {
+    server.resetHandlers(...xtreamHandlers({ baseUrl: '*' }));
+    for (const path of ['player_api.php', 'get.php', 'xmltv.php']) {
+      const res = await fetch(`https://any.example.test/${path}`, { method: 'OPTIONS' });
+      expect(res.status).toBe(204);
+    }
+    // onUnhandledFrame: 'error' → an unrelated host's preflight is not swallowed.
+    await expect(
+      fetch('https://unrelated.example.test/api/thing', { method: 'OPTIONS' }),
+    ).rejects.toThrow();
+  });
+
+  // Finding 8: unknown actions have their own errorOn bucket, not 'auth'.
+  it("errorOn: ['auth'] does not affect unknown actions", async () => {
+    server.use(...xtreamHandlers({ error: 'http-500', errorOn: ['auth'] }));
+    expect((await fetch(api())).status).toBe(500);
+    expect(await getJson(api('&action=get_something_else'))).toEqual([]);
+  });
+
+  it("errorOn: ['unknown-action'] targets unknown actions only", async () => {
+    server.use(...xtreamHandlers({ error: 'http-500', errorOn: ['unknown-action'] }));
+    expect((await fetch(api('&action=get_something_else'))).status).toBe(500);
+    expect((await fetch(api())).status).toBe(200);
+    expect((await fetch(api('&action=get_live_streams'))).status).toBe(200);
+  });
+
+  it('error without errorOn also applies to unknown actions', async () => {
+    server.use(...xtreamHandlers({ error: 'http-403' }));
+    expect((await fetch(api('&action=get_something_else'))).status).toBe(403);
+  });
+
+  it('unknown actions with bad credentials get the auth-fail JSON', async () => {
+    expect(
+      await getJson(`${XTREAM_TEST_BASE_URL}/player_api.php?username=x&password=y&action=nope`),
+    ).toEqual(xtreamFixtures.authFail);
+  });
+
+  // Finding 9: type guard instead of casts.
+  it('isXtreamAction narrows known actions only', () => {
+    expect(XTREAM_ACTIONS.every((a) => isXtreamAction(a))).toBe(true);
+    expect(isXtreamAction('get_something_else')).toBe(false);
+    expect(isXtreamAction(null)).toBe(false);
   });
 });
