@@ -161,13 +161,13 @@ Chaves de catálogo são compostas: `key = "${sourceId}:${type}:${externalId}"` 
 
 | Tabela | Chave | Índices | Campos principais |
 |---|---|---|---|
-| `sources` | `id` (uuid) | `createdAt` | `kind: 'xtream'|'m3u-url'|'m3u-file'`, `name`, `serverUrl?`, `username?`, `secretRef` (→ vault), `epgUrl?`, `prefs {liveFormat:'auto'|'ts'|'m3u8'}`, `lastSyncAt?`, `lastSyncStatus`, `stats {live, movies, series}` |
+| `sources` | `id` (uuid) | `createdAt` | `kind: 'xtream'|'m3u-url'|'m3u-file'`, `name`, `serverUrl?`, `username?`, `secretRef?` (→ vault; ausente em ficheiros M3U), `epgUrl?`, `prefs {liveFormat:'auto'|'ts'|'m3u8'}`, `lastSyncAt?`, `lastSyncStatus`, `stats {live, movies, series}` |
 | `secrets` | `ref` | — | `iv`, `ciphertext` (AES-GCM) |
 | `keys` | `id` | — | `CryptoKey` não exportável |
 | `categories` | `key` | `[sourceId+type]`, `sourceId` | `name`, `order` |
-| `channels` | `key` | `[sourceId+categoryKey]`, `sourceId`, `nameNorm` | `name`, `logo?`, `number?`, `epgId?`, `streamPath`*, `catchup?` |
-| `movies` | `key` | `[sourceId+categoryKey]`, `sourceId`, `addedAt` | `name`, `poster?`, `rating?`, `year?`, `ext?`, `streamPath`* |
-| `series` | `key` | `[sourceId+categoryKey]`, `sourceId` | `name`, `cover?`, `plot?`, `rating?`, `year?` |
+| `channels` | `key` | `[categoryKey+order]`, `sourceId`, `nameNorm` | `name`, `logo?`, `number?`, `epgId?`, `streamPath`*, `catchup?` |
+| `movies` | `key` | `[categoryKey+order]`, `sourceId`, `addedAt` | `name`, `poster?`, `rating?`, `year?`, `ext?`, `streamPath`* |
+| `series` | `key` | `[categoryKey+order]`, `sourceId` | `name`, `cover?`, `plot?`, `rating?`, `year?` |
 | `seriesDetails` | `seriesKey` | `fetchedAt` | temporadas + episódios (cache TTL 24 h) |
 | `favorites` | `itemKey` | `[sourceId+type]`, `addedAt` | `type` |
 | `history` | `itemKey` | `[sourceId+type]`, `lastWatchedAt` | `positionSec?`, `durationSec?`, `episodeKey?`, `completed` |
@@ -176,6 +176,13 @@ Chaves de catálogo são compostas: `key = "${sourceId}:${type}:${externalId}"` 
 | `searchIndex` | `sourceId` | — | índice MiniSearch serializado (`toJSON`) |
 
 \* `streamPath`: para Xtream guarda-se apenas `id` + extensão; o URL completo é construído em memória com as credenciais (`resolveStream`). Para M3U, cifrar cada URL individualmente tem custo proibitivo em listas de 100k entradas; decisão: guardar o URL em claro na tabela `channels` e documentar (ver `SECURITY.md §2`); se a lista for do tipo `get.php` Xtream, propor conversão para fonte Xtream (credenciais cifradas, URLs construídos em memória).
+
+Notas de implementação (FND-05):
+- Itens de catálogo têm `order` (ordem original da fonte) e `categoryKey?`; a paginação usa o índice `[categoryKey+order]` com `offset/limit` (só lê a página pedida).
+- `replaceForSource` deduplica por chave (o último vence) e devolve as contagens realmente gravadas + `duplicates`.
+- O cofre (`core/crypto`, SRC-01) acede às tabelas `secrets`/`keys` através de `vaultStore`, sem `db.table()`.
+- `DatabaseUnavailableError.reason` ∈ `unsupported|open-failed|timeout`; o texto para o utilizador vem de `t.db.errors[reason]` (`src/i18n/pt-PT/db.ts`).
+- `closeDatabase()` é assíncrono; `wipeAll()` fecha ligações e cancela aberturas pendentes antes de apagar.
 
 Migrações: `db.version(n).stores(...).upgrade(...)`; cada alteração de schema é uma story própria e passa por revisão (ficheiro partilhado — ver política de conflitos).
 
