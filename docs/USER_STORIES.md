@@ -184,6 +184,7 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
   5. Given entries with a `javascript:`, `data:`, `file:` or invalid URL, Then they are discarded and counted as "skipped".
   6. Given a text stream of 50,000 entries, Then it processes in chunks, emits progress and does not hold the whole file twice in memory.
   7. Given entries, Then each is classified `live|movie|series` (VOD-04 heuristic — initially everything `live` except URLs with `/movie/` or `/series/`).
+  9. Given entries without `group-title`/`#EXTGRP`, Then they are assigned to a synthetic per-source category "Uncategorized" (stable key), so every catalog item has a `categoryKey` (LIV-01 pages "All" per category).
   8. Given playback requirements the browser cannot honour, Then they are recorded on the entry instead of being dropped: `#KODIPROP:inputstream.adaptive.license_*` → `drm: true`; `#EXTVLCOPT:http-user-agent|http-referrer|http-origin` → `requiredHeaders: [...]`; `.mpd` URLs → container `dash`; `radio="true"` → `audioOnly: true`. (Real list M3UPT, 2026-10-28: 60 DRM entries, 66 DASH, 78/57/33 entries needing UA/Referer/Origin, 85 radios out of 929.)
 - **Dependencies:** FND-07.
 - **Tests:** unit with synthetic fixtures (valid, malformed, huge generated ones), property-based (fast-check) for robustness; benchmark.
