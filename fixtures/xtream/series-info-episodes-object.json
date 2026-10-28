@@ -1,0 +1,101 @@
+{
+  "seasons": [
+    {
+      "air_date": "2024-03-01",
+      "episode_count": 2,
+      "id": 30011,
+      "name": "Season 1",
+      "overview": "",
+      "season_number": 1,
+      "cover": "http://img.example.test/seasons/3001-1.jpg"
+    },
+    {
+      "air_date": "2025-03-01",
+      "episode_count": 1,
+      "id": 30012,
+      "name": "Season 2",
+      "overview": "",
+      "season_number": 2,
+      "cover": ""
+    }
+  ],
+  "info": {
+    "name": "Example Drama",
+    "cover": "http://img.example.test/covers/3001.jpg",
+    "plot": "Synthetic plot for Example Drama.",
+    "cast": "Alice Example, Bob Sample",
+    "director": "Carol Placeholder",
+    "genre": "Drama",
+    "releaseDate": "2024-03-01",
+    "last_modified": "1735689600",
+    "rating": "8.2",
+    "rating_5based": 4.1,
+    "backdrop_path": ["http://img.example.test/backdrops/3001.jpg"],
+    "youtube_trailer": "",
+    "episode_run_time": "42",
+    "category_id": "20"
+  },
+  "episodes": {
+    "1": [
+      {
+        "id": "40101",
+        "episode_num": 1,
+        "title": "S01E01 - Episódio 1",
+        "container_extension": "mp4",
+        "info": {
+          "movie_image": "http://img.example.test/episodes/3001-1-1.jpg",
+          "plot": "Episode 1 of season 1.",
+          "releasedate": "2024-03-01",
+          "rating": 7,
+          "duration_secs": 5,
+          "duration": "00:00:05",
+          "bitrate": 184
+        },
+        "custom_sid": "",
+        "added": "1735689600",
+        "season": 1,
+        "direct_source": ""
+      },
+      {
+        "id": "40102",
+        "episode_num": 2,
+        "title": "S01E02 - Episódio 2",
+        "container_extension": "mkv",
+        "info": {
+          "movie_image": "http://img.example.test/episodes/3001-1-2.jpg",
+          "plot": "Episode 2 of season 1.",
+          "releasedate": "2024-03-01",
+          "rating": 7,
+          "duration_secs": 5,
+          "duration": "00:00:05",
+          "bitrate": 184
+        },
+        "custom_sid": "",
+        "added": "1735689600",
+        "season": 1,
+        "direct_source": ""
+      }
+    ],
+    "2": [
+      {
+        "id": "40201",
+        "episode_num": 1,
+        "title": "S02E01 - Episódio 1",
+        "container_extension": "mp4",
+        "info": {
+          "movie_image": "http://img.example.test/episodes/3001-2-1.jpg",
+          "plot": "Episode 1 of season 2.",
+          "releasedate": "2024-03-01",
+          "rating": 7,
+          "duration_secs": 5,
+          "duration": "00:00:05",
+          "bitrate": 184
+        },
+        "custom_sid": "",
+        "added": "1735689600",
+        "season": 2,
+        "direct_source": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+#EXTM3U url-tvg="http://epg.example.test/guide.xml.gz" x-tvg-url="http://epg.example.test/alt.xml" tvg-shift="0" refresh="3600"
+# Synthetic playlist exercising attribute-parsing edge cases (QA-01). Not a real provider.
+#EXTINF:-1 tvg-id="double.example.test" tvg-name="Double Quotes" tvg-logo="http://img.example.test/a.png" group-title="Quotes",Double Quotes
+http://stream.example.test/live/1.m3u8
+#EXTINF:-1 tvg-id='single.example.test' tvg-name='Single Quotes' tvg-logo='http://img.example.test/b.png' group-title='Quotes',Single Quotes
+http://stream.example.test/live/2.m3u8
+#EXTINF:-1 tvg-id=unquoted.example.test tvg-chno=7 group-title=Unquoted,Unquoted Attributes
+http://stream.example.test/live/3.m3u8
+#EXTINF:-1 tvg-id="comma.example.test" tvg-name="News, Weather, Sport" group-title="Commas, In, Group",News, Weather, Sport
+http://stream.example.test/live/4.m3u8
+#EXTINF:-1 tvg-id="quote-in-name.example.test" tvg-name="It's a Channel" group-title="Quotes",It's a "Quoted" Channel
+http://stream.example.test/live/5.m3u8
+#EXTINF:-1 tvg-id="chno.example.test" tvg-chno="101" channel-number="101" tvg-name="Channel 101" group-title="Numbers",Channel 101
+http://stream.example.test/live/101.m3u8
+#EXTINF:-1 tvg-id="catchup.example.test" catchup="default" catchup-days="7" catchup-source="http://stream.example.test/timeshift/{utc}/{duration}/6.ts" timeshift="7" group-title="Catch-up",Catch-up Channel
+http://stream.example.test/live/6.ts
+#EXTINF:-1 tvg-id="shift.example.test" catchup="shift" catchup-days="3" group-title="Catch-up",Shift Catch-up
+http://stream.example.test/live/7.ts
+#EXTINF:-1 tvg-id="vlcopt.example.test" group-title="Options",VLC Options Channel
+#EXTVLCOPT:http-user-agent=ExampleTestAgent/1.0
+#EXTVLCOPT:http-referrer=http://www.example.test/
+#EXTVLCOPT:network-caching=1000
+http://stream.example.test/live/8.m3u8
+#EXTINF:-1 tvg-id="kodi.example.test" group-title="Options",Kodi Props Channel
+#KODIPROP:inputstream=inputstream.adaptive
+#KODIPROP:inputstream.adaptive.manifest_type=hls
+http://stream.example.test/live/9.m3u8
+#EXTINF:-1 tvg-id="extgrp.example.test",EXTGRP Only Group
+#EXTGRP:Group From EXTGRP
+http://stream.example.test/live/10.m3u8
+#EXTINF:-1 tvg-id="both-groups.example.test" group-title="Attribute Group",Both Groups
+#EXTGRP:Ignored EXTGRP
+http://stream.example.test/live/11.m3u8
+#EXTINF:0 tvg-id="duration-zero.example.test",Duration Zero
+http://stream.example.test/live/12.m3u8
+#EXTINF:3600.5,Positive Duration No Attributes
+http://stream.example.test/vod/13.mp4
+#EXTINF:-1 tvg-id="spaces.example.test"   tvg-name =  "Spaced Out"   group-title="Spacing"  ,   Spaced Out Name
+http://stream.example.test/live/14.m3u8
+#EXTINF:-1 TVG-ID="upper.example.test" Group-Title="Case",Upper-case Attribute Keys
+http://stream.example.test/live/15.m3u8
+#EXTINF:-1 tvg-id="empty.example.test" tvg-name="" tvg-logo="" group-title="",
+http://stream.example.test/live/16.m3u8
+#EXTINF:-1 tvg-id="unicode.example.test" tvg-name="Ação Çedilha 日本 Ελληνικά" group-title="Unicode — Ünïcödé",Ação Çedilha 日本 Ελληνικά
+http://stream.example.test/live/17.m3u8
+#EXTINF:-1 tvg-id="url-query.example.test" group-title="URLs",URL With Query and Fragment
+http://stream.example.test/live/18.m3u8?token=synthetic-token&a=1#frag
+
+#EXTINF:-1 tvg-id="blank-line-before-url.example.test" group-title="URLs",Blank Line Before URL
+
+http://stream.example.test/live/19.m3u8
+#EXTINF:-1 tvg-id="rtmp.example.test" group-title="URLs",RTMP Scheme
+rtmp://stream.example.test/live/20
+#EXTINF:-1 tvg-id="udp.example.test" group-title="URLs",UDP Multicast
+udp://@239.0.0.1:1234

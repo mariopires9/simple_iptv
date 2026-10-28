@@ -1,0 +1,20 @@
+[
+  {
+    "category_id": "10",
+    "category_name": " Movies | Action ",
+    "parent_id": 0,
+    "panel_sort_order": 0,
+    "x_panel_flags": {
+      "hidden": false
+    }
+  },
+  {
+    "category_id": 11,
+    "category_name": "Filmes | Comédia",
+    "parent_id": null,
+    "panel_sort_order": 1,
+    "x_panel_flags": {
+      "hidden": false
+    }
+  }
+]

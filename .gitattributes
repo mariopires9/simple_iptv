@@ -1,0 +1,10 @@
+# Fixtures are byte-exact test inputs: never normalise line endings (QA-01).
+# crlf-bom.m3u must keep CRLF + BOM; malicious.m3u contains NUL/control characters;
+# small.xml must match small.xml.gz byte for byte.
+fixtures/m3u/*.m3u -text
+fixtures/xtream/*.json -text
+fixtures/xtream/*.m3u -text
+fixtures/xmltv/*.xml -text
+# Generated media and playlists: never diff or normalise.
+fixtures/streams/** binary
+fixtures/xmltv/*.gz binary

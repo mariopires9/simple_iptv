@@ -1,0 +1,32 @@
+#EXTINF:-1 tvg-id="no-header.example.test" group-title="Malformed",First Entry Without #EXTM3U Header
+http://stream.example.test/live/1.m3u8
+#EXTINF:-1 tvg-id="no-url.example.test" group-title="Malformed",Entry Without URL
+#EXTINF:-1 tvg-id="after-missing-url.example.test" group-title="Malformed",Entry After Missing URL
+http://stream.example.test/live/3.m3u8
+http://stream.example.test/live/orphan-url-without-extinf.m3u8
+#EXTINF:-1 tvg-id="unterminated.example.test tvg-name="Unterminated Quote group-title="Malformed",Unterminated Quote
+http://stream.example.test/live/4.m3u8
+#EXTINF:-1 tvg-id="no-comma.example.test" group-title="Malformed" No Comma Before Name
+http://stream.example.test/live/5.m3u8
+#EXTINF tvg-id="no-duration.example.test",Missing Duration And Colon
+http://stream.example.test/live/6.m3u8
+#EXTINF:abc tvg-id="bad-duration.example.test",Non-numeric Duration
+http://stream.example.test/live/7.m3u8
+#EXTINF:-1,
+http://stream.example.test/live/8-empty-name.m3u8
+#EXTINF:-1 tvg-id="bad-url.example.test",Invalid URL
+not a url at all
+#EXTINF:-1 tvg-id="relative-url.example.test",Relative URL
+/live/relative.m3u8
+#EXTINF:-1 tvg-id="spaces-url.example.test",URL With Spaces
+http://stream.example.test/live/with space.m3u8
+#EXTM3U
+#EXTINF:-1 tvg-id="second-header.example.test",After Duplicate #EXTM3U Header
+http://stream.example.test/live/9.m3u8
+#EXTX-UNKNOWN-TAG:value
+#EXTINF:-1 tvg-id="unknown-tag.example.test",After Unknown Tag
+http://stream.example.test/live/10.m3u8
+
+#EXTINF:-1 tvg-id="whitespace-line.example.test",After Whitespace-only Line
+http://stream.example.test/live/11.m3u8
+#EXTINF:-1 tvg-id="truncated.example.test" group-title="Malformed",Truncated At End Of File

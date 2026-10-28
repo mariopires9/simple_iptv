@@ -41,7 +41,17 @@ const htmlSinkSelectors = [
 ];
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'spikes', 'playwright-report', 'test-results', '.claude'] },
+  {
+    ignores: [
+      'dist',
+      'coverage',
+      'spikes',
+      'fixtures/streams',
+      'playwright-report',
+      'test-results',
+      '.claude',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

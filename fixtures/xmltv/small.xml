@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<!-- Synthetic XMLTV guide for tests (QA-01). Channels and programmes are fictional. -->
+<tv generator-info-name="simple-iptv-fixtures" generator-info-url="http://epg.example.test/">
+  <channel id="news.example.test">
+    <display-name lang="en">Example News HD</display-name>
+    <display-name>1001</display-name>
+    <icon src="http://img.example.test/logos/1001.png" />
+    <url>http://www.example.test/news</url>
+  </channel>
+  <channel id="noticias.example.test">
+    <display-name lang="pt">Notícias Exemplo</display-name>
+    <icon src="http://img.example.test/logos/1002.png" />
+  </channel>
+  <programme start="20260101100000 +0000" stop="20260101110000 +0000" channel="news.example.test">
+    <title lang="en">Morning News</title>
+    <desc lang="en">Headlines &amp; weather &lt;live&gt;.</desc>
+    <category lang="en">News</category>
+  </programme>
+  <programme start="20260101110000 +0000" stop="20260101120000 +0000" channel="news.example.test">
+    <title lang="en"><![CDATA[Tech & Science <Special>]]></title>
+    <sub-title lang="en">Episode &quot;One&quot;</sub-title>
+    <desc lang="en"><![CDATA[Raw CDATA with <b>markup</b> & ampersands that must stay text.]]></desc>
+    <episode-num system="xmltv_ns">0.0.0/1</episode-num>
+    <episode-num system="onscreen">S01E01</episode-num>
+  </programme>
+  <programme start="20260101120000 +0000" stop="20260101130000 +0000" channel="news.example.test">
+    <title lang="en">Midday Report</title>
+    <desc lang="en">It&apos;s noon &#8212; numeric entity &#x2014; hex entity.</desc>
+  </programme>
+  <programme start="20260101130000 +0000" stop="20260101143000 +0000" channel="news.example.test">
+    <title lang="en">Afternoon Movie</title>
+    <credits>
+      <director>Carol Placeholder</director>
+      <actor>Alice Example</actor>
+    </credits>
+    <date>2024</date>
+    <rating system="MPAA"><value>PG</value></rating>
+  </programme>
+  <programme start="20260101143000 +0000" stop="20260101150000 +0000" channel="news.example.test">
+    <title lang="en">Short Bulletin</title>
+  </programme>
+  <programme start="20260101110000 +0100" stop="20260101120000 +0100" channel="noticias.example.test">
+    <title lang="pt">Notícias da Manhã</title>
+    <title lang="en">Morning News (PT)</title>
+    <desc lang="pt">Informação, desporto e meteorologia — edição de teste.</desc>
+  </programme>
+  <programme start="20260101120000 +0100" stop="20260101130000 +0100" channel="noticias.example.test">
+    <title lang="pt">Café com Ciência</title>
+    <desc lang="pt">Ação, coração e pão: àçéñtös ãõâêîôû.</desc>
+  </programme>
+  <programme start="20260101130000 +0100" stop="20260101140000 +0100" channel="noticias.example.test">
+    <title lang="pt">Almoço &amp; Conversa</title>
+  </programme>
+  <programme start="20260101140000 +0100" stop="20260101150000 +0100" channel="noticias.example.test">
+    <title lang="pt"><![CDATA[Desporto <Direto>]]></title>
+    <desc lang="pt">Resumo da jornada.</desc>
+  </programme>
+  <programme start="20260101150000 +0100" channel="noticias.example.test">
+    <title lang="pt">Programa Sem Fim Definido</title>
+    <desc lang="pt">Missing stop attribute (allowed by the XMLTV DTD).</desc>
+  </programme>
+  <programme start="20260101160000 +0000" stop="20260101170000 +0000" channel="unknown.example.test">
+    <title lang="en">Programme For Unknown Channel</title>
+  </programme>
+</tv>

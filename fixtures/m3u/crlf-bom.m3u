@@ -1,0 +1,7 @@
+﻿#EXTM3U x-tvg-url="http://epg.example.test/guide.xml"
+#EXTINF:-1 tvg-id="crlf1.example.test" tvg-name="CRLF Channel One" group-title="Line Endings",CRLF Channel One
+http://stream.example.test/live/1.m3u8
+#EXTINF:-1 tvg-id="crlf2.example.test" tvg-name="Canal Ação" group-title="Line Endings",Canal Ação
+http://stream.example.test/live/2.ts
+#EXTINF:-1 tvg-id="crlf3.example.test" group-title="Line Endings",Last Channel Without Trailing Newline
+http://stream.example.test/live/3.m3u8

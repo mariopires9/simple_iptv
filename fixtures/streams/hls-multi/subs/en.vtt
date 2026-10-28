@@ -1,0 +1,8 @@
+WEBVTT
+X-TIMESTAMP-MAP=MPEGTS:126000,LOCAL:00:00:00.000
+
+00:00:00.000 --> 00:00:02.000
+Synthetic subtitle one
+
+00:00:02.000 --> 00:00:05.000
+Synthetic subtitle two
