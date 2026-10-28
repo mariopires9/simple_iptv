@@ -1,0 +1,117 @@
+// Top bar: app name, source selector slot, search and the overflow menu (theme; Settings on mobile).
+import CheckRounded from '@mui/icons-material/CheckRounded';
+import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
+import SearchRounded from '@mui/icons-material/SearchRounded';
+import AppBar from '@mui/material/AppBar';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import IconButton from '@mui/material/IconButton';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import ListSubheader from '@mui/material/ListSubheader';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
+import Toolbar from '@mui/material/Toolbar';
+import Typography from '@mui/material/Typography';
+import { useId, useState, type ReactNode } from 'react';
+import { t } from '@/i18n';
+import { THEME_PREFERENCES, useThemeMode } from '@/ui/theme';
+import { navSize } from '@/ui/theme/tokens';
+import { SETTINGS_NAV_ITEM, type NavId } from './navItems';
+
+export interface TopBarProps {
+  /** Show "Settings" in the overflow menu (mobile, where the bottom bar has no room for it). */
+  showSettings: boolean;
+  settingsSelected: boolean;
+  onNavigate: (id: NavId) => void;
+  /** Active list selector — filled in by the sources stories. */
+  sourceSelector?: ReactNode;
+  /** Search entry point — filled in by the search story. */
+  searchAction?: ReactNode;
+}
+
+// TODO(SRCH): replace with the real global search entry point.
+const searchPlaceholder = (
+  <IconButton aria-label={t.nav.search} disabled>
+    <SearchRounded />
+  </IconButton>
+);
+
+export function TopBar({
+  showSettings,
+  settingsSelected,
+  onNavigate,
+  sourceSelector,
+  searchAction = searchPlaceholder,
+}: TopBarProps) {
+  const { preference, setPreference } = useThemeMode();
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const menuId = useId();
+  const buttonId = useId();
+  const closeMenu = () => setMenuAnchor(null);
+
+  return (
+    <AppBar position="sticky" component="header">
+      <Toolbar sx={{ minHeight: { xs: navSize.topBar }, gap: 1 }}>
+        <Typography component="span" variant="h3" noWrap sx={{ flexShrink: 0 }}>
+          {t.app.name}
+        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
+          {sourceSelector}
+        </Box>
+        {searchAction}
+        <IconButton
+          id={buttonId}
+          aria-label={t.nav.moreOptions}
+          aria-haspopup="menu"
+          aria-controls={menuAnchor ? menuId : undefined}
+          aria-expanded={menuAnchor ? true : undefined}
+          onClick={(event) => setMenuAnchor(event.currentTarget)}
+          edge="end"
+        >
+          <MoreVertRounded />
+        </IconButton>
+      </Toolbar>
+      <Menu
+        id={menuId}
+        anchorEl={menuAnchor}
+        open={menuAnchor !== null}
+        onClose={closeMenu}
+        slotProps={{ list: { 'aria-labelledby': buttonId } }}
+      >
+        {showSettings && [
+          <MenuItem
+            key="settings"
+            selected={settingsSelected}
+            aria-current={settingsSelected ? 'page' : undefined}
+            onClick={() => {
+              onNavigate(SETTINGS_NAV_ITEM.id);
+              closeMenu();
+            }}
+          >
+            <ListItemIcon>{SETTINGS_NAV_ITEM.icon}</ListItemIcon>
+            <ListItemText>{SETTINGS_NAV_ITEM.label}</ListItemText>
+          </MenuItem>,
+          <Divider key="divider" />,
+        ]}
+        <ListSubheader sx={{ bgcolor: 'transparent', lineHeight: 2.5 }}>
+          {t.nav.theme}
+        </ListSubheader>
+        {THEME_PREFERENCES.map((option) => (
+          <MenuItem
+            key={option}
+            role="menuitemradio"
+            aria-checked={preference === option}
+            onClick={() => {
+              setPreference(option);
+              closeMenu();
+            }}
+          >
+            <ListItemIcon>{preference === option && <CheckRounded />}</ListItemIcon>
+            <ListItemText>{t.nav.themes[option]}</ListItemText>
+          </MenuItem>
+        ))}
+      </Menu>
+    </AppBar>
+  );
+}
