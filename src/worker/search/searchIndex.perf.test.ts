@@ -105,7 +105,6 @@ describe('search index benchmark (100k items)', () => {
       data,
       builtAt: Date.now(),
       version: SEARCH_INDEX_VERSION,
-      items: ITEMS,
     });
     resetSearchCacheForTests();
     const start = performance.now();

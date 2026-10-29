@@ -143,6 +143,25 @@ const resultOf = (p: PreparedType<ContentType>): ReplaceResult => ({
   duplicates: p.duplicates,
 });
 
+// --- Catalogue write notifications (SCH-01) ------------------------------------------------------
+// Every catalogue write of a source also deletes its stored search index (in the same
+// transaction), so a missing index always means "rebuild", even if the app is killed before the
+// sync finishes. Listeners in this JS realm (the data worker, where syncs write) are notified
+// synchronously when a write *starts*, before its transaction is created: an index build that
+// began earlier can tell its snapshot is outdated and must not be stored or cached.
+
+const writeListeners = new Set<(sourceId: string) => void>();
+
+/** Calls `listener(sourceId)` whenever a catalogue write of that source starts. */
+export function onCatalogWrite(listener: (sourceId: string) => void): () => void {
+  writeListeners.add(listener);
+  return () => writeListeners.delete(listener);
+}
+
+function notifyCatalogWrite(sourceId: string): void {
+  for (const listener of writeListeners) listener(sourceId);
+}
+
 /**
  * Shared body of `replaceForSource` / `replaceForExistingSource`. With `requireSource`, the
  * existence check of the `sources` row runs inside the same rw transaction as the write, so a
@@ -158,8 +177,11 @@ async function replace<T extends ContentType>(
   const prepared = prepare(sourceId, type, data);
   const db = await getDb();
   const table = itemTable(db, type);
-  const written = await db.transaction('rw', [db.sources, db.categories, table], async () => {
+  notifyCatalogWrite(sourceId);
+  const tables = [db.sources, db.categories, table, db.searchIndex];
+  const written = await db.transaction('rw', tables, async () => {
     if (requireSource && (await db.sources.get(sourceId)) === undefined) return false;
+    await db.searchIndex.delete(sourceId);
     await writePrepared(db, sourceId, prepared);
     return true;
   });
@@ -212,11 +234,13 @@ export const catalogRepo = {
       series: prepare(sourceId, 'series', data.series),
     };
     const db = await getDb();
+    notifyCatalogWrite(sourceId);
     const written = await db.transaction(
       'rw',
-      [db.sources, db.categories, db.channels, db.movies, db.series],
+      [db.sources, db.categories, db.channels, db.movies, db.series, db.searchIndex],
       async () => {
         if ((await db.sources.get(sourceId)) === undefined) return false;
+        await db.searchIndex.delete(sourceId);
         await writePrepared(db, sourceId, prepared.live);
         await writePrepared(db, sourceId, prepared.movie);
         await writePrepared(db, sourceId, prepared.series);
@@ -292,6 +316,13 @@ export const catalogRepo = {
     return db.categories.get(key);
   },
 
+  /** Several categories by key in one bulk read; missing keys are omitted, order is preserved. */
+  async getCategories(keys: readonly string[]): Promise<Category[]> {
+    const db = await getDb();
+    const found = await db.categories.bulkGet([...keys]);
+    return found.filter((c): c is Category => c !== undefined);
+  },
+
   async getSeriesDetails(seriesKey: string): Promise<SeriesDetails | undefined> {
     const db = await getDb();
     return db.seriesDetails.get(seriesKey);
@@ -324,7 +355,7 @@ export const catalogRepo = {
   /**
    * Like `putSearchIndex`, but only if the `sources` row still exists, checked in the same rw
    * transaction (SCH-01): an index built while the source was being removed is not left behind.
-   * Returns whether it was written.
+   * Returns whether it was written. (Catalogue writes delete the row: see `onCatalogWrite`.)
    */
   async putSearchIndexForExistingSource(entry: SearchIndexEntry): Promise<boolean> {
     const db = await getDb();

@@ -320,6 +320,4 @@ export interface SearchIndexEntry {
    * is rebuilt instead of loaded.
    */
   version?: number;
-  /** Documents in the index. */
-  items?: number;
 }

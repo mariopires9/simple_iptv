@@ -7,6 +7,7 @@ import {
   catalogRepo,
   closeDatabase,
   itemKey,
+  onCatalogWrite,
   openDatabase,
   sourcesRepo,
   type Source,
@@ -18,6 +19,7 @@ import {
   rebuildSearchIndexAfterSync,
   resetSearchCacheForTests,
   searchCatalog,
+  waitForSearchIndexIdle,
   warmUpSearch,
 } from './searchService';
 
@@ -91,7 +93,7 @@ afterEach(async () => {
 });
 
 describe('build and storage', () => {
-  it('stores the serialized index of the source with its version and size', async () => {
+  it('stores the serialized index of the source with its version', async () => {
     await seed();
     await rebuildSearchIndex(SRC, () => 1234);
     const entry = await catalogRepo.getSearchIndex(SRC);
@@ -99,7 +101,6 @@ describe('build and storage', () => {
       sourceId: SRC,
       builtAt: 1234,
       version: SEARCH_INDEX_VERSION,
-      items: 4,
     });
     expect(entry?.data).not.toContain('cdn.example.test');
   });
@@ -111,12 +112,15 @@ describe('build and storage', () => {
     expect(await catalogRepo.getSearchIndex(SRC)).toBeUndefined();
   });
 
-  it('the after-sync hook never throws', async () => {
+  it('the after-sync hook only queues the build; a failure is logged', async () => {
     await seed();
     vi.spyOn(catalogRepo, 'putSearchIndexForExistingSource').mockRejectedValue(new Error('quota'));
-    await expect(rebuildSearchIndexAfterSync(SRC)).resolves.toBeUndefined();
-    expect(getLogEntries().some((e) => e.message.includes('index build after sync failed'))).toBe(
-      true,
+    expect(rebuildSearchIndexAfterSync(SRC)).toBeUndefined();
+    await waitForSearchIndexIdle(SRC);
+    await vi.waitFor(() =>
+      expect(getLogEntries().some((e) => e.message.includes('index build after sync failed'))).toBe(
+        true,
+      ),
     );
   });
 });
@@ -138,14 +142,67 @@ describe('load', () => {
     expect(await catalogRepo.getSearchIndex(SRC)).toBeDefined();
   });
 
-  it('rebuilds a stored index that is older than the last write, corrupt or of another version', async () => {
+  it('a catalogue write deletes the stored index and drops the loaded one', async () => {
+    await seed();
+    await rebuildSearchIndex(SRC);
+    expect((await warmUpSearch(SRC)).from).toBe('memory');
+    await catalogRepo.replaceForExistingSource(SRC, 'series', {
+      categories: [],
+      items: [{ externalId: '21', name: 'Brand New Show' }],
+    });
+    expect(await catalogRepo.getSearchIndex(SRC)).toBeUndefined();
+    const r = await searchCatalog({ sourceId: SRC, query: 'brand new' });
+    expect(r.groups.series.hits.map((h) => h.name)).toEqual(['Brand New Show']);
+  });
+
+  it('a type written by a sync that never finished (app killed) is searchable after reopening', async () => {
+    await seed();
+    await rebuildSearchIndex(SRC);
+    // The sync wrote one type, then the app was killed: no finish(), no lastSyncByType update.
+    await catalogRepo.replaceForExistingSource(SRC, 'movie', {
+      categories: [],
+      items: [{ externalId: '99', name: 'Killed Midway Movie', streamPath: '' }],
+    });
+    resetSearchCacheForTests(); // reopened
+    expect((await warmUpSearch(SRC)).from).toBe('build');
+    const r = await searchCatalog({ sourceId: SRC, query: 'midway' });
+    expect(r.groups.movie.hits.map((h) => h.name)).toEqual(['Killed Midway Movie']);
+  });
+
+  it('discards a build that overlapped a catalogue write, then rebuilds from the new data', async () => {
+    await seed();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const original = catalogRepo.listForSource.bind(catalogRepo);
+    const list = vi.spyOn(catalogRepo, 'listForSource');
+    let reading: () => void = () => undefined;
+    const started = new Promise<void>((r) => (reading = r));
+    // The first build reads the old catalogue, then waits until the write has started.
+    list.mockImplementationOnce(async (id, type) => {
+      reading();
+      const rows = await original(id, type);
+      await gate;
+      return rows;
+    });
+    const building = rebuildSearchIndex(SRC);
+    await started;
+    // Let the build go on as soon as the write has started (before its transaction runs).
+    const stop = onCatalogWrite(() => release());
+    const writing = catalogRepo.replaceForExistingSource(SRC, 'series', {
+      categories: [],
+      items: [{ externalId: '22', name: 'Arrived During Build' }],
+    });
+    await writing;
+    stop();
+    expect(await building).toBeUndefined();
+    expect(await catalogRepo.getSearchIndex(SRC)).toBeUndefined();
+    const r = await searchCatalog({ sourceId: SRC, query: 'arrived' });
+    expect(r.groups.series.hits.map((h) => h.name)).toEqual(['Arrived During Build']);
+  });
+
+  it('rebuilds a stored index that is corrupt or of another version', async () => {
     await seed();
     await rebuildSearchIndex(SRC, () => 1000);
-    const at = (lastOkAt: number) => ({ status: 'ok' as const, at: lastOkAt, lastOkAt });
-    await sourcesRepo.update(SRC, { lastSyncByType: { live: at(500), movie: at(2000) } });
-    resetSearchCacheForTests();
-    expect((await warmUpSearch(SRC)).from).toBe('build');
-
     const entry = await catalogRepo.getSearchIndex(SRC);
     if (!entry) throw new Error('index missing');
     await catalogRepo.putSearchIndex({ ...entry, data: '{broken' });

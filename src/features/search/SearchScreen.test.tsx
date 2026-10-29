@@ -141,6 +141,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   // Unmount first: a mounted screen would re-read the active list as soon as it is forgotten,
   // and publish the previous test's list into the next test.
   cleanup();
@@ -295,6 +296,52 @@ describe('results (AC2, AC5)', () => {
   });
 });
 
+describe('views and navigation (review)', () => {
+  const realSearch = (name: string, input: SearchQueryInput) =>
+    name === 'searchQuery' ? searchCatalog(input) : warmUpSearch(input.sourceId);
+  /** Searches matching `hang` never answer (a slow worker). */
+  const hangWhen = (hang: (input: SearchQueryInput) => boolean) =>
+    runTask.mockImplementation((name: string, input: SearchQueryInput) =>
+      name === 'searchQuery' && hang(input)
+        ? new Promise(() => undefined)
+        : realSearch(name, input),
+    );
+
+  it('"see all" uses the current query while older results are still on screen', async () => {
+    const router = renderAt('/search?q=exam');
+    await screen.findByRole('region', { name: /^Movies/ });
+    hangWhen((input) => input.query === 'drama');
+    fireEvent.change(field(), { target: { value: 'drama' } });
+    await waitFor(() => expect(location()).toBe('/search?q=drama'));
+    // The "exam" results are still shown (same list, same view) while "drama" runs.
+    const movies = screen.getByRole('region', { name: /^Movies/ });
+    await userEvent.click(within(movies).getByRole('link', { name: /^See all/ }));
+    await waitFor(() => expect(location()).toBe('/search?q=drama&type=movie'));
+    expect(router.state.location.search).toBe('?q=drama&type=movie');
+  });
+
+  it('a "see all" view never shows the grouped results while it loads', async () => {
+    renderAt('/search?q=exam');
+    const movies = await screen.findByRole('region', { name: /^Movies/ });
+    hangWhen((input) => input.types !== undefined);
+    await userEvent.click(within(movies).getByRole('link', { name: /^See all/ }));
+    await waitFor(() => expect(location()).toBe('/search?q=exam&type=movie'));
+    expect(screen.queryByRole('region', { name: /^Live TV|^Movies|^Series/ })).toBeNull();
+    expect(screen.queryAllByRole('link', { name: /^Example/ })).toEqual([]);
+  });
+
+  it('the field follows the URL when navigating to another query', async () => {
+    const router = renderAt('/search?q=exam');
+    await screen.findByRole('region', { name: /^Movies/ });
+    await act(() => router.navigate('/search?q=drama'));
+    expect(field()).toHaveValue('drama');
+    await waitFor(() => expect(screen.queryByRole('region', { name: /^Movies/ })).toBeNull());
+    expect(screen.getByRole('link', { name: 'Example Drama' })).toBeInTheDocument();
+    await act(() => router.navigate(-1));
+    expect(field()).toHaveValue('exam');
+  });
+});
+
 describe('opening a result (AC3)', () => {
   it.each([
     [
@@ -316,6 +363,34 @@ describe('opening a result (AC3)', () => {
 });
 
 describe('recent searches (AC4)', () => {
+  it('a search saved before the stored list was read is merged with it, not overwritten', async () => {
+    await settingsRepo.set('recentSearches', ['drama']);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const original = settingsRepo.get.bind(settingsRepo);
+    let first = true;
+    vi.spyOn(settingsRepo, 'get').mockImplementation(async (key) => {
+      if (key === 'recentSearches' && first) {
+        first = false;
+        await gate;
+      }
+      return original(key);
+    });
+    renderAt('/search');
+    await typeQuery('news{Enter}');
+    release();
+    await waitFor(async () => expect(await original('recentSearches')).toEqual(['news', 'drama']));
+    await userEvent.clear(field());
+    const list = await screen.findByRole('region', { name: t.search.recent.title });
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole('button', { name: /drama|news/ })
+          .map((b) => b.textContent),
+      ).toEqual(['news', 'drama']),
+    );
+  });
+
   it('stores searches on Enter and when a result is opened; most recent first', async () => {
     renderAt('/search');
     await typeQuery('drama{Enter}');

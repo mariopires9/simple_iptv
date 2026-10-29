@@ -1,14 +1,19 @@
 // @vitest-environment node
 // SCH-01: the pure search index — documents, prefix/fuzzy/number matching, grouping, serialization.
 import { describe, expect, it } from 'vitest';
-import { categoryKey, itemKey, normalizeName, type CatalogItem } from '@/core/db';
+import {
+  categoryKey,
+  isSearchableQuery,
+  itemKey,
+  normalizeName,
+  tokenizeSearchText as tokenize,
+  type CatalogItem,
+} from '@/core/db';
 import {
   buildSearchIndex,
-  isSearchableQuery,
   loadSearchIndex,
   querySearchIndex,
   serializeSearchIndex,
-  tokenize,
   toSearchDoc,
 } from './searchIndex';
 

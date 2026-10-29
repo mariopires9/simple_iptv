@@ -53,7 +53,7 @@ export async function selfTest(input: SelfTestInput, ctx: TaskContext): Promise<
 
 /**
  * SRC-07: syncs an Xtream source's catalogue (the password is read from the vault in here), then
- * rebuilds its search index (SCH-01).
+ * queues its search index rebuild (SCH-01).
  */
 export function syncXtream(input: SyncXtreamInput, ctx: TaskContext): Promise<SyncXtreamResult> {
   return syncXtreamSource(input, ctx, { afterSync: rebuildSearchIndexAfterSync });
@@ -61,7 +61,7 @@ export function syncXtream(input: SyncXtreamInput, ctx: TaskContext): Promise<Sy
 
 /**
  * SRC-04/SRC-05: downloads, parses and stores an M3U-URL source (the list URL is read from the
- * vault in here and never crosses postMessage), then rebuilds its search index (SCH-01).
+ * vault in here and never crosses postMessage), then queues its search index rebuild (SCH-01).
  */
 export function syncM3u(input: SyncM3uInput, ctx: TaskContext): Promise<SyncM3uResult> {
   return syncM3uSource(input, ctx, { afterSync: rebuildSearchIndexAfterSync });

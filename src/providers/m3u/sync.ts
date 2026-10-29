@@ -124,10 +124,10 @@ export interface SyncM3uDeps {
   /** How often cancellation is polled while waiting (ms). Default 50. */
   cancelPollMs?: number;
   /**
-   * Called after a successful import, while the source is still held (SCH-01: the data worker
-   * rebuilds the search index here). Must not throw; a rejection is logged and ignored.
+   * Called after a successful import, once the source is released and `done` was reported
+   * (SCH-01: the data worker queues the search index rebuild). Not awaited; a throw is logged.
    */
-  afterSync?: (sourceId: string) => Promise<void>;
+  afterSync?: (sourceId: string) => void;
 }
 
 /** Guards against lists that would exhaust memory on weak devices. */
@@ -281,8 +281,9 @@ export async function syncM3uSource(
     throw new WorkerTaskError('failed', 'M3U sync: source not found');
   }
   const release = await acquireSource(sourceId, ctx, pollMs);
+  let result: SyncM3uResult;
   try {
-    return await runSync(sourceId, ctx, deps, pollMs);
+    result = await runSync(sourceId, ctx, deps, pollMs);
   } catch (err) {
     if (err instanceof SourceRemovedError) {
       log.info('m3u sync: source removed during sync', { sourceId });
@@ -291,6 +292,17 @@ export async function syncM3uSource(
     throw err;
   } finally {
     release();
+  }
+  if (result.status === 'ok') notifyAfterSync(deps, sourceId);
+  return result;
+}
+
+/** Runs the `afterSync` hook (never awaited, never fails the sync: errors are only logged). */
+function notifyAfterSync(deps: SyncM3uDeps, sourceId: string): void {
+  try {
+    deps.afterSync?.(sourceId);
+  } catch (error) {
+    log.warn('m3u sync: after-sync hook failed', { sourceId, error });
   }
 }
 
@@ -494,11 +506,6 @@ async function runSync(
     epgUrls,
   };
   if (!(await sourcesRepo.update(sourceId, changes))) throw new SourceRemovedError();
-  if (deps.afterSync) {
-    await deps.afterSync(sourceId).catch((error: unknown) => {
-      log.warn('m3u sync: after-sync hook failed', { sourceId, error });
-    });
-  }
   progress({ phase: 'done', done: totalItems, total: totalItems });
   log.info('m3u sync: finished', {
     sourceId,

@@ -13,18 +13,16 @@ import MiniSearch, { type Options, type SearchOptions } from 'minisearch';
 import {
   CONTENT_TYPES,
   categoryKey,
+  isSearchableQuery,
   itemKey,
-  normalizeName,
   parseCategoryKey,
+  tokenizeSearchText,
   type CatalogItem,
   type ContentType,
 } from '@/core/db';
 
 /** Format of the serialized index; bump it when the options or the document shape change. */
 export const SEARCH_INDEX_VERSION = 1;
-
-/** Shortest query (letters and digits after normalization) that runs a search. */
-export const MIN_QUERY_LENGTH = 2;
 
 /** Terms of at least this length also match with typos (fuzzy 0.2 ⇒ 1 edit for 5–7 letters). */
 export const FUZZY_MIN_TERM_LENGTH = 5;
@@ -59,18 +57,6 @@ export interface RawGroup {
 
 export type RawResults = Record<ContentType, RawGroup>;
 
-/** Splits normalized text into words: anything that is not a letter or a digit separates. */
-export function tokenize(text: string): string[] {
-  return normalizeName(text)
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((term) => term !== '');
-}
-
-/** Whether the query has enough letters/digits to run (≥ {@link MIN_QUERY_LENGTH}). */
-export function isSearchableQuery(query: string): boolean {
-  return tokenize(query).join('').length >= MIN_QUERY_LENGTH;
-}
-
 const SEARCH_OPTIONS: SearchOptions = {
   prefix: true,
   fuzzy: (term) => (term.length >= FUZZY_MIN_TERM_LENGTH ? 0.2 : false),
@@ -85,8 +71,8 @@ function indexOptions(): Options<SearchDoc> {
     idField: 'id',
     fields: ['name', 'num'],
     storeFields: ['c'],
-    tokenize,
-    // Terms are already normalized by `tokenize`.
+    tokenize: tokenizeSearchText,
+    // Terms are already normalized by the tokenizer.
     processTerm: (term) => term,
     searchOptions: SEARCH_OPTIONS,
   };
@@ -100,7 +86,7 @@ export function createSearchIndex(): SearchIndex {
 
 /** The document of a catalogue item; `undefined` for an item without a searchable name. */
 export function toSearchDoc(item: CatalogItem): SearchDoc | undefined {
-  if (typeof item.name !== 'string' || tokenize(item.name).length === 0) return undefined;
+  if (typeof item.name !== 'string' || tokenizeSearchText(item.name).length === 0) return undefined;
   const doc: SearchDoc = { id: `${TYPE_CODE[item.type]}:${item.externalId}`, name: item.name };
   if (item.type === 'live' && typeof item.number === 'number' && Number.isFinite(item.number)) {
     doc.num = String(item.number);

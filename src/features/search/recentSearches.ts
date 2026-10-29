@@ -33,11 +33,33 @@ export function withRecentSearch(list: readonly string[], query: string): string
   return [clean, ...rest].slice(0, MAX_RECENT_SEARCHES);
 }
 
-export async function loadRecentSearches(): Promise<string[]> {
+// Reads and writes go through one queue (read-modify-write each time): a change made before the
+// first read resolves is applied to the stored list, never to an empty one, and is never
+// overwritten by that read.
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(run: () => Promise<T>): Promise<T> {
+  const next = queue.then(run, run);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
+async function read(): Promise<string[]> {
   return parseRecentSearches(await settingsRepo.get('recentSearches'));
 }
 
-export async function saveRecentSearches(list: readonly string[]): Promise<void> {
-  if (list.length === 0) await settingsRepo.remove('recentSearches');
-  else await settingsRepo.set('recentSearches', [...list]);
+export function loadRecentSearches(): Promise<string[]> {
+  return enqueue(read);
+}
+
+/** Applies `change` to the stored list (after any earlier change) and resolves the new list. */
+export function updateRecentSearches(
+  change: (list: readonly string[]) => string[],
+): Promise<string[]> {
+  return enqueue(async () => {
+    const next = parseRecentSearches(change(await read()));
+    if (next.length === 0) await settingsRepo.remove('recentSearches');
+    else await settingsRepo.set('recentSearches', next);
+    return next;
+  });
 }

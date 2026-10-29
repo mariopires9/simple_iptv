@@ -8,12 +8,17 @@ import { credentialVault } from '@/core/crypto';
 import { catalogRepo, closeDatabase, openDatabase, sourcesRepo, type Source } from '@/core/db';
 import { clearLogBuffer, clearSecrets, getLogEntries } from '@/core/log';
 import { WorkerTaskError, type TaskContext } from '@/core/worker';
-import { syncM3uSource } from '@/providers/m3u';
-import { syncXtreamSource } from '@/providers/xtream';
+import { isM3uSourceSyncing, syncM3uSource } from '@/providers/m3u';
+import { isSourceSyncing, syncXtreamSource } from '@/providers/xtream';
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
 import { tasks } from '../tasks';
-import { resetSearchCacheForTests, searchCatalog } from './searchService';
+import {
+  resetSearchCacheForTests,
+  searchCatalog,
+  waitForSearchIndexIdle,
+  warmUpSearch,
+} from './searchService';
 
 const server = createMswServer(...xtreamHandlers());
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -89,14 +94,19 @@ describe('index built at the end of a sync', () => {
     const result = await tasks.syncXtream({ sourceId: id }, ctx());
     expect(result.status).toBe('ok');
 
+    await waitForSearchIndexIdle(id);
     const entry = await catalogRepo.getSearchIndex(id);
-    expect(entry?.items).toBe(result.stats.live + result.stats.movies + result.stats.series);
     expect(entry?.data).not.toContain(PASS);
     expect(entry?.data).not.toContain(USER);
 
     // Loaded from storage (not rebuilt) after a restart; prefix and fuzzy both work.
     resetSearchCacheForTests();
     const build = vi.spyOn(catalogRepo, 'listForSource');
+    expect(await warmUpSearch(id)).toEqual({
+      sourceId: id,
+      from: 'storage',
+      items: result.stats.live + result.stats.movies + result.stats.series,
+    });
     expect((await names(id, 'test sp')).live).toEqual(
       expect.arrayContaining(['Test Sports 1', 'Test Sports 2 (AC-3)']),
     );
@@ -109,8 +119,9 @@ describe('index built at the end of a sync', () => {
     const result = await tasks.syncM3u({ sourceId: id }, ctx());
     expect(result.status).toBe('ok');
 
+    await waitForSearchIndexIdle(id);
     const entry = await catalogRepo.getSearchIndex(id);
-    expect(entry?.items).toBeGreaterThan(0);
+    expect(entry).toBeDefined();
     expect(entry?.data).not.toContain(PASS);
     expect(entry?.data).not.toContain('panel.example.test');
 
@@ -122,6 +133,8 @@ describe('index built at the end of a sync', () => {
   it('logs no credentials while syncing and indexing', async () => {
     await tasks.syncXtream({ sourceId: await seedXtream() }, ctx());
     await tasks.syncM3u({ sourceId: await seedM3u() }, ctx());
+    await waitForSearchIndexIdle('xt');
+    await waitForSearchIndexIdle('m3u');
     const logged = JSON.stringify(getLogEntries());
     expect(logged).toContain('search: index built');
     expect(logged).not.toContain(PASS);
@@ -131,34 +144,49 @@ describe('index built at the end of a sync', () => {
     server.use(...xtreamHandlers({ auth: 'fail' }));
     const id = await seedXtream();
     await expect(tasks.syncXtream({ sourceId: id }, ctx())).rejects.toThrow();
+    await waitForSearchIndexIdle(id);
     expect(await catalogRepo.getSearchIndex(id)).toBeUndefined();
   });
 
-  it('a failing hook does not fail the sync (both providers)', async () => {
-    const afterSync = vi.fn().mockRejectedValue(new Error('index failure'));
+  it('a throwing hook does not fail the sync (both providers)', async () => {
+    const afterSync = vi.fn((_sourceId: string) => {
+      throw new Error('index failure');
+    });
     const xt = await syncXtreamSource({ sourceId: await seedXtream() }, ctx(), { afterSync });
     expect(xt.status).toBe('ok');
     const m3u = await syncM3uSource({ sourceId: await seedM3u() }, ctx(), { afterSync });
     expect(m3u.status).toBe('ok');
-    expect(afterSync).toHaveBeenCalledTimes(2);
     expect(afterSync.mock.calls.map((c) => c[0])).toEqual(['xt', 'm3u']);
   });
 
-  it('the hook runs while the source is still held (before a queued sync starts)', async () => {
+  it.each(['xtream', 'm3u'] as const)(
+    '%s: the hook runs after "done" and once the source is released',
+    async (kind) => {
+      const id = kind === 'xtream' ? await seedXtream() : await seedM3u();
+      const phases: string[] = [];
+      const context = { ...ctx(), progress: (p: { phase: string }) => phases.push(p.phase) };
+      const seen: Array<{ lastPhase?: string; syncing: boolean }> = [];
+      const afterSync = vi.fn(() => {
+        seen.push({
+          lastPhase: phases.at(-1),
+          syncing: kind === 'xtream' ? isSourceSyncing(id) : isM3uSourceSyncing(id),
+        });
+      });
+      if (kind === 'xtream') await syncXtreamSource({ sourceId: id }, context, { afterSync });
+      else await syncM3uSource({ sourceId: id }, context, { afterSync });
+      expect(seen).toEqual([{ lastPhase: 'done', syncing: false }]);
+    },
+  );
+
+  it('the sync does not wait for the index; a query meanwhile waits for that build', async () => {
     const id = await seedXtream();
-    const order: string[] = [];
-    const afterSync = vi.fn(async () => {
-      order.push('hook:start');
-      await new Promise((r) => setTimeout(r, 20));
-      order.push('hook:end');
-    });
-    const first = syncXtreamSource({ sourceId: id }, ctx(), { afterSync });
-    const second = syncXtreamSource({ sourceId: id }, ctx(), {
-      afterSync: async () => {
-        order.push('second');
-      },
-    });
-    await Promise.all([first, second]);
-    expect(order).toEqual(['hook:start', 'hook:end', 'second']);
+    const build = vi.spyOn(catalogRepo, 'listForSource');
+    await tasks.syncXtream({ sourceId: id }, ctx());
+    // The build is queued, not finished: no index stored yet.
+    expect(await catalogRepo.getSearchIndex(id)).toBeUndefined();
+    expect((await names(id, 'drama')).series).toEqual(['Example Drama']);
+    // One build (3 type reads): the query used the queued build instead of starting another.
+    expect(build).toHaveBeenCalledTimes(3);
+    expect(await catalogRepo.getSearchIndex(id)).toBeDefined();
   });
 });

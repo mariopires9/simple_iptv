@@ -33,16 +33,16 @@ import {
   type ReactNode,
 } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { CONTENT_TYPES, isContentType, type ContentType } from '@/core/db';
+import { CONTENT_TYPES, isContentType, isSearchableQuery, type ContentType } from '@/core/db';
 import { t } from '@/i18n';
 import { DelayedLoading, StateView, errorDetails, visuallyHidden } from '@/ui/state';
 import type { SearchHit, SearchQueryResult } from '@/worker';
 import { resultPath } from './paths';
-import { GROUP_LIMIT, SEARCH_DEBOUNCE_MS, SEE_ALL_LIMIT, isSearchable } from './query';
-import { loadRecentSearches, saveRecentSearches, withRecentSearch } from './recentSearches';
+import { useActiveSource } from '@/ui/hooks/useActiveSource';
+import { GROUP_LIMIT, SEARCH_DEBOUNCE_MS, SEE_ALL_LIMIT } from './query';
+import { loadRecentSearches, updateRecentSearches, withRecentSearch } from './recentSearches';
 import { SEARCH_INPUT_ID } from './SearchAction';
 import { searchClient } from './searchClient';
-import { useActiveSource } from '@/ui/hooks/useActiveSource';
 
 const TYPE_ICONS: Record<ContentType, ReactNode> = {
   live: <LiveTvRounded />,
@@ -50,9 +50,10 @@ const TYPE_ICONS: Record<ContentType, ReactNode> = {
   series: <VideoLibraryRounded />,
 };
 
+/** `view`: '' for the grouped view, else the type of the "see all" view. */
 type ResultState =
-  | { key: string; status: 'ready'; data: SearchQueryResult }
-  | { key: string; status: 'error'; error: unknown };
+  | { key: string; view: string; status: 'ready'; data: SearchQueryResult }
+  | { key: string; view: string; status: 'error'; error: unknown };
 
 /** Focusable results, in order (arrow-key navigation). */
 const RESULT_SELECTOR = '[data-search-result]';
@@ -84,6 +85,17 @@ export function SearchScreen() {
     return () => clearTimeout(timer);
   }, [text, query]);
 
+  // Navigation (back/forward, a link with another `?q=`) changes the URL: the field follows it
+  // (state adjusted while rendering; the query's own URL update finds them already equal).
+  const [seenUrlQuery, setSeenUrlQuery] = useState(urlQuery);
+  if (urlQuery !== seenUrlQuery) {
+    setSeenUrlQuery(urlQuery);
+    if (urlQuery !== query) {
+      setText(urlQuery);
+      setQuery(urlQuery);
+    }
+  }
+
   // The URL follows the query (replace: typing does not add history entries).
   useEffect(() => {
     if ((params.get('q') ?? '') === query) return;
@@ -101,44 +113,51 @@ export function SearchScreen() {
   }, [sourceId]);
 
   // --- recent searches ------------------------------------------------------------------------
+  // Shown optimistically; every change is a queued read-modify-write of the stored list
+  // (recentSearches.ts), and only the answer to the latest operation is applied, so a slow first
+  // read never overwrites a newer change.
   const [recent, setRecent] = useState<string[]>([]);
-  const recentRef = useRef(recent);
+  const latestRecentOp = useRef(0);
+  const mounted = useRef(true);
   useEffect(() => {
-    let cancelled = false;
-    loadRecentSearches().then(
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const applyRecent = (operation: Promise<string[]>) => {
+    const op = ++latestRecentOp.current;
+    operation.then(
       (list) => {
-        if (cancelled) return;
-        recentRef.current = list;
-        setRecent(list);
+        if (mounted.current && op === latestRecentOp.current) setRecent(list);
       },
       () => undefined,
     );
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  const updateRecent = (next: string[]) => {
-    recentRef.current = next;
-    setRecent(next);
-    saveRecentSearches(next).catch(() => undefined);
   };
+  useEffect(() => {
+    applyRecent(loadRecentSearches());
+  }, []);
   const remember = (q: string) => {
-    if (isSearchable(q)) updateRecent(withRecentSearch(recentRef.current, q));
+    if (!isSearchableQuery(q)) return;
+    setRecent((list) => withRecentSearch(list, q));
+    applyRecent(updateRecentSearches((list) => withRecentSearch(list, q)));
   };
   const runRecent = (q: string) => {
     setText(q);
     setQuery(q);
-    updateRecent(withRecentSearch(recentRef.current, q));
+    remember(q);
     inputRef.current?.focus();
   };
   const clearRecent = () => {
-    updateRecent([]);
+    setRecent([]);
+    applyRecent(updateRecentSearches(() => []));
     inputRef.current?.focus();
   };
 
   // --- results --------------------------------------------------------------------------------
   const [attempt, setAttempt] = useState(0);
-  const searchable = isSearchable(query);
+  const searchable = isSearchableQuery(query);
+  const view = type ?? '';
   const requestKey =
     searchable && sourceId !== undefined
       ? JSON.stringify([sourceId, query, type ?? '', attempt])
@@ -148,13 +167,14 @@ export function SearchScreen() {
     if (requestKey === '' || sourceId === undefined) return undefined;
     const controller = new AbortController();
     const key = requestKey;
+    const forView = view;
     const request = { sourceId, query, limit: type ? SEE_ALL_LIMIT : GROUP_LIMIT };
     searchClient.query(type ? { ...request, type } : request, controller.signal).then(
       (data) => {
-        if (!controller.signal.aborted) setResult({ key, status: 'ready', data });
+        if (!controller.signal.aborted) setResult({ key, view: forView, status: 'ready', data });
       },
       (error: unknown) => {
-        if (!controller.signal.aborted) setResult({ key, status: 'error', error });
+        if (!controller.signal.aborted) setResult({ key, view: forView, status: 'error', error });
       },
     );
     return () => controller.abort();
@@ -163,10 +183,13 @@ export function SearchScreen() {
   }, [requestKey]);
 
   const current = result?.key === requestKey ? result : undefined;
-  // While a newer query runs, the previous results of the same list stay on screen.
+  // While a newer query runs, the previous results of the same list and view stay on screen
+  // (never results of the grouped view on a "see all" view, or the other way round).
   const shown =
     current ??
-    (result?.status === 'ready' && result.data.sourceId === sourceId ? result : undefined);
+    (result?.status === 'ready' && result.data.sourceId === sourceId && result.view === view
+      ? result
+      : undefined);
   const loading = requestKey !== '' && current === undefined;
   const ready = shown?.status === 'ready' ? shown.data : undefined;
   const total = ready ? CONTENT_TYPES.reduce((n, k) => n + ready.groups[k].total, 0) : 0;
@@ -254,7 +277,7 @@ export function SearchScreen() {
       <Stack spacing={3}>
         {type && (
           <Box>
-            <Button component={Link} to={pathWith(ready.query)} replace>
+            <Button component={Link} to={pathWith(query)} replace>
               {t.search.allResults}
             </Button>
           </Box>
@@ -265,7 +288,7 @@ export function SearchScreen() {
             type={k}
             hits={ready.groups[k].hits}
             total={ready.groups[k].total}
-            seeAll={type ? undefined : pathWith(ready.query, k)}
+            seeAll={type ? undefined : pathWith(query, k)}
             onOpen={() => remember(ready.query)}
           />
         ))}

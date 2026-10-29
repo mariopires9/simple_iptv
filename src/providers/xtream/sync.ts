@@ -116,11 +116,11 @@ export interface SyncXtreamDeps {
   /** How often an in-flight request / a queued sync checks for cancellation (ms). Default 50. */
   cancelPollMs?: number;
   /**
-   * Called after a completed sync that wrote at least one type, while the source is still held
-   * (SCH-01: the data worker rebuilds the search index here). Must not throw; a rejection is
-   * logged and ignored.
+   * Called after a completed sync that wrote at least one type, once the source is released and
+   * `done` was reported (SCH-01: the data worker queues the search index rebuild). Not awaited;
+   * a throw is logged.
    */
-  afterSync?: (sourceId: string) => Promise<void>;
+  afterSync?: (sourceId: string) => void;
 }
 
 export const CATEGORIES_TIMEOUT_MS = 30_000;
@@ -292,8 +292,9 @@ export async function syncXtreamSource(
   if (types.length === 0) throw new WorkerTaskError('failed', 'Xtream sync: no content types');
 
   const release = await acquireSource(sourceId, ctx, pollMs);
+  let result: SyncXtreamResult;
   try {
-    return await runSync(sourceId, types, ctx, deps, pollMs);
+    result = await runSync(sourceId, types, ctx, deps, pollMs);
   } catch (err) {
     if (err instanceof SourceRemovedError) {
       log.info('xtream sync: source removed during sync', { sourceId });
@@ -302,6 +303,17 @@ export async function syncXtreamSource(
     throw err;
   } finally {
     release();
+  }
+  if (result.status !== 'error') notifyAfterSync(deps, sourceId);
+  return result;
+}
+
+/** Runs the `afterSync` hook (never awaited, never fails the sync: errors are only logged). */
+function notifyAfterSync(deps: SyncXtreamDeps, sourceId: string): void {
+  try {
+    deps.afterSync?.(sourceId);
+  } catch (error) {
+    log.warn('xtream sync: after-sync hook failed', { sourceId, error });
   }
 }
 
@@ -512,11 +524,6 @@ async function runSync(
 
     checkpoint();
     const result = await finish('complete');
-    if (result.status !== 'error' && deps.afterSync) {
-      await deps.afterSync(sourceId).catch((error: unknown) => {
-        log.warn('xtream sync: after-sync hook failed', { sourceId, error });
-      });
-    }
     ctx.progress({ phase: 'done', done: types.length, total: types.length });
     log.info('xtream sync: finished', {
       sourceId,

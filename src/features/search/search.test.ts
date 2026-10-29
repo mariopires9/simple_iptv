@@ -1,7 +1,7 @@
 // SCH-02: recent searches (validation, order, limit), result targets and the query rules.
 import { describe, expect, it } from 'vitest';
 import { resultPath } from './paths';
-import { isSearchable } from './query';
+import { isSearchableQuery as isSearchable } from '@/core/db';
 import {
   MAX_RECENT_LENGTH,
   MAX_RECENT_SEARCHES,
