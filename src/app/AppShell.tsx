@@ -8,6 +8,7 @@ import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router';
+import { SourceSelectorSlot, useActiveSourceChanges } from '@/features/sources';
 import { pageMargin } from '@/ui/theme/tokens';
 import { BottomNav } from './shell/BottomNav';
 import { navIdForPath } from './shell/navItems';
@@ -18,7 +19,7 @@ export type NavLayout = 'bottom' | 'rail' | 'expanded';
 
 export interface AppShellProps {
   children: ReactNode;
-  /** Active list selector slot (sources stories). */
+  /** Active list selector slot; defaults to the SRC-08 selector. */
   sourceSelector?: ReactNode;
   /** Search entry point slot (search story). */
   searchAction?: ReactNode;
@@ -32,8 +33,17 @@ export function useNavLayout(): NavLayout {
   return isTablet ? 'rail' : 'bottom';
 }
 
-export function AppShell({ children, sourceSelector, searchAction }: AppShellProps) {
+const defaultSourceSelector = <SourceSelectorSlot />;
+
+export function AppShell({
+  children,
+  sourceSelector = defaultSourceSelector,
+  searchAction,
+}: AppShellProps) {
   const layout = useNavLayout();
+  // SRC-08 AC4: switching the active list remounts the screen, so whatever it shows is re-read
+  // for the new list (no reload; the chrome stays mounted and keeps the focus on the selector).
+  const activeSourceChanges = useActiveSourceChanges();
   // The current destination follows the route; the nav items are links (FND-04).
   const selected = navIdForPath(useLocation().pathname);
   const isMobile = layout === 'bottom';
@@ -52,6 +62,7 @@ export function AppShell({ children, sourceSelector, searchAction }: AppShellPro
         {!isMobile && <NavRail expanded={layout === 'expanded'} selected={selected} />}
         <Box
           component="main"
+          key={activeSourceChanges}
           sx={{
             flex: 1,
             minWidth: 0,

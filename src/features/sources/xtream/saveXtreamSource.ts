@@ -5,7 +5,9 @@
 import { credentialVault } from '@/core/crypto';
 import { settingsRepo, sourcesRepo, type Source, type SyncStatus } from '@/core/db';
 import { log } from '@/core/log';
+import { forgetActiveSource } from '../activeSource';
 import { setSourcesPresent } from '../sourcesPresence';
+import { reloadSourcesIfLoaded } from '../sourcesList';
 
 /** Maximum length of a source name, in code points (docs/SECURITY.md §3: names are truncated). */
 export const MAX_SOURCE_NAME_LENGTH = 512;
@@ -70,6 +72,9 @@ export async function saveXtreamSource(input: SaveXtreamSourceInput): Promise<So
   } catch (error) {
     log.warn('Could not update the first-run settings', { error });
   }
+  // The selector and "My lists" pick up the new list (and the first-run active list).
+  forgetActiveSource();
+  reloadSourcesIfLoaded();
   log.info('Xtream source saved', { sourceId: id, https: source.serverUrl?.startsWith('https:') });
   return source;
 }

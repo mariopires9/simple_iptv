@@ -14,6 +14,10 @@ export const sourcesRoutes: RouteObject[] = [
     path: 'settings/sources/add/m3u-url',
     lazy: lazyScreen(() => import('./AddM3uUrlScreen'), 'AddM3uUrlScreen'),
   },
+  {
+    path: 'settings/sources/:sourceId/edit',
+    lazy: lazyScreen(() => import('./EditSourceScreen'), 'EditSourceScreen'),
+  },
 ];
 
 /** Full screen, in the onboarding flow (UX-01): one route per source type. */

@@ -10,3 +10,16 @@ export {
   subscribeSourcesPresent,
 } from './sourcesPresence';
 export type { SourcesPresenceSnapshot } from './sourcesPresence';
+// SRC-08: the active list (for the app shell) and the top-bar selector slot (lazy inside).
+export {
+  forgetActiveSource,
+  getActiveSourceSnapshot,
+  loadActiveSourceId,
+  setActiveSource,
+  subscribeActiveSource,
+  useActiveSource,
+  useActiveSourceChanges,
+  useActiveSourceId,
+} from './activeSource';
+export type { ActiveSourceSnapshot } from './activeSource';
+export { SourceSelectorSlot } from './SourceSelectorSlot';
