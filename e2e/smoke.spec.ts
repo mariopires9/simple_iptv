@@ -1,7 +1,15 @@
 // QA-02 AC1: smoke flow in every browser and viewport — mock Xtream onboarding → live → zapping →
-// movie → search → favorites → delete data — plus the language switch and the PWA-02 cache check.
+// movie → search → favorites → delete all data — plus the language switch and the PWA-02 cache check.
 import type { Page } from '@playwright/test';
-import { addXtreamSource, mainNav, openSettings, PANEL } from './support/app';
+import { fileURLToPath } from 'node:url';
+import {
+  addXtreamSource,
+  deleteAllData,
+  mainNav,
+  openSettings,
+  PANEL,
+  storedRows,
+} from './support/app';
 import { expect, test } from './support/test';
 
 /** Same-origin precache only: no provider host, credential or query-carrying API URL. */
@@ -28,7 +36,7 @@ function requested(streams: readonly string[], streamId: number): boolean {
 }
 
 test.describe('smoke', () => {
-  test('Xtream onboarding → live → zapping → movie → search → favorites → remove list', async ({
+  test('Xtream onboarding → live → zapping → movie → search → favorites → delete all data', async ({
     page,
     sandbox,
     browserName,
@@ -142,20 +150,20 @@ test.describe('smoke', () => {
       expect(offending).toEqual([]);
     });
 
-    await test.step('delete data: remove the list in My lists', async () => {
-      // SRC-10 ("Delete all data" in Settings › Privacy) is covered by its own guarded test below;
-      // until then, removing the only list deletes its catalogue, favorites and history (SRC-08).
-      await page.goto('./#/settings/sources');
-      await page.getByRole('button', { name: 'Remove' }).first().click();
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toBeVisible();
-      await dialog.getByRole('button', { name: 'Remove' }).click();
-      await expect(dialog).toBeHidden();
-      // With no list left, the app is back at onboarding, and no screen shows the old data.
-      await expect(page).toHaveURL(/#\/onboarding$/);
+    await test.step('delete all data (SRC-10)', async () => {
+      await deleteAllData(page);
+      expect(await storedRows(page)).toEqual({});
+      // Nothing of the old list is reachable: every route leads back to onboarding.
       await page.goto('./#/favorites');
       await expect(page).toHaveURL(/#\/onboarding$/);
       await expect(page.getByText('Example News HD')).toHaveCount(0);
+      const left = await page.evaluate(async () => ({
+        caches: await caches.keys(),
+        registered: (await navigator.serviceWorker?.getRegistration()) !== undefined,
+      }));
+      // Only the service worker's app-shell precache may remain, and the app stays installed (AC2).
+      expect(left.caches.filter((name) => !name.startsWith('workbox-precache'))).toEqual([]);
+      if (browserName === 'chromium') expect(left.registered).toBe(true);
     });
   });
 
@@ -184,39 +192,42 @@ test.describe('smoke', () => {
     await expect(mainNav(page, 'Direto', 'Navegação principal')).toBeVisible({ timeout: 3_000 });
   });
 
-  test('SRC-10: delete all data returns to onboarding with nothing left', async ({ page }) => {
+  test('SRC-10: delete all data in Português (APAGAR) also resets the language', async ({
+    page,
+  }) => {
     await addXtreamSource(page);
-    await page.goto('./#/settings/privacy');
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    const deleteAll = page.getByRole('button', { name: /Delete all data/i });
-    // TODO(SRC-10): remove this guard once "Delete all data" is merged.
-    test.skip((await deleteAll.count()) === 0, 'SRC-10 "Delete all data" is not implemented yet');
-
-    await deleteAll.click();
-    const dialog = page.getByRole('dialog');
-    await dialog.getByRole('textbox').fill('DELETE');
-    await dialog.getByRole('button', { name: /Delete/i }).click();
-    await expect(page).toHaveURL(/#\/onboarding$/);
-    const leftovers = await page.evaluate(async () => {
-      const dbs = 'databases' in indexedDB ? await indexedDB.databases() : [];
-      const cacheNames = await caches.keys();
-      return { dbs: dbs.map((db) => db.name), cacheNames };
+    await openSettings(page);
+    await page.getByRole('radio', { name: 'Português' }).check();
+    await expect(page.getByRole('heading', { name: 'Definições', level: 1 })).toBeVisible();
+    await deleteAllData(page, {
+      action: 'Apagar todos os dados…',
+      confirmLabel: 'Escreva APAGAR para confirmar',
+      word: 'APAGAR',
+      confirm: 'Apagar tudo',
+      // The language preference is deleted too: the app restarts in the browser's language.
+      welcome: 'Welcome to Simple IPTV',
     });
-    expect(leftovers.dbs).toEqual([]);
-    // Only the service worker's app-shell precache may remain (SRC-10 AC2).
-    expect(leftovers.cacheNames.filter((name) => !name.startsWith('workbox-precache'))).toEqual([]);
+    expect(await storedRows(page)).toEqual({});
+    const appKeys = await page.evaluate(() =>
+      Object.keys(localStorage).filter((key) => key.startsWith('simple-iptv:')),
+    );
+    expect(appKeys).toEqual([]);
   });
 
-  test('SRC-06: import a local M3U file', async ({ page }) => {
+  test('SRC-06: import a local M3U file', async ({ page, sandbox }) => {
     await page.goto('./#/onboarding/m3u-file');
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    const input = page.locator('input[type="file"]');
-    // TODO(SRC-06): remove this guard once the local file import is merged.
-    test.skip((await input.count()) === 0, 'SRC-06 local M3U file import is not implemented yet');
-
-    await input.setInputFiles(new URL('../fixtures/m3u/basic.m3u', import.meta.url).pathname);
-    await page.getByRole('button', { name: /Continue|Go to Home/ }).click();
+    await expect(page.getByRole('heading', { name: 'Add local M3U file', level: 1 })).toBeVisible();
+    await page
+      .getByTestId('m3u-file-input')
+      .setInputFiles(fileURLToPath(new URL('../fixtures/m3u/basic.m3u', import.meta.url)));
+    await expect(page.getByText(/basic\.m3u/)).toBeVisible();
+    await page.getByRole('button', { name: 'Import' }).click();
+    await expect(page.getByText('List imported')).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Continue' }).click();
     await mainNav(page, 'Live').click();
-    await expect(page.getByRole('option', { name: /Example News HD/ })).toBeVisible();
+    await page.getByRole('option', { name: /Example News HD/ }).click();
+    await expect(page.getByRole('region', { name: 'Player: Example News HD' })).toBeVisible();
+    // The file's stream URL (stream.example.test) goes to the sandbox, never a real host.
+    await expect.poll(() => sandbox.streams).toContain('/live/1001.m3u8');
   });
 });

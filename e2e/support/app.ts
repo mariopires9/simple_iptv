@@ -50,3 +50,61 @@ export async function waitForCatalogue(page: Page): Promise<void> {
     timeout: 20_000,
   });
 }
+
+/** Name of the app's IndexedDB database (src/core/db). */
+export const DB_NAME = 'simple-iptv';
+
+/**
+ * Rows left in each non-empty object store of the app's database (empty object: no data). After
+ * a restart the onboarding guard reopens the database, so an empty `simple-iptv` may exist.
+ */
+export async function storedRows(page: Page): Promise<Record<string, number>> {
+  return page.evaluate(async (name) => {
+    const names = (await indexedDB.databases()).map((db) => db.name);
+    if (!names.includes(name)) return {};
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(name);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error('open failed'));
+    });
+    const counts: Record<string, number> = {};
+    try {
+      for (const store of Array.from(db.objectStoreNames)) {
+        const count = await new Promise<number>((resolve, reject) => {
+          const request = db.transaction(store, 'readonly').objectStore(store).count();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error ?? new Error('count failed'));
+        });
+        if (count > 0) counts[store] = count;
+      }
+    } finally {
+      db.close();
+    }
+    return counts;
+  }, DB_NAME);
+}
+
+/**
+ * Settings › Privacy › "Delete all data" (SRC-10): types the localized confirmation word and waits
+ * for the app to restart on onboarding. Labels are passed for the pt-PT run.
+ */
+export async function deleteAllData(
+  page: Page,
+  labels = {
+    action: 'Delete all data…',
+    confirmLabel: 'Type DELETE to confirm',
+    word: 'DELETE',
+    confirm: 'Delete everything',
+    welcome: 'Welcome to Simple IPTV',
+  },
+): Promise<void> {
+  await page.goto('./#/settings/privacy');
+  await page.getByRole('button', { name: labels.action }).click();
+  const dialog = page.getByRole('dialog');
+  const confirm = dialog.getByRole('button', { name: labels.confirm });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole('textbox', { name: labels.confirmLabel }).fill(labels.word);
+  await confirm.click();
+  await expect(page).toHaveURL(/#\/onboarding$/, { timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: labels.welcome, level: 1 })).toBeVisible();
+}

@@ -47,6 +47,7 @@ const SETTINGS: readonly RouteCheck[] = [
   { path: '/settings/sources' },
   { path: '/settings/sources/add/xtream' },
   { path: '/settings/sources/add/m3u-url' },
+  { path: '/settings/sources/add/m3u-file' },
   { path: '/no-such-page' },
 ];
 
