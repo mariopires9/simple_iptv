@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import { createAppTheme } from '@/ui';
 import type { StreamDescriptor } from '../../types';
+import { PlayerView as PublicPlayerView } from '../index';
 import { PlayerView, type PlayerViewProps } from '../PlayerView';
 import { fakeController, installFakeMedia, type FakeController, type FakeMedia } from './fakeMedia';
 
@@ -39,6 +40,11 @@ export function renderPlayer(
   options: {
     beforePlay?: (media: FakeMedia) => void;
     router?: boolean;
+    /**
+     * Render `@/player/ui`'s exported PlayerView (the one features use: it loads the strings and
+     * holds the "player open" claim) instead of the inner view.
+     */
+    publicView?: boolean;
     /** Configures the fake controller before the first render (e.g. a failing first load). */
     onController?: (controller: FakeController) => void;
   } = {},
@@ -51,10 +57,11 @@ export function renderPlayer(
     options.beforePlay?.(media);
     return controller;
   });
+  const View = options.publicView ? PublicPlayerView : PlayerView;
   const ui = (p: Partial<PlayerViewProps>) => {
     const view = (
       <ThemeProvider theme={theme}>
-        <PlayerView
+        <View
           descriptor={VOD}
           title="Channel"
           createController={factory}

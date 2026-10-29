@@ -2,7 +2,7 @@
 // recent channels and "Continue watching", resolved against the catalogue into display cards.
 //
 // - Recent channels (FAV-02 AC1): the history keeps one entry per channel (no duplicates); the
-//   most recent first, at most `RECENT_CHANNELS_LIMIT`. Channels that left the list are skipped.
+//   most recent first, at most `LIVE_RECENT_LIMIT` (`@/ui/routes/live`, as Live "Recent"). Channels that left the list are skipped.
 // - Continue watching (FAV-02 AC2), most recent first, at most `CONTINUE_WATCHING_LIMIT`, with the
 //   VOD-03 rules (`@/ui/vod/resume`): movies with a resumable position (1 min to 95 %, not
 //   completed); series whose entry points at an episode to watch (`episodeKey`: the one in
@@ -22,10 +22,13 @@ import {
   type HistoryEntry,
 } from '@/core/db';
 import { LIVE_RECENT_LIMIT, liveChannelPath } from '@/ui/routes/live';
-import { continueWatchingProgress, type ContinueWatchingProgress } from '@/ui/vod/resume';
+import {
+  RESUME_MIN_SEC,
+  continueWatchingProgress,
+  watchedFraction,
+  type ContinueWatchingProgress,
+} from '@/ui/vod/resume';
 
-/** The same limit as Live "Recent" (FAV-02 AC1). */
-export const RECENT_CHANNELS_LIMIT = LIVE_RECENT_LIMIT;
 export const CONTINUE_WATCHING_LIMIT = 20;
 /** Favorites shown on Home (all types, most recently added first); the rest via "See all". */
 export const HOME_FAVORITES_LIMIT = 20;
@@ -67,25 +70,24 @@ export function toCard(item: CatalogItemByType[ContentType]): CardItem {
   return { key: item.key, type: item.type, name: item.name, image, href: itemHref(item) };
 }
 
-/** A "Continue watching" entry and its progress bar (`fraction` undefined: no bar). */
-export type ContinueWatching = ContinueWatchingProgress;
-
 /**
- * Whether the entry belongs in "Continue watching" (FAV-02 AC2), else undefined. Movies follow
- * the shared rule (`continueWatchingProgress`, also the Movies grid's bars). A series' own entry
- * follows it too for the episode in progress (a few seconds are not "watching" the series yet);
- * the one series-only case is position 0 on a not-yet-started next episode after a finished one
- * (SER-03), which is shown without a bar.
+ * Whether the entry belongs in "Continue watching" (FAV-02 AC2), else undefined. Movies follow the
+ * shared rule (`continueWatchingProgress`: worth resuming). A series' own entry points at the
+ * episode to watch: shown at position 0 (the next episode after a finished one, SER-03, no bar)
+ * or once the episode in progress reaches the VOD-03 minimum (1 min) — not dropped above 95 %
+ * while the series is not finished (the episode's own completion moves the pointer on).
  */
-export function continueWatching(entry: HistoryEntry): ContinueWatching | undefined {
+export function continueWatching(entry: HistoryEntry): ContinueWatchingProgress | undefined {
   if (entry.completed) return undefined;
   switch (entry.type) {
     case 'movie':
       return continueWatchingProgress(entry);
     case 'series':
       if (isEpisodeItemKey(entry.itemKey) || entry.episodeKey === undefined) return undefined;
-      if (entry.positionSec === 0) return { fraction: undefined };
-      return continueWatchingProgress(entry);
+      if (entry.positionSec !== 0 && !((entry.positionSec ?? 0) >= RESUME_MIN_SEC)) {
+        return undefined;
+      }
+      return { fraction: watchedFraction(entry) };
     default:
       return undefined;
   }
@@ -122,7 +124,7 @@ interface HistoryRow {
 
 async function recentChannelsRow(sourceId: string): Promise<HistoryRow> {
   const { items, scanned } = await historyRepo.listRecentItems(sourceId, ['live'], {
-    limit: RECENT_CHANNELS_LIMIT,
+    limit: LIVE_RECENT_LIMIT,
   });
   return { cards: items.map(({ item }) => toCard(item)), hasHistory: scanned > 0 };
 }

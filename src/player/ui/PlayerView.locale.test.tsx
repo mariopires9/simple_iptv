@@ -1,6 +1,6 @@
-// UX-06: a browser language change during playback never re-mounts the player. PlayerView holds
-// the "player open" claim while mounted (TEC-03: the PWA-03 signal); the switch (and the app's
-// keyed re-mount) waits until it is gone.
+// UX-06: a browser language change during playback never re-mounts the player. The exported
+// PlayerView holds the "player open" claim while mounted, strings loading included (TEC-03: the
+// PWA-03 signal); the switch (and the app's keyed re-mount) waits until it is gone.
 import { act, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isPlaybackActive, subscribePlayback } from '@/core/session/playback';
@@ -26,7 +26,7 @@ describe('PlayerView — locale hold (UX-06)', () => {
   it('a languagechange during playback is deferred until the player unmounts', async () => {
     const languages = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US']);
     const cleanup = installLanguagePreference(...PLAYER);
-    const player = renderPlayer({ descriptor: LIVE });
+    const player = renderPlayer({ descriptor: LIVE }, { publicView: true });
     await flush();
     const region = player.region();
 

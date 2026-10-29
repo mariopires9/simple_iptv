@@ -10,10 +10,10 @@ import {
   itemKey,
   wipeAll,
 } from '@/core/db';
+import { LIVE_RECENT_LIMIT } from '@/ui/routes/live';
 import {
   CONTINUE_WATCHING_LIMIT,
   HOME_FAVORITES_LIMIT,
-  RECENT_CHANNELS_LIMIT,
   clearHistory,
   loadContinueWatching,
   loadFavorites,
@@ -47,7 +47,7 @@ describe('recent channels (FAV-02 AC1)', () => {
     await historyRepo.upsert({ itemKey: live('o1', OTHER), lastWatchedAt: 200 });
 
     const recent = await loadRecentChannels(SOURCE);
-    expect(recent).toHaveLength(RECENT_CHANNELS_LIMIT);
+    expect(recent).toHaveLength(LIVE_RECENT_LIMIT);
     expect(recent.map((c) => c.name).slice(0, 3)).toEqual([
       'Channel 3',
       'Channel 35',
@@ -91,6 +91,12 @@ describe('continue watching (FAV-02 AC2)', () => {
     ['in progress', { episodeKey: 'e', positionSec: 300, durationSec: 1200 }, 0.25],
     ['moved on to the next episode', { episodeKey: 'e', positionSec: 0 }, undefined],
     ['at the 1 min minimum', { episodeKey: 'e', positionSec: 60, durationSec: 1200 }, 0.05],
+    // Not finished yet: kept above 95 % (unlike a movie), until the episode completes.
+    [
+      'beyond 95 %, not completed',
+      { episodeKey: 'e', positionSec: 1170, durationSec: 1200 },
+      0.975,
+    ],
   ] as const)('series %s → shown, progress %s', (_, fields, fraction) => {
     const entry = {
       itemKey: series('s1'),
@@ -108,8 +114,6 @@ describe('continue watching (FAV-02 AC2)', () => {
     // VOD-03 minimum: a few seconds of an episode do not put the series in the row.
     ['just started (10 s)', { episodeKey: 'e', positionSec: 10, durationSec: 1200 }],
     ['below 1 min', { episodeKey: 'e', positionSec: 59, durationSec: 1200 }],
-    // TEC-03: the shared rule (`continueWatchingProgress`) — beyond 95 % is not resumable.
-    ['beyond 95 %', { episodeKey: 'e', positionSec: 1150, durationSec: 1200 }],
     ['no position', { episodeKey: 'e' }],
     ['no episode', {}],
   ])('series %s → not shown', (_, fields) => {

@@ -429,7 +429,7 @@ describe('MoviesScreen — posters (VOD-01 AC3/AC4)', () => {
       durationSec: 1500,
       completed: true,
     });
-    // TEC-03: the same rule as Home's "Continue watching" — 30 s is not resumable, so no bar.
+    // TEC-03: the grid shows any started item (30 s is not in Home's "Continue watching").
     await historyRepo.upsert({
       itemKey: itemKey(SOURCE, 'movie', 'a3'),
       positionSec: 30,
@@ -445,9 +445,11 @@ describe('MoviesScreen — posters (VOD-01 AC3/AC4)', () => {
       // Completed: no bar.
       const zulu = within(g).getByRole('link', { name: /Zulu Dawn/ });
       expect(within(zulu).queryByTestId('poster-progress')).toBeNull();
-      // Below the 1 min resume minimum: not in Continue watching, no bar.
+      // Started (30 s): the grid shows its bar, although Home's row does not list it.
       const ecran = within(g).getByRole('link', { name: /Écran Total/ });
-      expect(within(ecran).queryByTestId('poster-progress')).toBeNull();
+      expect(within(ecran).getByTestId('poster-progress').firstElementChild).toHaveStyle({
+        width: '2%',
+      });
     } finally {
       await historyRepo.remove(itemKey(SOURCE, 'movie', 'a2'));
       await historyRepo.remove(itemKey(SOURCE, 'movie', 'a1'));

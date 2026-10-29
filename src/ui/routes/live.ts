@@ -23,10 +23,16 @@ export function liveCategoryPath(categoryId: string): string {
   return `/live/category/${encodeURIComponent(categoryId)}`;
 }
 
+/** Query string that selects (plays) a channel in Live (LIV-03 `?channel=`). */
+export function liveChannelSearch(channelKey: string): string {
+  return `?channel=${encodeURIComponent(channelKey)}`;
+}
+
 /**
  * Route path of a channel in Live (LIV-03 `?channel=`): its own category, or "All" when it has none.
  */
 export function liveChannelPath(categoryId: string | undefined, channelKey: string): string {
-  const category = liveCategoryPath(categoryId ?? LIVE_VIRTUAL_CATEGORY_IDS.all);
-  return `${category}?channel=${encodeURIComponent(channelKey)}`;
+  return (
+    liveCategoryPath(categoryId ?? LIVE_VIRTUAL_CATEGORY_IDS.all) + liveChannelSearch(channelKey)
+  );
 }

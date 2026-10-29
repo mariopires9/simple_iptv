@@ -321,7 +321,10 @@ export async function restoreLanguagePreference(): Promise<void> {
 // ---------------------------------------------------------------------------------------------
 
 let pendingSystemChange = false;
-let playerOpen = () => false;
+/** The installed "player open" signal; none (never open) until the app installs one. */
+let playerOpen: (() => boolean) | undefined;
+/** Cleanup of the last installation (tests reset through it). */
+let uninstall: (() => void) | undefined;
 
 /** Whether a browser language change is waiting for a safe point. */
 export function hasPendingLocale(): boolean {
@@ -330,14 +333,15 @@ export function hasPendingLocale(): boolean {
 
 /** A safe point (navigation, playback ended): applies a pending browser language change. */
 export function applyPendingLocale(): void {
-  if (!pendingSystemChange || playerOpen()) return;
+  if (!pendingSystemChange || playerOpen?.()) return;
   pendingSystemChange = false;
   if (preference === 'system') void applyPreference('system');
 }
 
 /**
- * App start-up (src/app/App.tsx): while the preference is `system`, a browser language change is
- * recorded and applied at the next safe point. Returns the cleanup.
+ * App start-up (src/app/App.tsx, which passes `@/core/session`'s `isPlaybackActive` and
+ * `subscribePlayback`): while the preference is `system`, a browser language change is recorded
+ * and applied at the next safe point. Returns the cleanup, which also uninstalls the signal.
  */
 export function installLanguagePreference(
   /** Whether a player is open (`isPlaybackActive`). */
@@ -353,14 +357,19 @@ export function installLanguagePreference(
   globalThis.addEventListener?.('languagechange', onLanguageChange);
   // The end of playback is a safe point (`applyPendingLocale` waits while a player is open).
   const unsubscribe = subscribePlayer(applyPendingLocale);
-  return () => {
+  return (uninstall = () => {
     globalThis.removeEventListener?.('languagechange', onLanguageChange);
     unsubscribe();
-  };
+    playerOpen = undefined;
+  });
 }
 
-/** Tests only: back to the start-up state (`system`, nothing chosen, cached or pending). */
+/**
+ * Tests only: back to the start-up state (`system`, nothing chosen, cached or pending, no player
+ * signal installed).
+ */
 export function resetLanguagePreferenceForTests(): void {
+  uninstall?.();
   userChoseLanguage = false;
   pendingSystemChange = false;
   writeCachedLanguagePreference('system');

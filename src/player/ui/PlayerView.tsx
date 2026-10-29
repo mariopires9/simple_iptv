@@ -15,9 +15,6 @@ import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { log } from '@/core/log';
-// The module itself, not the `@/core/session` barrel: through the barrel the bundler splits the
-// initial bundle's shared modules into extra chunks (measured in PWA-03: +3.4 KiB gzip).
-import { claimPlayback } from '@/core/session/playback';
 import { t } from '@/i18n';
 import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
@@ -145,10 +142,6 @@ export function PlayerView({
   const storedFullscreenOnLandscape = useFullscreenOnLandscapeSetting(
     fullscreenOnLandscape === undefined && platform.mobile,
   );
-  // The one "player open" signal (TEC-03): while held, an app update is never applied (no reload
-  // under playback, PWA-03 AC2) and a browser language change waits (switching the locale
-  // re-mounts the screen and would stop playback, UX-06).
-  useEffect(() => claimPlayback(), []);
   const { videoRef, bound } = usePlayerController(createController);
   const video = bound?.video ?? null;
   const controller = bound?.controller;

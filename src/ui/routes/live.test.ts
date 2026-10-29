@@ -5,6 +5,7 @@ import {
   LIVE_VIRTUAL_CATEGORY_IDS,
   liveCategoryPath,
   liveChannelPath,
+  liveChannelSearch,
 } from './live';
 
 describe('Live routes', () => {
@@ -20,6 +21,10 @@ describe('Live routes', () => {
   it('encodes the category id', () => {
     expect(liveCategoryPath('~recent')).toBe('/live/category/~recent');
     expect(liveCategoryPath('a/b c')).toBe('/live/category/a%2Fb%20c');
+  });
+
+  it('selects a channel through the query string', () => {
+    expect(liveChannelSearch('src:live:7')).toBe('?channel=src%3Alive%3A7');
   });
 
   it('selects the channel in its category, or in "All" without one', () => {
