@@ -9,9 +9,3 @@ export const onboardingRoutes: RouteObject[] = [
     lazy: lazyScreen(() => import('./OnboardingScreen'), 'OnboardingScreen', ['onboarding']),
   },
 ];
-
-/**
- * Inside the AppShell: none since UX-04 (the Settings › Privacy page moved to features/settings).
- * Kept, empty, because src/app/router.tsx (serialized) still spreads it; remove both together.
- */
-export const onboardingShellRoutes: RouteObject[] = [];

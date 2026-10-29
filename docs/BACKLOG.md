@@ -30,11 +30,11 @@ Allowed statuses (exactly one per story):
 | FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | Done |
 | FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | Done |
 | PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | In Progress |
-| PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | In Progress |
+| PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | Done |
 | QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Backlog |
 | DEP-01 | GitHub Pages deploy (**approval**) | E13 | Must | 2 | FND-02, PWA-01 | 2 | M0 | Done |
 | UX-01 | Onboarding | E11 | Must | 2 | FND-04 | 3 | M1 | Done |
-| UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | In Progress |
+| UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | Done |
 | SRC-03 | Add Xtream source (UI) | E1 | Must | 3 | SRC-01, SRC-02, FND-04, UX-02 | 3 | M1 | Done |
 | SRC-05 | Import M3U by URL | E1 | Must | 3 | SRC-04, SRC-01, FND-05 | 3 | M1 | Done |
 | SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | Backlog |
@@ -58,7 +58,7 @@ Allowed statuses (exactly one per story):
 | SER-01 | Series grid | E6 | Must | 2 | VOD-01 | 5 | M2 | Done |
 | EPG-01 | Xtream now/next | E7 | Must | 3 | LIV-01, SRC-02 | 5 | M2 | Done |
 | SCH-02 | Global search | E8 | Must | 3 | SCH-01, FND-04 | 5 | M2 | Done |
-| UX-04 | Settings and privacy | E11 | Must | 2 | FND-04, SRC-08 | 5 | M3 | In Progress |
+| UX-04 | Settings and privacy | E11 | Must | 2 | FND-04, SRC-08 | 5 | M3 | Done |
 | LIV-03 | Remember last channel | E4 | Must | 2 | LIV-02, FND-05 | 6 | M1 | Done |
 | VOD-03 | VOD with resume | E5 | Must | 3 | VOD-02, FAV-02 | 6 | M2 | Done |
 | SER-02 | Series details | E6 | Must | 5 | SER-01, PLY-02 | 6 | M2 | Done |

@@ -106,9 +106,11 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 - **Budget:** hls chunk ≤ 190 KB gz (QA-03). Revisit if a later hls.js release grows past it, or if PLY-05 is dropped (switch to light).
 
 #### ADR-015 implementation notes (TEC-01, 2026-10-29)
-- Eager namespaces (in the initial bundle): `app`, `db`, `nav`, `routes`, `state`, `lists` (top-bar list selector). Lazy namespaces: `favorites`, `live`, `movies`, `onboarding`, `player`, `search`, `series`, `sources` (and every new feature namespace).
+- Eager namespaces (in the initial bundle): `app`, `db`, `nav`, `routes`, `state`, `lists` (top-bar list selector). Lazy namespaces: `favorites`, `live`, `movies`, `onboarding`, `player`, `search`, `series`, `settings`, `sources` (and every new feature namespace).
 - A new feature namespace must be added to `LazyNamespace` and the loaders in `src/i18n/index.ts`, and declared by its routes: `lazyScreen(load, exportName, namespaces)` — `namespaces` is required (`[]` when the screen only uses eager strings).
 - `player` strings load with `@/player/ui` (its `PlayerView` wrapper waits for them), not with the list routes.
 - `ensureMessages(...ns)` loads and dedupes; `setLocale(locale)` reloads loaded namespaces and returns `'switched' | 'unchanged' | 'superseded'`.
 - Reading an unloaded lazy namespace throws in development and falls back (active locale → English → empty strings, logged once) in production.
+- Language switch (UX-06): the routed content is re-rendered keyed by locale only for an explicit user choice in Settings; the stored choice is applied before the first render; a browser `languagechange` on "System" is applied at the next navigation unless a player holds the locale (`holdLocaleSwitch` / `applyPendingLocale`). The localStorage mirror self-heals a missing DB value.
+- Numbers and dates use `intlNumberFormat(options)` / `intlDateTimeFormat(options)` from `@/i18n` (cached per locale); never freeze the browser locale at module load.
 - `@/i18n/catalogs` (all strings, `messages(locale)`) is for tests and tooling only — enforced by ESLint.

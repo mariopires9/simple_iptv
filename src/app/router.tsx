@@ -7,7 +7,7 @@ import { log } from '@/core/log';
 import { favoritesRoutes, homeRoute } from '@/features/favorites';
 import { liveRoutes } from '@/features/live';
 import { moviesRoutes } from '@/features/movies';
-import { onboardingRoutes, onboardingShellRoutes } from '@/features/onboarding';
+import { onboardingRoutes } from '@/features/onboarding';
 import { searchRoutes } from '@/features/search';
 import { seriesRoutes } from '@/features/series';
 import { settingsRoutes } from '@/features/settings';
@@ -39,7 +39,6 @@ export const appRoutes: RouteObject[] = [
       ...searchRoutes,
       ...settingsRoutes,
       ...sourcesRoutes,
-      ...onboardingShellRoutes,
       { path: '*', Component: NotFoundScreen },
     ].map(screen),
   },
