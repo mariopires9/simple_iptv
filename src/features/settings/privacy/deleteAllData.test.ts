@@ -3,6 +3,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { credentialVault } from '@/core/crypto';
+import { loadPersonalProxy, PROXY_TOKEN_REF, savePersonalProxy } from '@/core/session';
 import {
   DatabaseLockedError,
   DB_NAME,
@@ -153,6 +154,21 @@ describe('deleteAllData (SRC-10)', () => {
     expect(await sourcesRepo.list()).toEqual([]);
     expect(await settingsRepo.get('onboardingDone')).toBeUndefined();
     expect(await credentialVault.get('source:s1:url')).toBeUndefined();
+  });
+
+  it('PRX-01: the personal proxy (address, token) and the lists’ routing are deleted too', async () => {
+    await seed();
+    await savePersonalProxy({
+      baseUrl: 'https://pc.example.test',
+      token: 'tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789',
+    });
+    await sourcesRepo.update('s1', { prefs: { liveFormat: 'auto', proxy: 'all' } });
+    await deleteAllData(deps());
+    unlockDatabase();
+    expect(await settingsRepo.get('personalProxy')).toBeUndefined();
+    expect(await credentialVault.get(PROXY_TOKEN_REF)).toBeUndefined();
+    expect(await loadPersonalProxy()).toBeUndefined();
+    expect(await sourcesRepo.list()).toEqual([]);
   });
 
   it('forgets the redactor secrets and the log buffer once the database is gone', async () => {

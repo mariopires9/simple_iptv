@@ -12,8 +12,16 @@ export type SourceKind = 'xtream' | 'm3u-url' | 'm3u-file';
 export type LiveFormat = 'auto' | 'ts' | 'm3u8';
 export type SyncStatus = 'never' | 'syncing' | 'ok' | 'partial' | 'error';
 
+/**
+ * How a list's requests use the personal proxy (PRX-01, ADR-010): `off` (direct), `streams`
+ * (playback: streams and HLS playlists) or `all` (also the API, M3U download and short EPG).
+ */
+export type ProxyRouting = 'off' | 'streams' | 'all';
+
 export interface SourcePrefs {
   liveFormat: LiveFormat;
+  /** Personal proxy routing (PRX-01). Absent = `off`. Untrusted on read: validated by core/session. */
+  proxy?: ProxyRouting;
 }
 
 export interface SourceStats {
@@ -363,6 +371,11 @@ export interface SettingsMap {
    * validated by features/search.
    */
   recentSearches: unknown;
+  /**
+   * Personal proxy (PRX-01, ADR-010): its base URL only; the token is in the vault (`proxy:token`).
+   * Untrusted on read: validated by core/session.
+   */
+  personalProxy: { baseUrl: string };
 }
 
 export type SettingsKey = keyof SettingsMap;
