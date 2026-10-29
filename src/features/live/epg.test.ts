@@ -66,13 +66,21 @@ beforeEach(() => {
   clearLogBuffer();
 });
 
+/**
+ * Every held panel response. Released (and given time to finish) after each test: a response
+ * still pending when the next test starts would land in that test's requests.
+ */
+const holds: (() => void)[] = [];
+
 let service: EpgService | undefined;
-afterEach(() => {
+afterEach(async () => {
   service?.cancel();
   service = undefined;
+  vi.useRealTimers();
+  for (const release of holds.splice(0)) release();
+  await new Promise((resolve) => setTimeout(resolve, 20));
   server.resetHandlers();
   server.events.removeAllListeners();
-  vi.useRealTimers();
 });
 
 function start(): EpgService {
@@ -103,7 +111,10 @@ function heldPanel() {
     http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, async () => {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise<void>((resolve) => release.push(resolve));
+      await new Promise<void>((resolve) => {
+        release.push(resolve);
+        holds.push(resolve);
+      });
       inFlight--;
       return HttpResponse.json({ epg_listings: [] });
     }),
@@ -148,12 +159,37 @@ describe('createEpgService', () => {
     expect(requested).toEqual(['1001', '7', '7']);
   });
 
-  it('refreshes before 5 minutes once the current programme has ended', async () => {
+  it('keeps the entry when the first programme ends and the next one is on air', async () => {
     vi.setSystemTime(Date.UTC(2026, 0, 1, 12, 58));
     const epg = start();
     await settled(epg.load(channel(1001)));
     vi.setSystemTime(Date.UTC(2026, 0, 1, 13, 0, 30));
-    expect(epg.peek(channel(1001))).toBeUndefined();
+    const programmes = epg.peek(channel(1001));
+    expect(currentProgramme(programmes, Date.now())?.title).toBe('Notícias da Manhã');
+    await settled(epg.load(channel(1001)));
+    expect(requested).toEqual(['1001']);
+  });
+
+  it('refreshes before 5 minutes once every programme of the entry has ended', async () => {
+    server.use(
+      http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, () =>
+        HttpResponse.json({
+          epg_listings: [
+            {
+              title: 'Last',
+              start_timestamp: Date.UTC(2026, 0, 1, 12) / 1000,
+              stop_timestamp: Date.UTC(2026, 0, 1, 13) / 1000,
+            },
+          ],
+        }),
+      ),
+    );
+    vi.setSystemTime(Date.UTC(2026, 0, 1, 12, 58));
+    const epg = start();
+    await settled(epg.load(channel(9)));
+    expect(epg.peek(channel(9))).toHaveLength(1);
+    vi.setSystemTime(Date.UTC(2026, 0, 1, 13, 0, 30));
+    expect(epg.peek(channel(9))).toBeUndefined();
   });
 
   it('never has more than 6 requests in flight; the rest wait their turn', async () => {
@@ -254,6 +290,78 @@ describe('createEpgService', () => {
     expect(requested).toHaveLength(3);
   });
 
+  it('6 parallel 429s are one throttle episode; the backoff grows 5 s → 10 s → 20 s', async () => {
+    let throttledRounds = 3;
+    let inRound = 0;
+    server.use(
+      http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, () => {
+        if (throttledRounds > 0) {
+          if (++inRound === MAX_CONCURRENT) {
+            inRound = 0;
+            throttledRounds--;
+          }
+          return new HttpResponse(null, { status: 429 });
+        }
+        return HttpResponse.json({ epg_listings: [] });
+      }),
+    );
+    const epg = start();
+    const loads = Array.from({ length: MAX_CONCURRENT }, (_, i) => epg.load(channel(i + 1)));
+    await vi.waitFor(() => expect(requested).toHaveLength(6));
+    // Round 2 after 5 s (not 5 s × 2⁵), round 3 after 10 s more, round 4 after 20 s more.
+    let roundAt = Date.now();
+    for (const [wait, total] of [
+      [BACKOFF_INITIAL_MS, 12],
+      [BACKOFF_INITIAL_MS * 2, 18],
+      [BACKOFF_INITIAL_MS * 4, 24],
+    ] as const) {
+      await vi.advanceTimersByTimeAsync(roundAt + wait - 300 - Date.now());
+      expect(requested).toHaveLength(total - 6);
+      await vi.advanceTimersByTimeAsync(400);
+      await vi.waitFor(() => expect(requested).toHaveLength(total));
+      roundAt += wait;
+    }
+    await Promise.all(loads.map((l) => settled(l)));
+  });
+
+  it('a success sent before the latest 429 does not reset the backoff', async () => {
+    // Request 1 is held; request 2 gets 429; then request 1 succeeds; request 2's retry gets 429
+    // again: the backoff must have doubled (10 s), not restarted at 5 s.
+    let release: (() => void) | undefined;
+    let throttles = 0;
+    server.use(
+      http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, async ({ request }) => {
+        const id = new URL(request.url).searchParams.get('stream_id');
+        if (id === '1' && release === undefined) {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+            holds.push(resolve);
+          });
+          return HttpResponse.json({ epg_listings: [] });
+        }
+        if (id === '2' && throttles < 2) {
+          throttles++;
+          return new HttpResponse(null, { status: 429 });
+        }
+        return HttpResponse.json({ epg_listings: [] });
+      }),
+    );
+    const epg = start();
+    const one = epg.load(channel(1));
+    const two = epg.load(channel(2));
+    await vi.waitFor(() => expect(throttles).toBe(1));
+    release?.();
+    await settled(one);
+    await vi.advanceTimersByTimeAsync(BACKOFF_INITIAL_MS + 10);
+    await vi.waitFor(() => expect(throttles).toBe(2));
+    const sent = requested.length;
+    await vi.advanceTimersByTimeAsync(BACKOFF_INITIAL_MS + 10);
+    expect(requested).toHaveLength(sent);
+    await vi.advanceTimersByTimeAsync(BACKOFF_INITIAL_MS);
+    await settled(two);
+    expect(requested).toHaveLength(sent + 1);
+  });
+
   it('a server error shows nothing and is not retried within the cache period', async () => {
     server.use(...xtreamHandlers({ error: 'http-500', errorOn: ['get_short_epg'] }));
     const epg = start();
@@ -270,6 +378,27 @@ describe('createEpgService', () => {
     expect(requested).toEqual(['1001']);
   });
 
+  it('a rejected login settles every queued and in-flight caller with "no EPG"', async () => {
+    const release: (() => void)[] = [];
+    server.use(
+      http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, async () => {
+        await new Promise<void>((resolve) => {
+          release.push(resolve);
+          holds.push(resolve);
+        });
+        return HttpResponse.json(xtreamFixtures.authFail);
+      }),
+    );
+    const epg = start();
+    const loads = Array.from({ length: 10 }, (_, i) => epg.load(channel(i + 1)));
+    await vi.waitFor(() => expect(requested).toHaveLength(MAX_CONCURRENT));
+    release[0]?.();
+    const results = await Promise.all(loads.map((l) => settled(l)));
+    expect(results.every((r) => r.length === 0)).toBe(true);
+    expect(requested).toHaveLength(MAX_CONCURRENT);
+    for (const r of release) r();
+  });
+
   it('without a stored password it sends nothing', async () => {
     vault.get.mockResolvedValueOnce(undefined);
     const epg = start();
@@ -278,18 +407,26 @@ describe('createEpgService', () => {
   });
 
   it('cancel() aborts what is in flight without caching it; the service stays usable', async () => {
-    const panel = heldPanel();
-    const epg = start();
+    // A fetch double that only ends when aborted (first call) — independent of MSW timing.
+    let calls = 0;
+    const fetchImpl = vi.fn((_url: string, init?: RequestInit) => {
+      calls++;
+      if (calls > 1) return Promise.resolve(Response.json(xtreamFixtures.shortEpg));
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('aborted', 'AbortError')),
+        );
+      });
+    });
+    service = createEpgService(source, { vault, fetchImpl });
+    const epg = service as EpgService;
     const pending = epg.load(channel(1001));
-    await vi.waitFor(() => expect(requested).toHaveLength(1));
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
     epg.cancel();
     expect(await pending).toEqual([]);
     expect(epg.peek(channel(1001))).toBeUndefined();
-    server.resetHandlers();
-    const second = epg.load(channel(1001));
-    await vi.waitFor(() => expect(requested).toHaveLength(2));
-    expect((await settled(second)).length).toBe(2);
-    panel.releaseAll();
+    expect((await settled(epg.load(channel(1001)))).length).toBe(4);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('never logs the credentials', async () => {

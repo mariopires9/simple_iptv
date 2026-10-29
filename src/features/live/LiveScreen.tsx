@@ -86,12 +86,19 @@ interface Startup {
   openedOn: string;
 }
 
-/** Where the list of a restored category starts (LIV-03). */
-interface InitialView {
-  startup: Startup;
-  pagerKey: string;
+/** Where a category's list was (LIV-03): restored once, then kept up to date by the list. */
+interface ListPosition {
   index: number;
-  scrollTop: number | undefined;
+  scrollTop?: number;
+}
+
+/** History-state field that marks our own redirect as part of the same bare-`/live` entry. */
+const ENTRY_STATE = 'liveEntry';
+
+function entryKeyOf(location: { key: string; state: unknown }): string {
+  const state = location.state as Record<string, unknown> | null | undefined;
+  const carried = state?.[ENTRY_STATE];
+  return typeof carried === 'string' ? carried : location.key;
 }
 
 interface Selection extends LiveSelection {
@@ -204,8 +211,10 @@ export function LiveScreen() {
     routeCategoryRef.current = routeCategoryId;
   });
   // Each entry on bare `/live` (e.g. the Live tab while this screen stays mounted) reads the
-  // state again: what was saved since the screen opened is the place to go back to.
-  const bareKey = routeCategoryId === undefined ? location.key : undefined;
+  // state again: what was saved since the screen opened is the place to go back to. Our own
+  // redirect carries the entry's key in the history state, so it is not a new entry (no second
+  // read, no skeleton flash).
+  const bareKey = routeCategoryId === undefined ? entryKeyOf(location) : undefined;
   const [startup, setStartup] = useState<Startup>();
   const startupRef = useRef(startup);
   useEffect(() => {
@@ -259,16 +268,22 @@ export function LiveScreen() {
     }
   }
   useEffect(() => {
-    if (entry !== undefined && entry !== 'pending') navigate(entry, { replace: true });
-  }, [entry, navigate]);
+    if (entry !== undefined && entry !== 'pending') {
+      navigate(entry, { replace: true, state: { [ENTRY_STATE]: bareKey } });
+    }
+  }, [entry, navigate, bareKey]);
 
   // The first list of the saved category starts at the saved row and offset. The saved row is
   // checked by key: after a sync moved it, the channel is located again (and centred).
-  const [initialView, setInitialView] = useState<InitialView>();
+  // The restore is one-shot: it seeds `viewMemory`, which every later report of the list keeps
+  // up to date, so a remount (filter cleared, layout change, back to the category) starts where
+  // the list really was — never at the saved position again.
+  const viewMemory = useRef(new Map<string, ListPosition>());
+  const [restoredFor, setRestoredFor] = useState<Startup>();
   const savedView = saved?.view;
   const wantsRestore =
     current !== undefined &&
-    initialView?.startup !== current &&
+    restoredFor !== current &&
     savedView !== undefined &&
     savedView.categoryId === categoryId &&
     current.openedOn === categoryId;
@@ -280,7 +295,9 @@ export function LiveScreen() {
     const { cache, key } = readyPager;
     const view = savedView;
     const settle = (index: number, scrollTop: number | undefined) => {
-      if (!cancelled) setInitialView({ startup: current, pagerKey: key, index, scrollTop });
+      if (cancelled) return;
+      viewMemory.current.set(key, scrollTop === undefined ? { index } : { index, scrollTop });
+      setRestoredFor(current);
     };
     const fallback = Math.max(0, Math.min(view.selectedIndex, cache.total - 1));
     const locate = async (): Promise<number> => {
@@ -318,8 +335,16 @@ export function LiveScreen() {
     [pagerBase],
   );
   const [filterResult, setFilterResult] = useState<FilterResult>();
+  // Building the index failed: the list stays (unfiltered) and the field offers a retry.
+  const [filterAttempt, setFilterAttempt] = useState(0);
+  // Until "Retry", a failed build is not attempted again on every keystroke.
+  const [filterFailure, setFilterFailure] = useState<{ forKey: string; attempt: number }>();
+  const indexFailed =
+    filterFailure !== undefined &&
+    filterFailure.forKey === readyPager?.key &&
+    filterFailure.attempt === filterAttempt;
   useEffect(() => {
-    if (query === '' || !readyPager) return undefined;
+    if (query === '' || !readyPager || indexFailed) return undefined;
     let cancelled = false;
     const { cache, key } = readyPager;
     cache.filterIndex().then(
@@ -335,25 +360,36 @@ export function LiveScreen() {
         setAnnouncement(t.live.filter.results(keys.length));
       },
       (error: unknown) => {
-        if (!cancelled) setPager({ key, base: pagerBase, status: 'error', error });
+        if (cancelled) return;
+        log.warn('live: building the filter index failed', {
+          error: error instanceof Error ? error.name : 'unknown',
+        });
+        setFilterFailure({ forKey: key, attempt: filterAttempt });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [query, readyPager, pagerBase]);
+  }, [query, readyPager, filterAttempt, indexFailed]);
   const filtering = query !== '';
+  const filterFailed = filtering && indexFailed;
+  const retryFilter = useCallback(() => setFilterAttempt((n) => n + 1), []);
   // The results of this pager (latest query first; an older query's results stay up meanwhile).
   const shownFilter =
     filtering && filterResult?.forKey === readyPager?.key ? filterResult : undefined;
+  const readInitialView = useCallback((listKey: string) => viewMemory.current.get(listKey), []);
+
   const prefetchFilterIndex = useCallback(() => {
-    readyPager?.cache.filterIndex().catch(() => undefined);
-  }, [readyPager]);
+    if (!readyPager || indexFailed) return;
+    const { cache, key } = readyPager;
+    cache.filterIndex().catch(() => setFilterFailure({ forKey: key, attempt: filterAttempt }));
+  }, [readyPager, indexFailed, filterAttempt]);
 
   const canSaveView = saved !== undefined && !wantsRestore && !filtering;
   const onViewChange = useCallback(
-    (view: ChannelListView) => {
+    (listKey: string, view: ChannelListView) => {
       if (sourceId === undefined || !canSaveView) return;
+      viewMemory.current.set(listKey, { index: view.index, scrollTop: view.scrollTop });
       const record: SavedLiveView = {
         categoryId,
         selectedIndex: view.index,
@@ -655,6 +691,8 @@ export function LiveScreen() {
             onChange={setFilterText}
             listId={LIST_ID}
             onFocus={prefetchFilterIndex}
+            failed={filterFailed}
+            onRetry={retryFilter}
           />
         )}
         <Box
@@ -670,8 +708,8 @@ export function LiveScreen() {
             category={category}
             pager={currentPager}
             waiting={saved === undefined || wantsRestore}
-            initialView={initialView?.pagerKey === currentPager?.key ? initialView : undefined}
-            filter={filtering ? (shownFilter ?? 'pending') : undefined}
+            readInitialView={readInitialView}
+            filter={filtering && !filterFailed ? (shownFilter ?? 'pending') : undefined}
             filterText={filterText}
             onClearFilter={() => setFilterText('')}
             onViewChange={onViewChange}
@@ -754,12 +792,13 @@ interface ChannelPaneProps {
   pager: PagerState | undefined;
   /** The saved view is still being read/resolved (LIV-03): keep the skeleton. */
   waiting: boolean;
-  initialView: InitialView | undefined;
+  /** Where the list of a pager key starts (read once, when it mounts). */
+  readInitialView: (listKey: string) => ListPosition | undefined;
   /** Quick-filter results; 'pending' while the category's index is built (LIV-04). */
   filter: FilterResult | 'pending' | undefined;
   filterText: string;
   onClearFilter: () => void;
-  onViewChange: (view: ChannelListView) => void;
+  onViewChange: (listKey: string, view: ChannelListView) => void;
   epg: EpgService | undefined;
   favorites: ReadonlySet<string>;
   playingKey: string | undefined;
@@ -773,7 +812,7 @@ function ChannelPane({
   category,
   pager,
   waiting,
-  initialView,
+  readInitialView,
   filter,
   filterText,
   onClearFilter,
@@ -875,9 +914,8 @@ function ChannelPane({
       onPlay={onPlay}
       onToggleFavorite={onToggleFavorite}
       onError={onPageError}
-      initialIndex={initialView?.index}
-      initialScrollTop={initialView?.scrollTop}
-      onViewChange={onViewChange}
+      readInitialView={() => readInitialView(pager.key)}
+      onViewChange={(view) => onViewChange(pager.key, view)}
       epg={epg}
     />
   );

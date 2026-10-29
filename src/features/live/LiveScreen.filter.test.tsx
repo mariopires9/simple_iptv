@@ -3,9 +3,10 @@
 import 'fake-indexeddb/auto';
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { itemKey, settingsRepo, wipeAll } from '@/core/db';
 import { clearLiveState } from './liveState';
+import { PageCache } from './pageCache';
 import { SOURCE_ID, installScrollMetrics, renderLive, seedCatalog } from './test-utils';
 
 let restoreScroll: () => void;
@@ -132,6 +133,23 @@ describe('LIV-04 — quick channel filter', () => {
     const list = await listbox('Channels in Sports');
     expect(field()).toHaveValue('');
     await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(5));
+  });
+
+  it('a failed index build keeps the list and offers a retry under the field', async () => {
+    const build = vi.spyOn(PageCache.prototype, 'filterIndex').mockRejectedValue(new Error('idb'));
+    show('/live/category/10');
+    await listbox('Channels in News');
+    await userEvent.type(field(), 'channel 4');
+    const alert = await screen.findByTestId('filter-error');
+    expect(alert).toHaveTextContent("Couldn't filter this category. The full list is shown.");
+    // The list is still there (unfiltered), not an error page.
+    const list = await listbox('Channels in News');
+    expect(within(list).getAllByRole('option')).toHaveLength(5);
+    expect(screen.queryByRole('heading', { name: "Couldn't load the channels" })).toBeNull();
+    build.mockRestore();
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(optionNames(screen.getByRole('listbox'))).toEqual(['Channel 4']));
+    expect(screen.queryByTestId('filter-error')).toBeNull();
   });
 
   it('the clear button empties the field', async () => {

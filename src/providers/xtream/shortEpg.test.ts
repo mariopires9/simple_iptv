@@ -18,6 +18,15 @@ describe('decodeBase64Utf8', () => {
     expect(decodeBase64Utf8('')).toBe('');
   });
 
+  it('returns the raw value when it decodes to control characters (plain text that looks like base64)', () => {
+    // "AAAA" → three NUL bytes; "Film" → 0x16 0x29 0x66.
+    expect(decodeBase64Utf8('AAAA')).toBe('AAAA');
+    expect(decodeBase64Utf8('Film')).toBe('Film');
+    expect(decodeBase64Utf8('ABCD')).toBe('ABCD');
+    // Tab, line feed and carriage return are text, not control noise.
+    expect(decodeBase64Utf8(b64('Line 1\nLine 2\tend\r'))).toBe('Line 1\nLine 2\tend\r');
+  });
+
   it('returns the raw value when the bytes are not valid UTF-8', () => {
     // "/w==" is the single byte 0xFF.
     expect(decodeBase64Utf8('/w==')).toBe('/w==');
@@ -48,13 +57,25 @@ describe('parseShortEpg', () => {
         { title: b64('No times') },
         { title: b64('Bad range'), start_timestamp: 2000, stop_timestamp: 1000 },
         { title: '', start_timestamp: 1, stop_timestamp: 2 },
-        { title: b64('\u0007'), start_timestamp: 1, stop_timestamp: 2 },
+        { title: '\u0007\u0001', start_timestamp: 1, stop_timestamp: 2 },
         { ...good, description: 42 },
       ],
     });
     expect(programmes).toEqual([
       { title: 'Good', description: '42', start: 1_000_000, end: 2_000_000 },
     ]);
+  });
+
+  it('plain encoding never decodes (a panel that sends plain text)', () => {
+    const programmes = parseShortEpg(
+      [{ title: 'News', description: 'AAAA', start_timestamp: 1, stop_timestamp: 2 }],
+      'plain',
+    );
+    expect(programmes[0]).toMatchObject({ title: 'News', description: 'AAAA' });
+    // With the default (base64), a plain title that looks like base64 but is not text survives.
+    expect(
+      parseShortEpg([{ title: 'AAAA', start_timestamp: 1, stop_timestamp: 2 }])[0]?.title,
+    ).toBe('AAAA');
   });
 
   it('sorts by start time and accepts a bare array', () => {

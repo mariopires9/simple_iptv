@@ -25,6 +25,7 @@ export const live = {
         : count === 1
           ? '1 canal corresponde'
           : `${count} canais correspondem`,
+    failed: 'Não foi possível filtrar esta categoria. É mostrada a lista completa.',
     noMatches: (query: string) => `Nenhum canal corresponde a «${query}»`,
   },
   epg: {
@@ -84,7 +85,5 @@ export const live = {
       title: 'Não foi possível iniciar este canal',
       message: 'Tente novamente dentro de momentos.',
     },
-    restricted:
-      'O fornecedor restringe a reprodução à sua própria aplicação/site: exige cabeçalhos (como Referer ou User-Agent) que os browsers não conseguem enviar.',
   },
 } satisfies MessageShape<typeof base>;

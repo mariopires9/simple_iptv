@@ -89,6 +89,8 @@ interface Task {
   streamId: string;
   waiters: Set<Waiter>;
   started: boolean;
+  /** Throttle episode current when the request was sent (429 backoff bookkeeping). */
+  episode: number;
 }
 
 interface Entry {
@@ -111,6 +113,10 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
   let active = 0;
   let blockedUntil = 0;
   let backoff = 0;
+  // Bumped by every 429 that grows the backoff. A response to a request sent before the latest
+  // 429 says nothing new: it neither grows the backoff again (6 parallel 429s are one episode)
+  // nor resets it (an older success does not mean the panel stopped throttling).
+  let episode = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disabled = false;
   let client: Promise<Client | undefined> | undefined;
@@ -143,11 +149,12 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
     return client;
   };
 
+  // Fresh while not expired and — when there were programmes — while one of them is on air or
+  // still to come within the TTL (once all have ended, what is on now is not in the entry).
   const fresh = (entry: Entry | undefined, at: number): boolean => {
     if (!entry || entry.expires <= at) return false;
-    // The first programme ended: what is on now may not be in the entry any more.
-    const first = entry.programmes[0];
-    return first === undefined || first.end > at;
+    if (entry.programmes.length === 0) return true;
+    return entry.programmes.some((p) => p.end > at && p.start < at + CACHE_TTL_MS);
   };
 
   const notify = () => {
@@ -182,8 +189,20 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
     }
   };
 
+  /** Credentials rejected: nothing more is asked; every caller gets "no EPG". */
+  const disable = () => {
+    disabled = true;
+    queue.length = 0;
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+    stop.abort();
+    stop = new AbortController();
+    for (const task of [...tasks.values()]) settle(task, []);
+  };
+
   const run = async (task: Task) => {
     task.started = true;
+    task.episode = episode;
     active++;
     const { signal } = stop;
     try {
@@ -194,7 +213,7 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
       }
       const programmes =
         c && !disabled ? await fetchShortEpg(c, task.streamId, EPG_LIMIT, signal) : [];
-      backoff = 0;
+      if (task.episode === episode) backoff = 0;
       cache.set(task.key, { programmes, expires: now() + CACHE_TTL_MS });
       settle(task, programmes);
       if (programmes.length > 0) notify();
@@ -203,16 +222,19 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
         // Cancelled: not an answer about this channel, so nothing is cached.
         settle(task, []);
       } else if (isNetError(error) && error.status === 429 && !disabled) {
-        backoff = backoff === 0 ? BACKOFF_INITIAL_MS : Math.min(backoff * 2, BACKOFF_MAX_MS);
-        blockedUntil = Math.max(blockedUntil, now() + backoff);
+        if (task.episode === episode) {
+          episode++;
+          backoff = backoff === 0 ? BACKOFF_INITIAL_MS : Math.min(backoff * 2, BACKOFF_MAX_MS);
+          blockedUntil = Math.max(blockedUntil, now() + backoff);
+        }
         task.started = false;
         if (task.waiters.size > 0) queue.unshift(task);
         else settle(task, []);
       } else {
-        if (isNetError(error) && error.kind === 'auth') disabled = true;
         // Anything else (no EPG endpoint, HTML page, timeout…): nothing to show for a while.
         cache.set(task.key, { programmes: [], expires: now() + CACHE_TTL_MS });
         settle(task, []);
+        if (isNetError(error) && error.kind === 'auth' && !disabled) disable();
       }
     } finally {
       active--;
@@ -239,6 +261,7 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
             streamId: streamIdOf(channel),
             waiters: new Set(),
             started: false,
+            episode: 0,
           };
           tasks.set(channel.key, task);
           if (priority) queue.unshift(task);

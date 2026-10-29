@@ -2,7 +2,9 @@
 // `↓` moves into the results (the listbox keeps its own keyboard navigation).
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import SearchRounded from '@mui/icons-material/SearchRounded';
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import TextField from '@mui/material/TextField';
@@ -17,9 +19,19 @@ export interface ChannelFilterFieldProps {
   listId: string;
   /** First focus: a good moment to start building the category's filter index. */
   onFocus?: () => void;
+  /** The category's filter index could not be built (the list stays unfiltered). */
+  failed?: boolean;
+  onRetry?: () => void;
 }
 
-export function ChannelFilterField({ value, onChange, listId, onFocus }: ChannelFilterFieldProps) {
+export function ChannelFilterField({
+  value,
+  onChange,
+  listId,
+  onFocus,
+  failed = false,
+  onRetry,
+}: ChannelFilterFieldProps) {
   const hintId = useId();
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape' && value !== '') {
@@ -85,6 +97,23 @@ export function ChannelFilterField({ value, onChange, listId, onFocus }: Channel
           '& input::-webkit-search-cancel-button': { display: 'none' },
         }}
       />
+      {failed && (
+        <Alert
+          severity="error"
+          role="alert"
+          data-testid="filter-error"
+          sx={{ py: 0, flexShrink: 0 }}
+          action={
+            onRetry && (
+              <Button color="inherit" size="small" onClick={onRetry}>
+                {t.state.actions.retry}
+              </Button>
+            )
+          }
+        >
+          {t.live.filter.failed}
+        </Alert>
+      )}
     </>
   );
 }

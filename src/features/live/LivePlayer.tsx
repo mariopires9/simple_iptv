@@ -5,7 +5,6 @@
 // resolved after ZAP_SETTLE_MS without another change, and a resolution that finishes after a
 // newer selection is dropped. Meanwhile the previous stream keeps the <video> (the PlayerView
 // stays mounted), and its controller aborts it when the next descriptor arrives.
-import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -25,10 +24,10 @@ import {
 import { Link } from 'react-router';
 import { historyRepo, type Channel, type Source } from '@/core/db';
 import { log } from '@/core/log';
-import type { PlaybackError, PlayerController, StreamDescriptor } from '@/player';
-import type { ControllerFactory } from '@/player/ui';
+import type { PlaybackError, StreamDescriptor } from '@/player';
 import { t } from '@/i18n';
 import { StateView, errorDetails } from '@/ui/state';
+import { CHANNELS_PANEL_ATTRIBUTE } from './ChannelsOverlay';
 import { resolveStream, type ResolvedStream } from './resolveStream';
 import { useWatchTimer } from './useWatchTimer';
 import { ZAP_SETTLE_MS } from './zapping';
@@ -41,14 +40,9 @@ export interface LiveSelection {
   via: SelectionVia;
 }
 
-// The player UI and the controller are loaded on demand (PLY-02 lazy boundary): neither is in
-// the Live chunk. The controller factory is kept here so LivePlayer can listen to its errors.
-let createController: ((video: HTMLVideoElement) => PlayerController) | undefined;
-const PlayerView = lazy(async () => {
-  const [ui, player] = await Promise.all([import('@/player/ui'), import('@/player')]);
-  createController = (video) => player.createPlayerController(video);
-  return { default: ui.PlayerView };
-});
+// The player UI (with its controller) is loaded on demand (PLY-02 lazy boundary): it is not in
+// the Live chunk.
+const PlayerView = lazy(async () => ({ default: (await import('@/player/ui')).PlayerView }));
 
 type Outcome = ResolvedStream | { status: 'error'; error: unknown };
 
@@ -95,8 +89,6 @@ export function LivePlayer({
   }>();
   const [shown, setShown] = useState<Shown>();
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
-  // The final playback error of the player's current play() (cleared when a new one starts).
-  const [playbackError, setPlaybackError] = useState<PlaybackError>();
 
   // Focus handle: the element that last had focus in the player area (PlayerView focuses its own
   // region on mount), else the area itself.
@@ -168,24 +160,12 @@ export function LivePlayer({
   }, []);
   useWatchTimer(container, playingThis ? channel.key : undefined, record);
 
-  // Playback errors, read from the controller (PlayerView has no error callback).
-  // TODO(PLY-04): fold the "restricted" message into the player's own error overlay.
-  const factory = useCallback<ControllerFactory>((video) => {
-    if (!createController) throw new Error('player controller not loaded');
-    const controller = createController(video);
-    // A new play() — another stream, the same channel again after zapping, or PlayerView's
-    // retry — starts without the previous attempt's error.
-    controller.on('attempt', ({ attempt: candidate }) => {
-      if (candidate === 0) setPlaybackError(undefined);
-    });
-    controller.on('error', setPlaybackError);
-    return controller;
+  // Only the errors the player gave up on reach Live (LIV-05 AC3): its automatic reconnects are
+  // not failures of the channel. The player's own overlay explains them — including the
+  // "restricted by the provider" case of entries with required headers (LIV-05 AC1).
+  const onFinalError = useCallback((error: PlaybackError) => {
+    log.info('live: channel playback failed', { kind: error.kind, status: error.status });
   }, []);
-  const failure = playbackError;
-  const restricted =
-    shown?.requiredHeaders === true &&
-    failure !== undefined &&
-    (failure.kind === 'auth' || failure.status === 401 || failure.status === 403);
 
   let body: ReactNode;
   if (outcome && outcome.status !== 'ok') {
@@ -201,7 +181,9 @@ export function LivePlayer({
           onNext={onNext}
           onToggleChannelList={onToggleChannelList}
           onClose={onClose}
-          createController={factory}
+          requiredHeaders={shown.requiredHeaders}
+          onFinalError={onFinalError}
+          overlay={overlay}
         />
       </Suspense>
     );
@@ -228,6 +210,9 @@ export function LivePlayer({
           ref={playerArea}
           tabIndex={-1}
           onFocus={(event) => {
+            // The "Channels" panel lives inside the player now (LIV-05): it is not where focus
+            // returns to once it closes.
+            if (event.target.closest(`[${CHANNELS_PANEL_ATTRIBUTE}]`)) return;
             lastFocused.current = event.target;
           }}
           sx={{ position: 'absolute', inset: 0, '&:focus': { outline: 'none' } }}
@@ -254,13 +239,9 @@ export function LivePlayer({
             {channel.number !== undefined ? `${channel.number} · ${channel.name}` : channel.name}
           </Box>
         )}
-        {overlay}
+        {/* In the player (and its fullscreen element) once a stream is shown; here until then. */}
+        {!(shown && (!outcome || outcome.status === 'ok')) && overlay}
       </Box>
-      {restricted && (
-        <Alert severity="warning" role="alert">
-          {t.live.player.restricted}
-        </Alert>
-      )}
     </Box>
   );
 }

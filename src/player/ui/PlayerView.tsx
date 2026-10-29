@@ -12,7 +12,7 @@ import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
@@ -38,7 +38,7 @@ import { useFullscreen } from './useFullscreen';
 import { useMediaState } from './useMediaState';
 import { usePictureInPicture } from './usePictureInPicture';
 import { usePlayerController, type ControllerFactory } from './usePlayerController';
-import { useShortcuts } from './useShortcuts';
+import { OVERLAY_ATTRIBUTE, useShortcuts } from './useShortcuts';
 
 /** A live stream shows a seek bar only when its seekable (DVR) window is longer than this. */
 export const DVR_MIN_WINDOW_S = 30;
@@ -99,6 +99,16 @@ export interface PlayerViewProps {
   autoFocus?: boolean;
   /** Controller factory (tests inject a fake). Default: `createPlayerController`. */
   createController?: ControllerFactory;
+  /**
+   * Rendered inside the player region, above everything else — so it is part of the fullscreen
+   * element (e.g. the live "Channels" panel, LIV-05).
+   */
+  overlay?: ReactNode;
+  /**
+   * A playback error the player gave up on (the one its error overlay shows). Errors it recovers
+   * from — the automatic live reconnects — are never reported (LIV-05).
+   */
+  onFinalError?: (error: PlaybackError) => void;
 }
 
 export function PlayerView({
@@ -115,6 +125,8 @@ export function PlayerView({
   platform: platformProp,
   autoFocus = true,
   createController,
+  overlay,
+  onFinalError,
 }: PlayerViewProps) {
   const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
   const { videoRef, bound } = usePlayerController(createController);
@@ -155,8 +167,10 @@ export function PlayerView({
   // `started`: this stream reached its first frame at least once.
   const reconnects = useRef({ stream, count: 0, started: false });
   const isLiveRef = useRef(kind === 'live');
+  const onFinalErrorRef = useRef(onFinalError);
   useEffect(() => {
     isLiveRef.current = kind === 'live';
+    onFinalErrorRef.current = onFinalError;
   });
   /** The reconnect whose delay is running, tied to the load that failed. */
   const [reconnectingFor, setReconnectingFor] = useState<object>();
@@ -196,6 +210,7 @@ export function PlayerView({
         return;
       }
       setFailure({ load, error: e, started: r.started });
+      onFinalErrorRef.current?.(e);
     });
     const offNotice = controller.on('notice', (notice) => {
       if (!current) return;
@@ -663,6 +678,21 @@ export function PlayerView({
       <Box role="status" aria-live="polite" sx={visuallyHidden}>
         {announcement}
       </Box>
+
+      {overlay !== undefined && overlay !== null && overlay !== false && (
+        // Keys pressed in the overlay are its own (list navigation), not player shortcuts.
+        <Box
+          {...{ [OVERLAY_ATTRIBUTE]: '' }}
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            '& > *': { pointerEvents: 'auto' },
+          }}
+        >
+          {overlay}
+        </Box>
+      )}
     </Box>
   );
 }

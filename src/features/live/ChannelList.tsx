@@ -56,10 +56,10 @@ export interface ChannelListProps {
   /** Focus the listbox on mount (e.g. the "Channels" panel). */
   focusOnMount?: boolean;
   /**
-   * Scroll offset (px) restored on mount (LIV-03): what the user last saw. Without it, the
-   * initial row is centred.
+   * Where the list starts, read once on mount (LIV-03): the row and the scroll offset the user
+   * last saw. Without an offset, the row is centred. Takes precedence over `initialIndex`.
    */
-  initialScrollTop?: number | undefined;
+  readInitialView?: (() => { index: number; scrollTop?: number } | undefined) | undefined;
   /** Selection or scroll changed (LIV-03 persistence). */
   onViewChange?: ((view: ChannelListView) => void) | undefined;
   /** Current programme on the visible rows (EPG-01). */
@@ -85,7 +85,7 @@ export function ChannelList({
   onError,
   initialIndex = 0,
   focusOnMount = false,
-  initialScrollTop,
+  readInitialView,
   onViewChange,
   epg,
   id,
@@ -94,7 +94,8 @@ export function ChannelList({
   const listId = id ?? generatedId;
   const hintId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [selected, setActive] = useState(initialIndex);
+  const [initialView] = useState(() => readInitialView?.());
+  const [selected, setActive] = useState(initialView?.index ?? initialIndex);
   // Clamped to the current total (the list may shrink under the selection).
   const active = Math.max(0, Math.min(cache.total - 1, selected));
   const [pageVersion, pageArrived] = useReducer((n: number) => n + 1, 0);
@@ -144,7 +145,7 @@ export function ChannelList({
   // Mount only: start at the saved offset (LIV-03) or at the initial row (the playing channel in
   // the "Channels" panel).
   const initialActive = useRef(active);
-  const initialTop = useRef(initialScrollTop);
+  const initialTop = useRef(initialView?.scrollTop);
   useEffect(() => {
     const index = initialActive.current;
     const top = initialTop.current;
@@ -310,41 +311,99 @@ function nowTitle(epg: EpgService, channel: Channel, _version: number): string |
   return currentProgramme(epg.peek(channel), Date.now())?.title;
 }
 
+/** Longest single timer (setTimeout overflows above 2³¹−1 ms). */
+const MAX_TIMER_MS = 2_147_483_647;
+
 /**
- * EPG of the visible rows `[start, end]` (EPG-01 AC2): requested once the range has been still for
- * SCROLL_DEBOUNCE_MS; rows that leave the viewport cancel their queued requests. Returns a counter
- * bumped whenever programmes arrive.
+ * EPG of the visible rows `[start, end]` (EPG-01 AC2):
+ * - a new range is requested once it has been still for SCROLL_DEBOUNCE_MS; only then are the
+ *   requests of rows that left it cancelled (queued ones are never sent);
+ * - a page arriving inside the settled range only adds its newly loaded rows: nothing in flight
+ *   is aborted or asked twice;
+ * - one timer, at the next programme boundary among the visible rows, re-renders them (the next
+ *   programme comes from the cache) and asks again for rows whose cached programmes ran out.
+ * Returns a counter bumped whenever programmes arrive or a boundary passes.
  */
 function useVisibleEpg(
   epg: EpgService | undefined,
   cache: PageCache,
   start: number,
   end: number,
-  /** Bumped when a page arrives: rows whose page was still loading are requested too. */
+  /** Bumped when a page arrives. */
   pages: number,
 ): number {
   const [version, bump] = useReducer((n: number) => n + 1, 0);
+  const inFlight = useRef(new Map<string, AbortController>());
+  const [settled, setSettled] = useState<{ start: number; end: number }>();
   useEffect(() => (epg ? epg.subscribe(bump) : undefined), [epg]);
+
+  // Debounced range: requests follow only a range that has been still.
   useEffect(() => {
     if (!epg || end < start) return undefined;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      for (let index = start; index <= end; index++) {
-        const channel = cache.get(index);
-        if (!channel || epg.peek(channel) !== undefined) continue;
-        epg.load(channel, { signal: controller.signal }).catch((error: unknown) => {
+    const timer = setTimeout(() => setSettled({ start, end }), SCROLL_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [epg, start, end]);
+
+  // Unmount (or another service/cache): cancel what this list asked for.
+  useEffect(() => {
+    const requests = inFlight.current;
+    return () => {
+      for (const controller of requests.values()) controller.abort();
+      requests.clear();
+    };
+  }, [epg, cache]);
+
+  // Settled range, page arrivals and boundaries: ask for the visible rows still missing, and
+  // cancel the requests of rows that are no longer in the range.
+  useEffect(() => {
+    if (!epg || !settled) return;
+    const requests = inFlight.current;
+    const wanted = new Set<string>();
+    for (let index = settled.start; index <= settled.end; index++) {
+      const channel = cache.get(index);
+      if (!channel) continue;
+      wanted.add(channel.key);
+      if (requests.has(channel.key) || epg.peek(channel) !== undefined) continue;
+      const controller = new AbortController();
+      requests.set(channel.key, controller);
+      epg
+        .load(channel, { signal: controller.signal })
+        .catch((error: unknown) => {
           if (error instanceof DOMException && error.name === 'AbortError') return;
           log.warn('live: loading the EPG of a row failed', {
             error: error instanceof Error ? error.name : 'unknown',
           });
+        })
+        .finally(() => {
+          if (requests.get(channel.key) === controller) requests.delete(channel.key);
         });
-      }
-    }, SCROLL_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
+    }
+    for (const [key, controller] of requests) {
+      if (wanted.has(key)) continue;
       controller.abort();
-    };
-  }, [epg, cache, start, end, pages]);
+      requests.delete(key);
+    }
+  }, [epg, cache, settled, pages, version]);
+
+  // One timer at the next start/end of a programme among the visible rows.
+  useEffect(() => {
+    if (!epg || end < start) return undefined;
+    const now = Date.now();
+    let next = Infinity;
+    for (let index = start; index <= end; index++) {
+      const channel = cache.get(index);
+      const programmes = channel && epg.peek(channel);
+      if (!programmes) continue;
+      for (const p of programmes) {
+        if (p.start > now) next = Math.min(next, p.start);
+        else if (p.end > now) next = Math.min(next, p.end);
+      }
+    }
+    if (next === Infinity) return undefined;
+    const timer = setTimeout(bump, Math.min(MAX_TIMER_MS, next - now));
+    return () => clearTimeout(timer);
+  }, [epg, cache, start, end, pages, version]);
+
   return version;
 }
 

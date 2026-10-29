@@ -1,6 +1,7 @@
 // "Channels" panel over the player (LIV-02 AC4, docs/UX_UI.md §4.5): pick another channel of the
 // current category without leaving the player. Opened by the player's channel-list button or `L`;
-// closed by Esc, the close button or picking a channel. TODO(PLY-03): the same panel in fullscreen.
+// closed by Esc, the close button or picking a channel. Rendered inside the player region, so it
+// also works in fullscreen (LIV-05 AC2).
 import CloseRounded from '@mui/icons-material/CloseRounded';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
@@ -10,6 +11,9 @@ import type { Channel } from '@/core/db';
 import { t } from '@/i18n';
 import { ChannelList } from './ChannelList';
 import type { PageCache } from './pageCache';
+
+/** Marks the panel's root (the player does not return focus into it once it closes). */
+export const CHANNELS_PANEL_ATTRIBUTE = 'data-channels-panel';
 
 export interface ChannelsOverlayProps {
   /** The main list's page cache (shared: pages already read are not read again). */
@@ -51,6 +55,7 @@ export function ChannelsOverlay({
       aria-label={t.live.player.channels}
       onKeyDown={onKeyDown}
       data-testid="channels-overlay"
+      {...{ [CHANNELS_PANEL_ATTRIBUTE]: '' }}
       sx={{
         position: 'absolute',
         top: 0,

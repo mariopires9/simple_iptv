@@ -1,8 +1,8 @@
 // LIV-03: persisted Live state — per-source views, tolerant reads, last channel, preference and
 // the debounced saver (fake-indexeddb).
 import 'fake-indexeddb/auto';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { itemKey, settingsRepo, wipeAll } from '@/core/db';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { itemKey, settingsRepo, sourcesRepo, wipeAll } from '@/core/db';
 import {
   MAX_SAVED_VIEWS,
   PLAY_LAST_CHANNEL_KEY,
@@ -29,8 +29,25 @@ const view = (categoryId: string, extra: Partial<SavedLiveView> = {}): SavedLive
   ...extra,
 });
 
+// Saved views of lists that do not exist are pruned on read: these lists exist.
+const LISTS = ['a', 'b', 'ok', ...Array.from({ length: MAX_SAVED_VIEWS + 3 }, (_, i) => `s${i}`)];
+beforeAll(async () => {
+  for (const [i, id] of LISTS.entries()) {
+    await sourcesRepo.put({
+      id,
+      kind: 'm3u-url',
+      name: id,
+      prefs: { liveFormat: 'auto' },
+      createdAt: i,
+      lastSyncStatus: 'ok',
+      stats: { live: 0, movies: 0, series: 0 },
+    });
+  }
+});
+
 afterEach(async () => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   await clearLiveState();
 });
 afterAll(async () => {
@@ -62,6 +79,17 @@ describe('loadLiveStartup', () => {
     expect((await loadLiveStartup('b')).lastChannelKey).toBe(itemKey('b', 'live', '9'));
   });
 
+  it('serialises the preference with the other writes (last call wins)', async () => {
+    const set = vi.spyOn(settingsRepo, 'set');
+    void saveLiveView('a', view('1'));
+    const first = setPlayLastChannelOnOpen(true);
+    const second = setPlayLastChannelOnOpen(false);
+    await Promise.all([first, second]);
+    const keys = set.mock.calls.map(([key]) => key);
+    expect(keys).toEqual(['liveViewState', PLAY_LAST_CHANNEL_KEY, PLAY_LAST_CHANNEL_KEY]);
+    expect((await loadLiveStartup('a')).playLastChannelOnOpen).toBe(false);
+  });
+
   it('reads the preference', async () => {
     await setPlayLastChannelOnOpen(true);
     expect((await loadLiveStartup('a')).playLastChannelOnOpen).toBe(true);
@@ -83,6 +111,15 @@ describe('loadLiveStartup', () => {
     }
     await raw.set('liveViewState', ['not', 'a', 'map']);
     expect((await loadLiveStartup('ok')).view).toBeUndefined();
+  });
+
+  it('prunes the saved views of removed lists when reading', async () => {
+    await saveLiveView('a', view('1'));
+    await saveLiveView('removed', view('2'));
+    await loadLiveStartup('a');
+    await saveLastChannel(itemKey('a', 'live', '1')); // queued after the pruning write
+    const stored = (await raw.get('liveViewState')) as Record<string, unknown>;
+    expect(Object.keys(stored)).toEqual(['a']);
   });
 
   it('never throws when storage fails', async () => {

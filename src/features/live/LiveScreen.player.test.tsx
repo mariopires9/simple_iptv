@@ -18,7 +18,7 @@ import {
   type Source,
 } from '@/core/db';
 import { clearLogBuffer, getLogEntries, toLogJson } from '@/core/log';
-import { PlaybackError, type PlayerEvents, type StreamDescriptor } from '@/player';
+import { PlaybackError, type StreamDescriptor } from '@/player';
 import type { PlayerViewProps } from '@/player/ui';
 import { clearLiveState } from './liveState';
 import { PAGE_SIZE } from './pageCache';
@@ -53,38 +53,12 @@ vi.mock('@/player/ui', () => ({
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- test double */}
         <video data-testid="mock-video" />
         <span data-testid="mock-title">{props.title}</span>
+        {/* Like the real one: the overlay is inside the region (its fullscreen element). */}
+        <div data-testid="mock-overlay-slot">{props.overlay}</div>
       </div>
     );
   },
 }));
-
-type ErrorListener = (e: PlayerEvents['error']) => void;
-type AttemptListener = (e: PlayerEvents['attempt']) => void;
-const errorListeners: ErrorListener[] = [];
-const attemptListeners: AttemptListener[] = [];
-vi.mock('@/player', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/player')>();
-  return {
-    ...actual,
-    createPlayerController: vi.fn(() => ({
-      on: (evt: string, cb: ErrorListener & AttemptListener) => {
-        if (evt === 'error') errorListeners.push(cb);
-        if (evt === 'attempt') attemptListeners.push(cb);
-        return () => {};
-      },
-    })),
-  };
-});
-const emitError = (status: number) =>
-  act(() => {
-    for (const cb of errorListeners) cb(new PlaybackError({ kind: 'auth', status }));
-  });
-const emitAttempt = (url: string) =>
-  act(() => {
-    for (const cb of attemptListeners) {
-      cb({ engine: 'mpegts', attempt: 0, descriptor: { url, kind: 'live', container: 'ts' } });
-    }
-  });
 
 // No now/next requests here (EPG-01 has its own tests, with MSW).
 vi.mock('./epg', async (importOriginal) => {
@@ -197,8 +171,6 @@ afterAll(async () => {
 beforeEach(async () => {
   restoreScroll = installScrollMetrics();
   views.length = 0;
-  errorListeners.length = 0;
-  attemptListeners.length = 0;
   // Back to the real resolveStream (a test may have replaced the implementation).
   resolveMock.mockReset();
   clearLogBuffer();
@@ -383,6 +355,14 @@ describe('LIV-02 AC3 — rapid zapping', () => {
 });
 
 describe('LIV-02 AC4 — "Channels" panel over the player', () => {
+  it('is rendered inside the player region, so it works in fullscreen (LIV-05 AC2)', async () => {
+    await openFrom('/live/category/1', 'Channel 2', 1400);
+    await playerShows(2);
+    act(() => lastView().onToggleChannelList?.());
+    const panel = await screen.findByRole('dialog', { name: 'Channels' });
+    expect(screen.getByRole('region', { name: 'Player: Channel 2' })).toContainElement(panel);
+  });
+
   it('L / the list button opens it; picking a channel plays it and closes the panel', async () => {
     await openFrom('/live/category/1', 'Channel 1', 1400);
     await playerShows(1);
@@ -546,49 +526,15 @@ describe('LIV-02 — stream resolution in the player area', () => {
     expect(views).toHaveLength(0);
   });
 
-  it('an entry with required headers plays, and explains a 401/403 failure', async () => {
+  it('an entry with required headers tells the player, whose overlay explains a 401/403 (LIV-05 AC1)', async () => {
     await settingsRepo.set('activeSourceId', M3U);
     await openFrom('/live', 'Referer channel', 1400);
     await waitFor(() => expect(lastView().descriptor.url).toBe('https://cdn.example/hdr.ts'));
-    const factory = lastView().createController;
-    if (!factory) throw new Error('no controller factory');
-    factory(document.createElement('video'));
+    expect(lastView().requiredHeaders).toBe(true);
+    // A final error reaches Live only through onFinalError; Live adds no banner of its own.
+    act(() => lastView().onFinalError?.(new PlaybackError({ kind: 'auth', status: 403 })));
     expect(screen.queryByRole('alert')).toBeNull();
-    emitError(403);
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The provider restricts playback to its own app/site',
-    );
-  });
-
-  it('the restricted warning only reflects the current attempt (retry, zap away and back)', async () => {
-    await settingsRepo.set('activeSourceId', M3U);
-    await openFrom('/live', 'Referer channel', 1400);
-    await waitFor(() => expect(lastView().descriptor.url).toBe('https://cdn.example/hdr.ts'));
-    lastView().createController?.(document.createElement('video'));
-    emitError(403);
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
-    // PlayerView's "Try again" starts a new play(): the old failure no longer applies.
-    emitAttempt('https://cdn.example/hdr.ts');
-    expect(screen.queryByRole('alert')).toBeNull();
-
-    emitError(401);
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
-    // Zap away (the controller starts the new stream)…
-    act(() => lastView().onNext?.());
-    await waitFor(() => expect(lastView().descriptor.url).toBe('https://cdn.example/ok.m3u8'), {
-      timeout: 3000,
-    });
-    emitAttempt('https://cdn.example/ok.m3u8');
-    expect(screen.queryByRole('alert')).toBeNull();
-    // …and back: the new attempt starts clean until it fails itself.
-    act(() => lastView().onPrevious?.());
-    await waitFor(() => expect(lastView().descriptor.url).toBe('https://cdn.example/hdr.ts'), {
-      timeout: 3000,
-    });
-    emitAttempt('https://cdn.example/hdr.ts');
-    expect(screen.queryByRole('alert')).toBeNull();
-    emitError(403);
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText(/restricts playback/)).toBeNull();
   });
 
   it('retrying after a resolve error shows progress, then the new result', async () => {
@@ -611,15 +557,11 @@ describe('LIV-02 — stream resolution in the player area', () => {
     await playerShows(1);
   });
 
-  it('the same failure on an entry without required headers keeps the player message only', async () => {
+  it('an entry without required headers tells the player so', async () => {
     await settingsRepo.set('activeSourceId', M3U);
     await openFrom('/live', 'Plain channel', 1400);
     await waitFor(() => expect(lastView().descriptor.container).toBe('hls'));
-    lastView().createController?.(document.createElement('video'));
-    act(() => {
-      for (const cb of errorListeners) cb(new PlaybackError({ kind: 'auth', status: 401 }));
-    });
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(lastView().requiredHeaders).toBe(false);
   });
 });
 
