@@ -18,7 +18,13 @@ import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { catalogRepo, favoritesRepo, normalizeName, type Channel } from '@/core/db';
+import {
+  catalogRepo,
+  favoritesRepo,
+  isProtectedItem,
+  normalizeName,
+  type Channel,
+} from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { CategoryNav } from '@/ui/catalog/CategoryNav';
@@ -162,7 +168,9 @@ export function LiveScreen() {
     if (!ready || !category) return undefined;
     let cancelled = false;
     const base = pagerBase;
-    createPager(category, ready.source.id, ready.sourceCategoryKeys, ready.source.lastSyncAt).then(
+    createPager(category, ready.source.id, ready.sourceCategoryKeys, ready.source.lastSyncAt, {
+      hideProtected: ready.hideProtected,
+    }).then(
       (p) => {
         if (!cancelled) setPager({ key: pagerKey, base, status: 'ready', cache: new PageCache(p) });
       },
@@ -436,10 +444,21 @@ export function LiveScreen() {
     [navigate, categoryId],
   );
 
+  // UX-07: a protected (DRM/DASH) channel is never opened in the player from the list — Play is
+  // refused and the reason announced (the row shows the "Protected" badge and is aria-disabled).
+  const refuseProtected = useCallback((channel: Channel): boolean => {
+    if (!isProtectedItem(channel)) return false;
+    setAnnouncement(t.state.protectedContent.unplayable);
+    return true;
+  }, []);
+
   // A filtered row's index is not its row in the category: zapping locates it instead.
   const onPlay = useCallback(
-    (channel: Channel, index: number) => select(channel, filtering ? undefined : index, 'pick'),
-    [select, filtering],
+    (channel: Channel, index: number) => {
+      if (refuseProtected(channel)) return;
+      select(channel, filtering ? undefined : index, 'pick');
+    },
+    [select, filtering, refuseProtected],
   );
 
   // LIV-03: the last played channel ("Play last channel on open").
@@ -553,10 +572,11 @@ export function LiveScreen() {
   }, []);
   const onOverlayPlay = useCallback(
     (channel: Channel, index: number) => {
+      if (refuseProtected(channel)) return;
       select(channel, index, 'pick');
       closeChannels();
     },
-    [select, closeChannels],
+    [select, closeChannels, refuseProtected],
   );
 
   // Optimistic favourites: the star changes at once and the write runs in the background. Per

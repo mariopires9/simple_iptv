@@ -188,6 +188,11 @@ export interface Series extends CatalogItemBase {
    * written by `catalogRepo.setSeasonCount`, dropped by the next sync.
    */
   seasonCount?: number;
+  /**
+   * M3U series grouped from episode entries (VOD-04): every episode is DRM-flagged or DASH, so
+   * the whole series is protected content (UX-07). Set at import, absent otherwise. Not indexed.
+   */
+  allEpisodesProtected?: boolean;
   cover?: string;
   plot?: string;
   rating?: number;
@@ -363,6 +368,11 @@ export interface SettingsMap {
    * validated by features/search.
    */
   recentSearches: unknown;
+  /**
+   * Hide protected content (DRM/DASH, UX-07) from the Live, Movies and Series grids, search and
+   * Home. Absent = off.
+   */
+  hideProtectedContent: boolean;
 }
 
 export type SettingsKey = keyof SettingsMap;

@@ -1,6 +1,6 @@
 // Paged access to the channels of a Live category (LIV-01 AC2). The list never holds a whole
 // 20 000-channel category in memory: it asks a pager for the rows around the viewport.
-import { catalogRepo, favoritesRepo, historyRepo, type Channel } from '@/core/db';
+import { catalogRepo, favoritesRepo, historyRepo, isProtectedItem, type Channel } from '@/core/db';
 import { LIVE_RECENT_LIMIT } from '@/ui/routes/live';
 import type { LiveCategory } from './categories';
 
@@ -131,6 +131,76 @@ function countsForAll(
   return allCounts.counts;
 }
 
+/** Channels read by key per page of a keyed pager's `scan`. */
+const SCAN_CHUNK = 2_000;
+
+/**
+ * Channels of known keys, in this order, read by key page by page (UX-07: the visible channels of
+ * categories with protected ones hidden). Only the keys stay in memory.
+ */
+export function keyedPager(keys: readonly string[]): ChannelPager {
+  const loadKeys = async (slice: readonly string[]) => {
+    const rows = await catalogRepo.getMany('live', slice);
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    return slice.flatMap((key) => byKey.get(key) ?? []);
+  };
+  return {
+    total: keys.length,
+    load: (offset, limit) => loadKeys(keys.slice(offset, offset + limit)),
+    locate: (channel) => Promise.resolve(keys.indexOf(channel.key)),
+    async scan(onRows) {
+      for (let at = 0; at < keys.length; at += SCAN_CHUNK) {
+        onRows(await loadKeys(keys.slice(at, at + SCAN_CHUNK)));
+      }
+    },
+  };
+}
+
+/**
+ * Keys of the channels that are not protected (UX-07) of the given categories, in display order,
+ * memoised for one (source, sync, categories) at a time. One index walk per category (as the
+ * LIV-04 filter index does); only the keys are kept.
+ */
+let visibleKeys: { key: string; keys: Promise<string[]> } | undefined;
+
+/** Forgets the memoised visible keys (tests; a sync already invalidates them via `lastSyncAt`). */
+export function clearVisibleKeysCache(): void {
+  visibleKeys = undefined;
+}
+
+function unprotectedKeys(
+  sourceId: string,
+  syncStamp: number | undefined,
+  categoryKeys: readonly string[],
+): Promise<string[]> {
+  const key = [sourceId, syncStamp ?? 'never', ...categoryKeys].join('\n');
+  if (visibleKeys?.key !== key) {
+    const keys = (async () => {
+      const out: string[] = [];
+      for (const catKey of categoryKeys) {
+        for (const channel of await catalogRepo.listByCategory('live', catKey)) {
+          if (!isProtectedItem(channel)) out.push(channel.key);
+        }
+      }
+      return out;
+    })();
+    visibleKeys = { key, keys };
+    keys.catch(() => {
+      if (visibleKeys?.keys === keys) visibleKeys = undefined;
+    });
+  }
+  return visibleKeys.keys;
+}
+
+export interface PagerOptions {
+  /**
+   * Settings › Playback "Hide protected content" (UX-07): DRM/DASH channels are left out, and the
+   * pager's total counts only the others. Source categories are then read once to collect the
+   * visible keys (see `unprotectedKeys`) instead of being paged through their index.
+   */
+  hideProtected?: boolean;
+}
+
 /**
  * Builds the pager of a category of the given source. `syncStamp` (the source's `lastSyncAt`)
  * versions the memoised counts of "All".
@@ -140,20 +210,31 @@ export async function createPager(
   sourceId: string,
   sourceCategoryKeys: readonly string[],
   syncStamp?: number,
+  { hideProtected = false }: PagerOptions = {},
 ): Promise<ChannelPager> {
+  const visible = (channels: readonly Channel[]) =>
+    hideProtected ? channels.filter((c) => !isProtectedItem(c)) : channels;
   switch (category.kind) {
     case 'source':
+      if (hideProtected) {
+        return keyedPager(await unprotectedKeys(sourceId, syncStamp, [category.key]));
+      }
       return categoryPager(category.key, await catalogRepo.countByCategory('live', category.key));
     case 'all': {
+      if (hideProtected) {
+        return keyedPager(await unprotectedKeys(sourceId, syncStamp, sourceCategoryKeys));
+      }
       const counts = await countsForAll(sourceId, syncStamp, sourceCategoryKeys);
       return concatPager(sourceCategoryKeys.map((key, i) => ({ key, count: counts[i] ?? 0 })));
     }
     case 'favorites': {
       const favorites = await favoritesRepo.list(sourceId, 'live');
       return memoryPager(
-        await catalogRepo.getMany(
-          'live',
-          favorites.map((f) => f.itemKey),
+        visible(
+          await catalogRepo.getMany(
+            'live',
+            favorites.map((f) => f.itemKey),
+          ),
         ),
       );
     }
@@ -162,7 +243,7 @@ export async function createPager(
       const { items } = await historyRepo.listRecentItems(sourceId, ['live'], {
         limit: LIVE_RECENT_LIMIT,
       });
-      return memoryPager(items.map(({ item }) => item));
+      return memoryPager(visible(items.map(({ item }) => item)));
     }
   }
 }

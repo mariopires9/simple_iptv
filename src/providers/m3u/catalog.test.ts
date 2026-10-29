@@ -281,3 +281,38 @@ describe('M3uCatalogBuilder — grouped series (VOD-04 AC3)', () => {
     expect(seriesDetails[0]?.seasons[0]?.episodes.every((e) => e.image === undefined)).toBe(true);
   });
 });
+
+describe('M3uCatalogBuilder — protected series (UX-07)', () => {
+  const DRM = '#KODIPROP:inputstream.adaptive.license_type=clearkey';
+  const LIST_WITH_DRM = [
+    '#EXTM3U',
+    // Every episode DRM or DASH: the show is protected as a whole.
+    '#EXTINF:-1 group-title="Séries",Locked Show S01E01',
+    DRM,
+    'https://s.example.test/v/l-s1e1.mpd',
+    '#EXTINF:-1 group-title="Séries",Locked Show S01E02',
+    'https://s.example.test/v/l-s1e2.mpd',
+    // One protected episode among playable ones: only that episode is marked.
+    '#EXTINF:-1 group-title="Séries",Mixed Show S01E01',
+    'https://s.example.test/v/m-s1e1.mp4',
+    '#EXTINF:-1 group-title="Séries",Mixed Show S01E02',
+    DRM,
+    'https://s.example.test/v/m-s1e2.mpd',
+  ].join('\n');
+
+  it('flags a show whose every episode is DRM/DASH; a mixed show keeps the flags per episode', () => {
+    const { series, seriesDetails } = build(LIST_WITH_DRM);
+    const [locked, mixed] = series.items;
+    expect(locked).toMatchObject({ name: 'Locked Show', allEpisodesProtected: true });
+    expect(mixed?.name).toBe('Mixed Show');
+    expect(mixed?.allEpisodesProtected).toBeUndefined();
+    const episodes = seriesDetails.find((d) => d.seriesExternalId === mixed?.externalId)?.seasons[0]
+      ?.episodes;
+    expect(episodes?.map((e) => [e.number, e.drm ?? false, e.container])).toEqual([
+      [1, false, 'mp4'],
+      [2, true, 'dash'],
+    ]);
+    // The license data itself is never stored.
+    expect(JSON.stringify(seriesDetails)).not.toContain('clearkey');
+  });
+});

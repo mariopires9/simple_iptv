@@ -30,6 +30,9 @@ export const settings = {
       'On phones and tablets, turning the device sideways during playback offers fullscreen',
     playLastChannel: 'Play the last channel on open',
     playLastChannelHint: 'When Live TV opens, the channel you watched last starts playing',
+    hideProtected: 'Hide protected content',
+    hideProtectedHint:
+      "Leaves DRM and DASH channels, movies and series, which this app can't play, out of Live, Movies, Series, search and Home",
     liveFormat: 'Preferred live format',
     liveFormatHint: (list: string) =>
       `For the active list (${list}). Auto picks what this browser plays best.`,

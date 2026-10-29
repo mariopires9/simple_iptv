@@ -25,9 +25,10 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import type { Channel } from '@/core/db';
+import { isProtectedItem, type Channel } from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
+import { ProtectedBadge, ProtectedNote } from '@/ui/catalog/ProtectedBadge';
 import { CHANNEL_ROW_HEIGHT, visuallyHidden } from '@/ui/state';
 import { focusRing } from '@/ui/theme/tokens';
 import { ChannelAvatar } from './ChannelAvatar';
@@ -431,11 +432,15 @@ function ChannelRow({
   playing,
   now,
 }: ChannelRowProps) {
+  // UX-07: marked, and announced as unavailable (Play is refused by the screen).
+  const protectedContent = channel !== undefined && isProtectedItem(channel);
   return (
     <Box
       id={id}
       role="option"
       aria-selected={active}
+      aria-disabled={protectedContent || undefined}
+      data-protected={protectedContent || undefined}
       aria-setsize={setSize}
       aria-posinset={index + 1}
       aria-busy={channel === undefined || undefined}
@@ -499,6 +504,7 @@ function ChannelRow({
                   {`, ${t.live.favorite}`}
                 </Box>
               )}
+              {protectedContent && <ProtectedNote />}
             </Box>
             {now !== undefined && (
               // One muted line under the name (docs/UX_UI.md §4.6).
@@ -514,6 +520,7 @@ function ChannelRow({
               </Box>
             )}
           </Box>
+          {protectedContent && <ProtectedBadge labelled={false} />}
           {/* Mouse/touch target of the favourite toggle; keyboard users press F on the row. */}
           <Box
             component="span"

@@ -2,7 +2,7 @@
 // screen (`@/ui/catalog/PosterGridScreen`) with the Series strings and routes. A card shows the
 // number of seasons when known (`Series.seasonCount`, recorded when the details are fetched;
 // a sync drops it), else the year. Grid pages read only the series rows.
-import { catalogRepo, type Series } from '@/core/db';
+import { catalogRepo, isProtectedItem, type Series } from '@/core/db';
 import { t } from '@/i18n';
 import { formatInteger } from '@/ui/catalog/format';
 import { PosterGridScreen } from '@/ui/catalog/PosterGridScreen';
@@ -30,6 +30,7 @@ export function SeriesScreen() {
       externalIdOf={externalIdOf}
       posterOf={posterOf}
       captionOf={captionOf}
+      isProtected={isProtectedItem}
       progress={false}
       gridTestId="series-grid"
     />

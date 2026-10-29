@@ -52,3 +52,9 @@ export {
 export { settingsRepo } from './repos/settings';
 export { vaultStore } from './repos/vault';
 export * from './types';
+export {
+  isProtectedStream,
+  isProtectedItem,
+  isProtectedEpisode,
+  type StreamFlags,
+} from './protection';

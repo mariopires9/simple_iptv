@@ -682,6 +682,19 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **AC:** spatial focus in grids and lists; remote "back" key; focus is never lost; channel keys (`ChannelUp/ChannelDown`) supported.
 - **Dependencies:** UX-03.
 
+### UX-07 — Mark protected content
+- **Priority:** Should · **Effort:** 3 · **Value:** Medium
+- **Story:** As a user of an M3U list that mixes DRM/DASH entries with playable ones, I want protected channels, movies and series to be marked (and optionally hidden), so that I don't pick something the app can't play.
+- **Context:** lists such as public M3U lists contain DASH + DRM entries (ClearKey license keys in `#KODIPROP`). The app refuses to play them and never uses DRM keys from lists (SECURITY.md §8); until now they looked playable until Play was pressed.
+- **AC:**
+  1. Given an item whose stream is DRM-flagged or DASH (the import stores `drm`/`container` on channels, movies and grouped episodes), Then it shows a "Protected" badge (poster cards in grids, channel rows, episode rows, details hero, Home cards, search results) with an accessible label, and Play is disabled with a short explanation ("Protected content (DRM/DASH) can't be played in this app"). Playback is never attempted.
+  2. Given a series whose episodes are all protected, Then the badge shows in the grid and on its details; given a mixed series, Then only its protected episode rows are marked. "All protected" is computed at import and stored as a non-indexed flag on the series row (no schema version change; a re-sync applies it).
+  3. Given Settings › Playback "Hide protected content" (default off, persisted via `settingsRepo`), When it is on, Then protected items are left out of the Live, Movies and Series grids, search results and Home rows, with correct counts and empty states.
+  4. Given the strings, Then they exist in en and pt-PT.
+- **Dependencies:** SRC-04, VOD-04, UX-04.
+- **Tests:** unit (protection rule, import flag, sort/search/pager filtering, Home data); component (badges, disabled Play, hidden items, setting).
+- **Risks:** filtering paged Live categories needs one read of the category's keys when the setting is on (M3U lists only; Xtream items are never flagged).
+
 ---
 
 ## E12 — Security and privacy

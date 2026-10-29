@@ -21,6 +21,8 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
   catalogRepo,
   favoritesRepo,
+  isProtectedEpisode,
+  isProtectedItem,
   itemKey,
   parseCategoryKey,
   type Episode,
@@ -272,6 +274,8 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
   const mainButton = useRef<HTMLButtonElement>(null);
   const play = useCallback(
     (episode: Episode, startAt: number | undefined) => {
+      // UX-07: a protected (DRM/DASH) episode is never opened in the player.
+      if (isProtectedEpisode(episode)) return;
       setPlaying({ episode, startAt });
       setChosenSeason(episode.season);
     },
@@ -301,6 +305,13 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
   if (genre !== undefined) meta.push(genre);
   const poster = series.cover ?? extra?.cover;
   const titleId = useId();
+  // UX-07: the whole series is protected when it was flagged at import (every episode DRM/DASH)
+  // or every episode known now is; a mixed series marks its episode rows only.
+  const protectedNoteId = useId();
+  const episodes = playOrder(seasons);
+  const seriesProtected =
+    isProtectedItem(series) || (episodes.length > 0 && episodes.every(isProtectedEpisode));
+  const targetProtected = target !== undefined && isProtectedEpisode(target.episode);
 
   const code = (episode: Episode) =>
     [formatInteger(episode.season), formatInteger(episode.number)] as const;
@@ -316,11 +327,22 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
           size="large"
           startIcon={<PlayArrowRounded aria-hidden />}
           onClick={() => play(target.episode, resumeAt)}
+          disabled={targetProtected}
+          aria-describedby={targetProtected ? protectedNoteId : undefined}
           sx={{ minHeight: 44 }}
         >
           {target.kind === 'continue' ? texts.continueEpisode(s, e) : texts.playEpisode(s, e)}
         </Button>
-        {resumeAt !== undefined && (
+        {targetProtected && !seriesProtected && (
+          <Typography
+            id={protectedNoteId}
+            variant="body2"
+            sx={{ alignSelf: 'center', color: 'text.secondary' }}
+          >
+            {t.state.protectedContent.unplayable}
+          </Typography>
+        )}
+        {resumeAt !== undefined && !targetProtected && (
           <Button
             variant="outlined"
             size="large"
@@ -340,7 +362,9 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
       : undefined;
 
   const playingEpisode = playing?.episode;
-  const next = playingEpisode ? nextEpisode(seasons, playingEpisode.key) : undefined;
+  const following = playingEpisode ? nextEpisode(seasons, playingEpisode.key) : undefined;
+  // A protected next episode is not offered (auto-advance stops before it).
+  const next = following && !isProtectedEpisode(following) ? following : undefined;
 
   let episodesView;
   if (infoState.status === 'loading') {
@@ -413,6 +437,7 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
         cast={extra?.cast}
         texts={texts}
         testIdPrefix="series"
+        protectedNoteId={seriesProtected ? protectedNoteId : undefined}
         actions={
           <>
             {actions}

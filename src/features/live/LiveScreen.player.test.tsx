@@ -515,15 +515,56 @@ describe('LIV-02 — stream resolution in the player area', () => {
   it.each([
     ['Protected', mkey('drm')],
     ['Dash channel', mkey('dash')],
-  ])('%s (DRM/DASH) is not attempted and says why', async (name) => {
+  ])('%s (DRM/DASH) opened by a link is not attempted and says why', async (_name, key) => {
     await settingsRepo.set('activeSourceId', M3U);
-    await openFrom('/live', name, 1400);
+    // UX-07: the list refuses to open it; a deep link (or zapping) reaches the player, which
+    // explains without attempting playback.
+    show(`/live/category/g?channel=${encodeURIComponent(key)}`, 1400);
     expect(
       await screen.findByRole('heading', {
         name: 'This channel uses DRM / DASH, which this app does not support',
       }),
     ).toBeInTheDocument();
     expect(views).toHaveLength(0);
+  });
+
+  it.each([
+    ['Protected', mkey('drm')],
+    ['Dash channel', mkey('dash')],
+  ])('UX-07: %s is marked in the list and a click does not open the player', async (name) => {
+    await settingsRepo.set('activeSourceId', M3U);
+    const { router } = show('/live', 1400);
+    const list = await listbox();
+    // (The channel named "Protected" also matches the badge's word: find the row by its name.)
+    const row = await within(list).findByRole('option', {
+      name: (n) => n.startsWith(name) && n.includes('Protected content (DRM/DASH)'),
+    });
+    await userEvent.click(row);
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(within(row).getByTestId('protected-badge')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Protected content (DRM/DASH) can't be played in this app",
+    );
+    expect(screen.queryByRole('region', { name: /^Player/ })).toBeNull();
+    expect(router.state.location.search).toBe('');
+    expect(views).toHaveLength(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  it('UX-07: "Hide protected content" leaves DRM/DASH channels out of the list and its count', async () => {
+    await settingsRepo.set('activeSourceId', M3U);
+    await settingsRepo.set('hideProtectedContent', true);
+    try {
+      show('/live/category/g', 1400);
+      const list = await listbox('Channels in General');
+      await within(list).findByText('Plain channel');
+      const options = within(list).getAllByRole('option');
+      expect(options).toHaveLength(2);
+      expect(options[0]).toHaveAttribute('aria-setsize', '2');
+      expect(within(list).queryByText('Dash channel')).toBeNull();
+    } finally {
+      await settingsRepo.set('hideProtectedContent', false);
+    }
   });
 
   it('an entry with required headers tells the player, whose overlay explains a 401/403 (LIV-05 AC1)', async () => {

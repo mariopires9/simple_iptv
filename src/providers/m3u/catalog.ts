@@ -32,6 +32,7 @@ import type {
   SeriesDetailsInput,
   StreamContainer,
 } from '@/core/db';
+import { isProtectedStream } from '@/core/db';
 import { parseExternalUrl } from '@/core/net';
 import { showGroupIdentity, showIdentity } from './classify';
 import type { M3uEntry } from './parser';
@@ -326,6 +327,10 @@ export class M3uCatalogBuilder {
           episodes: episodes.sort((a, b) => a.number - b.number),
         }));
       show.item.seasonCount = seasons.length;
+      // UX-07: a show whose every episode is DRM/DASH is protected as a whole.
+      if (seasons.every((s) => s.episodes.every(isProtectedStream))) {
+        show.item.allEpisodesProtected = true;
+      }
       seriesDetails.push({ seriesExternalId, seasons });
     }
     return {

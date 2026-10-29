@@ -29,6 +29,9 @@ export const settings = {
       'Em telemóveis e tablets, rodar o dispositivo durante a reprodução sugere o ecrã inteiro',
     playLastChannel: 'Reproduzir o último canal ao abrir',
     playLastChannelHint: 'Quando a TV em direto abre, começa o último canal que viu',
+    hideProtected: 'Ocultar conteúdo protegido',
+    hideProtectedHint:
+      'Retira os canais, filmes e séries com DRM ou DASH, que esta aplicação não reproduz, de Direto, Filmes, Séries, da pesquisa e do Início',
     liveFormat: 'Formato preferido em direto',
     liveFormatHint: (list: string) =>
       `Para a lista ativa (${list}). Automático escolhe o que este navegador reproduz melhor.`,

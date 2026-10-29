@@ -1,6 +1,6 @@
 // Movies screen (VOD-01): categories, sort and the virtualised poster grid — the shared poster-grid
 // screen (`@/ui/catalog/PosterGridScreen`) with the Movies strings, routes and fields.
-import { catalogRepo, type Movie } from '@/core/db';
+import { catalogRepo, isProtectedItem, type Movie } from '@/core/db';
 import { t } from '@/i18n';
 import { PosterGridScreen } from '@/ui/catalog/PosterGridScreen';
 import { moviesBrowse } from './browseState';
@@ -21,6 +21,7 @@ export function MoviesScreen() {
       externalIdOf={externalIdOf}
       posterOf={posterOf}
       captionOf={captionOf}
+      isProtected={isProtectedItem}
       progress
       gridTestId="movie-grid"
     />

@@ -21,6 +21,8 @@ export type CatalogSourceState =
       sourceCategoryKeys: string[];
       /** Watched fraction (0–1, exclusive) per started, not completed item key. */
       progress: ReadonlyMap<string, number>;
+      /** Settings › Playback "Hide protected content" (UX-07). */
+      hideProtected: boolean;
     };
 
 export async function resolveActiveSource(): Promise<Source | undefined> {
@@ -45,11 +47,13 @@ export async function loadCatalogSource(
 ): Promise<CatalogSourceState> {
   const source = await resolveActiveSource();
   if (!source) return { status: 'no-source' };
-  const { catalogRepo, historyRepo } = await import('@/core/db');
-  const [sourceCategories, history]: [Category[], HistoryEntry[]] = await Promise.all([
-    catalogRepo.listCategories(source.id, type),
-    options.progress ? historyRepo.listRecent(source.id, type, PROGRESS_LIMIT) : [],
-  ]);
+  const { catalogRepo, historyRepo, settingsRepo } = await import('@/core/db');
+  const [sourceCategories, history, hide]: [Category[], HistoryEntry[], boolean | undefined] =
+    await Promise.all([
+      catalogRepo.listCategories(source.id, type),
+      options.progress ? historyRepo.listRecent(source.id, type, PROGRESS_LIMIT) : [],
+      settingsRepo.get('hideProtectedContent'),
+    ]);
   const categories = buildCatalogCategories(sourceCategories, options.names);
   const progress = new Map<string, number>();
   for (const entry of history) {
@@ -64,5 +68,6 @@ export async function loadCatalogSource(
     categories,
     sourceCategoryKeys: categories.flatMap((c) => (c.kind === 'source' ? [c.key] : [])),
     progress,
+    hideProtected: hide === true,
   };
 }

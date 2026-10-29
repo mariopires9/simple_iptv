@@ -16,7 +16,25 @@ const row = (key: string, name: string, pos: number, extra: Partial<SortRow> = {
   addedAt: undefined,
   rating: undefined,
   pos,
+  protected: false,
   ...extra,
+});
+
+describe('sortedKeys — hide protected content (UX-07)', () => {
+  const rows: SortRow[] = [
+    row('a', 'Alpha', 0, { protected: true }),
+    row('b', 'Bravo', 1),
+    row('c', 'Charlie', 2, { protected: true }),
+    row('d', 'Delta', 3),
+  ];
+
+  it('leaves protected rows out only when asked, so the grid total counts what is shown', () => {
+    expect(sortedKeys(rows, 'name', 'en')).toEqual(['a', 'b', 'c', 'd']);
+    expect(sortedKeys(rows, 'name', 'en', true)).toEqual(['b', 'd']);
+    expect(sortedKeys(rows, 'added', 'en', true)).toEqual(['b', 'd']);
+    // Memoised per setting: switching back is not served the filtered list.
+    expect(sortedKeys(rows, 'name', 'en', false)).toHaveLength(4);
+  });
 });
 
 describe('sortedKeys (VOD-01 AC2)', () => {
@@ -101,6 +119,7 @@ describe('projection over IndexedDB', () => {
       'key',
       'name',
       'pos',
+      'protected',
       'rating',
     ]);
     expect(projection.hasRatings).toBe(true);

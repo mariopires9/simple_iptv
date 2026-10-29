@@ -323,3 +323,41 @@ describe('searchCatalog', () => {
     expect(logged).not.toContain('cdn.example.test');
   });
 });
+
+describe('protected content (UX-07)', () => {
+  beforeEach(async () => {
+    await sourcesRepo.put(source(SRC));
+    await catalogRepo.replaceAllForExistingSource(SRC, {
+      live: {
+        categories: [],
+        items: [
+          { externalId: '1', name: 'Arena Open', streamPath: '' },
+          { externalId: '2', name: 'Arena Locked', streamPath: '', drm: true },
+        ],
+      },
+      movie: {
+        categories: [],
+        items: [{ externalId: '3', name: 'Arena Film', streamPath: '', container: 'dash' }],
+      },
+      series: { categories: [], items: [] },
+    });
+  });
+
+  it('hits of protected items are marked', async () => {
+    const result = await searchCatalog({ sourceId: SRC, query: 'arena' });
+    expect(result.groups.live.hits.map((h) => [h.name, h.protected === true])).toEqual([
+      ['Arena Open', false],
+      ['Arena Locked', true],
+    ]);
+    expect(result.groups.movie.hits[0]).toMatchObject({ name: 'Arena Film', protected: true });
+  });
+
+  it('hideProtected leaves them out of hits and totals', async () => {
+    const result = await searchCatalog({ sourceId: SRC, query: 'arena', hideProtected: true });
+    expect(result.groups.live).toEqual({
+      total: 1,
+      hits: [expect.objectContaining({ name: 'Arena Open' })],
+    });
+    expect(result.groups.movie).toEqual({ total: 0, hits: [] });
+  });
+});

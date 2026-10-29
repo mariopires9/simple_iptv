@@ -8,6 +8,7 @@ import {
   favoritesRepo,
   historyRepo,
   itemKey,
+  settingsRepo,
   wipeAll,
 } from '@/core/db';
 import { LIVE_RECENT_LIMIT } from '@/ui/routes/live';
@@ -35,6 +36,79 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.restoreAllMocks();
   await wipeAll();
+});
+
+describe('protected content on Home (UX-07)', () => {
+  beforeEach(async () => {
+    await catalogRepo.replaceForSource(SOURCE, 'live', {
+      categories: [{ externalId: '10', name: 'News' }],
+      items: [
+        { externalId: 'c1', categoryExternalId: '10', name: 'Locked', streamPath: '', drm: true },
+        { externalId: 'c2', categoryExternalId: '10', name: 'Open', streamPath: '' },
+      ],
+    });
+    await catalogRepo.replaceForSource(SOURCE, 'movie', {
+      categories: [],
+      items: [
+        { externalId: 'm1', name: 'Dash movie', streamPath: '', container: 'dash' },
+        { externalId: 'm2', name: 'Plain movie', streamPath: '', container: 'mp4' },
+      ],
+    });
+    await catalogRepo.replaceForSource(SOURCE, 'series', {
+      categories: [],
+      items: [
+        { externalId: 's1', name: 'Locked show', allEpisodesProtected: true },
+        { externalId: 's2', name: 'Open show' },
+      ],
+    });
+    await historyRepo.upsert({ itemKey: live('c1'), lastWatchedAt: 2 });
+    await historyRepo.upsert({ itemKey: live('c2'), lastWatchedAt: 1 });
+    await historyRepo.upsert({
+      itemKey: movie('m1'),
+      positionSec: 120,
+      durationSec: 6000,
+      lastWatchedAt: 4,
+    });
+    await historyRepo.upsert({
+      itemKey: movie('m2'),
+      positionSec: 120,
+      durationSec: 6000,
+      lastWatchedAt: 3,
+    });
+    await favoritesRepo.add(series('s1'), 1);
+    await favoritesRepo.add(series('s2'), 2);
+  });
+
+  it('cards of protected items are marked', async () => {
+    const home = await loadHome(SOURCE);
+    const marked = (cards: { name: string; protected?: boolean | undefined }[]) =>
+      cards.map((c) => [c.name, c.protected === true]);
+    expect(marked(home.recentChannels)).toEqual([
+      ['Locked', true],
+      ['Open', false],
+    ]);
+    expect(marked(home.continueWatching)).toEqual([
+      ['Dash movie', true],
+      ['Plain movie', false],
+    ]);
+    expect(marked(home.favorites)).toEqual([
+      ['Open show', false],
+      ['Locked show', true],
+    ]);
+  });
+
+  it('"Hide protected content" leaves them out of every row', async () => {
+    await settingsRepo.set('hideProtectedContent', true);
+    const home = await loadHome(SOURCE);
+    expect(home.recentChannels.map((c) => c.name)).toEqual(['Open']);
+    expect(home.continueWatching.map((c) => c.name)).toEqual(['Plain movie']);
+    expect(home.favorites.map((c) => c.name)).toEqual(['Open show']);
+    expect(home.hasHistory).toBe(true);
+    // The Favorites screen keeps the user's own choices (marked).
+    expect((await loadFavorites(SOURCE, 'series')).map((f) => f.card?.name)).toContain(
+      'Locked show',
+    );
+  });
 });
 
 describe('recent channels (FAV-02 AC1)', () => {
