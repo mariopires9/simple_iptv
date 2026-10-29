@@ -1,7 +1,7 @@
 // UX-01: onboarding guard (AC1), the onboarding screen (AC2) and the first-run flow up to Home
 // (AC3) on the real route tree, with fake-indexeddb and the synthetic MSW panel.
 import 'fake-indexeddb/auto';
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -27,15 +27,18 @@ afterAll(() => server.close());
 let media: ReturnType<typeof installMatchMedia> | undefined;
 
 afterEach(async () => {
+  // Unmount first: file-level afterEach hooks run before the setup file's cleanup, and a screen
+  // still mounted could re-cache "no sources" between the invalidation and the wipe.
+  cleanup();
   server.resetHandlers();
   media?.restore();
   media = undefined;
-  invalidateSourcesPresence();
   clearSecrets();
   sync.start.mockClear();
   vi.useRealTimers();
   vi.restoreAllMocks();
   await wipeAll();
+  invalidateSourcesPresence();
 });
 
 function renderRoute(path: string) {
