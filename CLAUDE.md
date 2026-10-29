@@ -1,6 +1,6 @@
 # CLAUDE.md — Simple IPTV
 
-Client-side IPTV PWA player, no backend. **Current phase: execution authorized (2026-10-28), story by story, following `docs/AGENT_WORKFLOW.md`.** Publishing (DEP-01) still requires explicit confirmation.
+Client-side IPTV PWA player, no backend. **Current phase: execution authorized (2026-10-28), story by story, following `docs/AGENT_WORKFLOW.md`.** Published on GitHub Pages (DEP-01, approved 2026-10-29): every green CI run on `main` deploys automatically.
 
 ## Read before working
 - Status and next story: `docs/BACKLOG.md` (single source of truth for status)
@@ -11,7 +11,7 @@ Client-side IPTV PWA player, no backend. **Current phase: execution authorized (
 - Do not implement anything without a story or technical justification; do not change the architecture without an ADR.
 - Never store real credentials in files, fixtures, logs, prompts or commits.
 - No telemetry, analytics, advertising or third-party CDN resources at runtime.
-- Do not publish (GitHub Pages), create accounts or change repository visibility without approval.
+- `main` is deployed automatically after green CI — keep it releasable. Do not create accounts, change repository visibility or Pages settings without approval.
 - Do not bypass DRM, authentication or access restrictions; do not include third-party lists.
 - All repository content is English: code, comments, docs, configs, commit messages, agent briefs.
 - UI strings: `src/i18n/en/<feature>.ts` (base, defines the types) + `src/i18n/pt-PT/<feature>.ts` (ADR-015). Never hardcode user-facing text.
