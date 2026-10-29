@@ -126,4 +126,59 @@ export const player = {
   nativeFullscreenNote: 'On this device, fullscreen uses the system player and its controls.',
   /** VOD-03 AC4: the saved position cannot be reached (no range requests / not seekable). */
   resumeUnsupported: 'Starting from the beginning',
+  /** PLY-06: every format the player tried, in the error details (technical, copyable). */
+  attempts: {
+    heading: 'Attempts:',
+    /** Arguments: position, format (e.g. `MPEG-TS`), engine label, technical error text. */
+    line: (position: number, format: string, engine: string, error: string) =>
+      `${position}. ${format} via ${engine}: ${error}`,
+    /** A format this browser cannot play: skipped without loading it. */
+    skipped: 'not playable in this browser (skipped)',
+    engines: { native: 'native player', hls: 'hls.js', mpegts: 'mpegts.js' },
+    mediaSources: { mse: 'Media Source Extensions', mms: 'ManagedMediaSource' },
+    /** Arguments: engine name and Media Source API name. */
+    withMediaSource: (engine: string, api: string) => `${engine} (${api})`,
+    /** Arguments: finding code (e.g. `insecure-redirect`) and comma-separated facts. */
+    probe: (finding: string, facts: string) =>
+      `   Check: ${finding}${facts !== '' ? ` (${facts})` : ''}`,
+    redirected: 'redirected',
+    hevc: 'HEVC',
+    /** Argument: HTTP status code. */
+    status: (status: number) => `HTTP ${status}`,
+    copy: 'Copy details',
+    copied: 'Details copied',
+    copyFailed: 'The details could not be copied. Open "Details" and copy the text.',
+  },
+  /**
+   * PLY-06: why a stream failed, from a check of its address made after the failure. Never
+   * promises a fix: these explain what the browser allows.
+   */
+  probe: {
+    checking: 'Checking the cause…',
+    title: 'Likely cause',
+    causes: {
+      ok: 'The address answers and looks like a valid stream: the problem is the format or codec of this stream in this browser, not the connection.',
+      'insecure-url':
+        'The stream address uses http://, which the browser blocks inside a secure (https) app. This provider needs a player app on your device: browsers on https cannot play http streams.',
+      'insecure-redirect':
+        'The server redirects the stream to an insecure http:// address, which the browser blocks inside an https app. This provider needs a player app on your device: browsers on https cannot play http streams.',
+      'insecure-segments':
+        'The playlist points to insecure http:// addresses, which the browser blocks inside an https app. This provider needs a player app on your device: browsers on https cannot play http streams.',
+      'redirect-blocked':
+        'The server redirects the stream to another address that the browser could not open — usually an insecure http:// address, which browsers block inside an https app. If so, this provider needs a player app on your device.',
+      'no-cors':
+        'The server does not allow web apps to read the stream (no CORS headers), so this format cannot play in the browser. Try the other live format for this list (HLS plays natively in Safari).',
+      'no-cors-native':
+        'The server does not allow web apps to read the playlist (no CORS headers). The native player does not need that, so it is not the cause, and the browser does not say why it refused the stream.',
+      unreachable:
+        'The browser could not open the stream address: the server sends no CORS headers, is unreachable, or the request was blocked — the browser does not say which.',
+      auth: 'The provider rejected the request (HTTP 401/403): the account may be expired or at its limit of simultaneous connections.',
+      'http-error': 'The server answered the stream request with an error.',
+      'not-media':
+        'The server answered with something that is not a stream (for example an error page).',
+      timeout: 'The check took too long: the cause could not be determined.',
+      'invalid-url': 'The stream address is not valid.',
+    },
+    hevc: 'The stream uses HEVC (H.265) video, which this browser may not be able to play in this format.',
+  },
 };

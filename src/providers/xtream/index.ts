@@ -32,6 +32,8 @@ export type { ServerUrlResult } from './normalizeServerUrl';
 export { coerce, parseAuthResponse, toInt, toNumber } from './schemas';
 export type { XtreamAccount, XtreamAuthInfo, XtreamServerInfo } from './schemas';
 export { DEFAULT_PROBE_TIMEOUT_MS, testConnection } from './testConnection';
+export { xtreamLiveStreamUrl, xtreamStreamId } from './streamUrl';
+export type { XtreamLiveExtension } from './streamUrl';
 export type { TestConnectionOptions } from './testConnection';
 export type {
   ConnectionAccount,

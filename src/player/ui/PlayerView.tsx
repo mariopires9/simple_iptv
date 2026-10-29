@@ -13,11 +13,10 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router';
 import { log } from '@/core/log';
 import { connectivity, isNetworkBlocked } from '@/core/net';
 import { t } from '@/i18n';
-import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
+import { useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
 import { AUDIO_CHECK_DELAY_MS, audioMissing } from './audioCheck';
@@ -33,6 +32,7 @@ import {
   startPlayback,
 } from './media';
 import { detectPlayerPlatform, type PlayerPlatform } from './platform';
+import { PlaybackErrorOverlay, type FailureProbe } from './PlaybackErrorOverlay';
 import { PlayerControls, type SeekWindow } from './PlayerControls';
 import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
@@ -119,6 +119,8 @@ export interface PlayerViewProps {
    * next-episode card (SER-03) read its time and listen to its media events.
    */
   onVideoElement?: (video: HTMLVideoElement | null) => void;
+  /** PLY-06: root-cause probe after a final failure (tests inject a fake). */
+  failureProbe?: FailureProbe;
 }
 
 export function PlayerView({
@@ -138,6 +140,7 @@ export function PlayerView({
   overlay,
   onFinalError,
   onVideoElement,
+  failureProbe,
 }: PlayerViewProps) {
   const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
   // Only read when it can matter: no explicit prop, and a phone or tablet.
@@ -699,45 +702,17 @@ export function PlayerView({
         </Box>
       )}
 
-      {error && errorText && (
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            top: 64,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'auto',
-            // Opaque theme surface: the StateView texts use the theme's text colors.
-            bgcolor: 'background.default',
-            color: 'text.primary',
-          }}
-        >
-          <StateView
-            variant="error"
-            title={errorText.title}
-            message={errorText.message}
-            details={error.message}
-            actions={
-              <>
-                <Button variant="contained" onClick={retry}>
-                  {t.state.actions.retry}
-                </Button>
-                {isLive && onNext && (
-                  <Button variant="outlined" onClick={onNext}>
-                    {t.player.controls.nextChannel}
-                  </Button>
-                )}
-                {errorText.action === 'diagnostics' && (
-                  <Button variant="text" component={Link} to={DIAGNOSTICS_PATH}>
-                    {t.player.errors.actions.diagnostics}
-                  </Button>
-                )}
-              </>
-            }
-          />
-        </Box>
+      {error && errorText && failure && (
+        <PlaybackErrorOverlay
+          error={error}
+          text={errorText}
+          descriptor={stream}
+          offline={failure.offline}
+          onRetry={retry}
+          onNext={isLive ? onNext : undefined}
+          diagnosticsPath={DIAGNOSTICS_PATH}
+          {...(failureProbe ? { probe: failureProbe } : {})}
+        />
       )}
 
       <Box role="status" aria-live="polite" sx={visuallyHidden}>

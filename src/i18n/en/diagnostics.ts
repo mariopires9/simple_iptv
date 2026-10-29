@@ -4,7 +4,7 @@ export const diagnostics = {
   title: 'Diagnostics',
   back: 'My lists',
   intro:
-    'Checks whether this list can work in this browser and what you can do if it does not. The only request made is one to your provider.',
+    'Checks whether this list can work in this browser and what you can do if it does not. It makes one request to your provider’s API and opens the first live channel briefly (no more than its first bytes).',
   running: 'Checking…',
   runAgain: 'Check again',
   copy: 'Copy report',
@@ -91,6 +91,43 @@ export const diagnostics = {
       formats: { auto: 'Auto', ts: 'MPEG-TS', m3u8: 'HLS' },
       engines: { native: 'native player', hls: 'hls.js', mpegts: 'mpegts.js' },
     },
+    /** PLY-06: the first live channel of the list, probed in each live format. */
+    liveStream: {
+      title: 'Live stream test',
+      /** Reasons that are not a probe finding (findings use `player.probe.causes`). */
+      reasons: {
+        partial: 'Live channels can play in one format but not in the other.',
+        'no-channels': 'Not checked: this list has no live channels (refresh it first).',
+        offline: 'Not checked: there is no network connection.',
+        'no-secret':
+          'Not checked: the saved login could not be read. Edit the list and enter it again.',
+        unavailable: 'Not checked: the first live channel has no address this app can open.',
+      },
+      /** Arguments: format name, engine name (or `not playable here`), result, masked address. */
+      fact: (format: string, engine: string, result: string, address: string) =>
+        `${format} (${engine}): ${result} — ${address}`,
+      notPlayable: 'not playable here',
+      /** Short results per probe finding (the explanation uses the full sentence). */
+      results: {
+        ok: 'answers, looks like a stream',
+        'insecure-url': 'http:// address (blocked in an https app)',
+        'insecure-redirect': 'redirects to http:// (blocked in an https app)',
+        'insecure-segments': 'playlist lists http:// addresses (blocked in an https app)',
+        'redirect-blocked': 'redirects to an address the browser could not open',
+        'no-cors': 'no CORS headers (web engines cannot read it)',
+        'no-cors-native': 'no CORS headers (not needed by the native player)',
+        unreachable: 'no CORS or unreachable (the browser does not say which)',
+        auth: 'access rejected',
+        'http-error': 'HTTP error',
+        'not-media': 'not a stream',
+        timeout: 'no answer in time',
+        'invalid-url': 'invalid address',
+      },
+      /** Arguments: HTTP status. */
+      status: (status: string) => `HTTP ${status}`,
+      redirected: 'redirected',
+      hevc: 'HEVC video',
+    },
     browser: {
       title: 'Browser support',
       reasons: {
@@ -139,6 +176,8 @@ export const diagnostics = {
     'check-credentials': 'Check the username, password and server address of the list.',
     'contact-provider': 'Ask your provider whether their service works in web browsers.',
     'switch-live-format': 'Change the preferred live format of this list.',
+    'device-app':
+      'This provider sends its streams over http://, which browsers block inside a secure (https) app: use a player app on your device for this list, or ask the provider for https streams.',
     retry: 'Try again in a moment.',
   },
   links: {

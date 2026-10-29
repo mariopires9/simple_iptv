@@ -1,7 +1,7 @@
 // Localized text of the diagnostics checks (SRC-09, ADR-015), shared by the screen and the copied
 // report so both always say the same thing.
 import type { LiveFormat } from '@/core/db';
-import type { Messages } from '@/i18n';
+import { t, type Messages } from '@/i18n';
 import type { EngineChoice } from '@/player';
 import type { CheckResult, CheckStatus, DiagnosticAction } from './checks';
 
@@ -20,6 +20,8 @@ export interface DescribedCheck {
 }
 
 type DiagnosticsText = Messages['diagnostics'];
+/** `player.probe` strings (PLY-06): the explanation of a live stream finding. */
+export type ProbeText = Messages['player']['probe'];
 
 function engineName(text: DiagnosticsText, engine: EngineChoice): string | undefined {
   return engine === 'unsupported' ? undefined : text.checks.liveFormat.engines[engine];
@@ -59,6 +61,25 @@ function facts(check: CheckResult, text: DiagnosticsText): string[] {
       out.push(playable.length > 0 ? lf.playable(playable.join(', ')) : lf.playableNone);
       return out;
     }
+    case 'liveStream': {
+      const ls = text.checks.liveStream;
+      const lf = text.checks.liveFormat;
+      return check.probes.map(({ format, engine, result, finding }) => {
+        const extra = [
+          result.status !== undefined ? ls.status(String(result.status)) : undefined,
+          result.redirected === true ? ls.redirected : undefined,
+          result.hevc === true ? ls.hevc : undefined,
+        ].filter((part): part is string => part !== undefined);
+        const outcome =
+          extra.length > 0 ? `${ls.results[finding]} (${extra.join(', ')})` : ls.results[finding];
+        return ls.fact(
+          lf.formats[format],
+          engineName(text, engine) ?? ls.notPlayable,
+          outcome,
+          result.target ?? '?',
+        );
+      });
+    }
     case 'browser':
       return [
         text.checks.browser.facts(yesNo(check.mse), yesNo(check.mms), yesNo(check.nativeHls)),
@@ -77,7 +98,7 @@ function facts(check: CheckResult, text: DiagnosticsText): string[] {
   }
 }
 
-function explanation(check: CheckResult, text: DiagnosticsText): string {
+function explanation(check: CheckResult, text: DiagnosticsText, probeText: ProbeText): string {
   switch (check.id) {
     case 'https':
       return text.checks.https.reasons[check.reason];
@@ -85,6 +106,13 @@ function explanation(check: CheckResult, text: DiagnosticsText): string {
       return text.checks.api.reasons[check.reason];
     case 'liveFormat':
       return text.checks.liveFormat.reasons[check.reason];
+    case 'liveStream': {
+      const reasons = text.checks.liveStream.reasons;
+      const base = Object.hasOwn(reasons, check.reason)
+        ? reasons[check.reason as keyof typeof reasons]
+        : probeText.causes[check.reason as keyof ProbeText['causes']];
+      return check.hevc ? `${base} ${probeText.hevc}` : base;
+    }
     case 'browser':
       return text.checks.browser.reasons[check.reason];
     case 'codecs':
@@ -92,17 +120,21 @@ function explanation(check: CheckResult, text: DiagnosticsText): string {
   }
 }
 
-export function describeCheck(check: CheckResult, text: DiagnosticsText): DescribedCheck {
+export function describeCheck(
+  check: CheckResult,
+  text: DiagnosticsText,
+  probeText: ProbeText = t.player.probe,
+): DescribedCheck {
   const described: DescribedCheck = {
     id: check.id,
     status: check.status,
     title: text.checks[check.id].title,
     statusLabel: text.status[check.status],
-    explanation: explanation(check, text),
+    explanation: explanation(check, text, probeText),
     facts: facts(check, text),
     actions: check.actions.map((code) => ({ code, text: text.actions[code] })),
   };
-  if (check.id === 'liveFormat' && check.suggested !== undefined) {
+  if ((check.id === 'liveFormat' || check.id === 'liveStream') && check.suggested !== undefined) {
     described.suggestedFormat = check.suggested;
   }
   return described;

@@ -11,12 +11,13 @@ export { NATIVE_AUDIO_CONTAINER, containerOfExtension, declaredContainer } from 
 export type { ContainerOrDash } from './containers';
 export { planPlayback, selectEngine } from './select';
 export type { EngineChoice, PlaybackCandidate, SelectionCapabilities } from './select';
-export { PlaybackError, isPlaybackError } from './types';
+export { PlaybackError, isPlaybackError, withAttempts } from './types';
 export type {
   EngineDeps,
   EngineEvents,
   EngineFactory,
   EngineId,
+  PlaybackAttempt,
   PlaybackErrorInit,
   PlaybackErrorKind,
   PlaybackNotice,
@@ -24,3 +25,5 @@ export type {
   StreamContainer,
   StreamDescriptor,
 } from './types';
+// PLY-06: the stream probe (`@/player/probe`) is not re-exported here: it is loaded on demand
+// (after a playback failure, or by the diagnostics screen).

@@ -14,17 +14,21 @@ import {
   type XtreamConnectionReport,
 } from '@/providers/xtream';
 import { readXtreamPassword } from '../manage';
+import type { StreamProbeResult } from '@/player/probe';
 import {
   checkApi,
   checkBrowser,
   checkCodecs,
   checkHttps,
   checkLiveFormat,
+  checkLiveStream,
   protocolOf,
   type ApiProbe,
   type CheckResult,
+  type LiveStreamOutcome,
 } from './checks';
 import { probeCodecs, type CodecSupport } from './codecs';
+import { firstLiveChannel, runLiveStreamTest } from './liveStreamTest';
 
 /** Timeout of the single provider request. */
 export const DIAGNOSTICS_TIMEOUT_MS = 10_000;
@@ -49,6 +53,10 @@ export interface DiagnosticsDeps {
   testXtream: (options: Parameters<typeof testConnection>[0]) => Promise<XtreamConnectionReport>;
   /** Fetches the first bytes of a list (CORS / reachability). */
   probeList: (url: string, signal: AbortSignal | undefined) => Promise<void>;
+  /** PLY-06: the first live channel of a list (live stream test). */
+  firstLiveChannel: typeof firstLiveChannel;
+  /** PLY-06: root-cause probe of one stream address (`@/player/probe`). */
+  probeStream: (url: string, signal: AbortSignal | undefined) => Promise<StreamProbeResult>;
   capabilities: () => Capabilities;
   codecs: () => CodecSupport[];
   pageProtocol: () => string | undefined;
@@ -71,6 +79,11 @@ const defaultProbeList: DiagnosticsDeps['probeList'] = async (url, signal) => {
   );
 };
 
+const defaultProbeStream: DiagnosticsDeps['probeStream'] = async (url, signal) => {
+  const { probeStream } = await import('@/player/probe');
+  return probeStream(url, signal ? { signal } : {});
+};
+
 export const defaultDiagnosticsDeps: DiagnosticsDeps = {
   readPassword: readXtreamPassword,
   readListUrl: (source) =>
@@ -79,6 +92,8 @@ export const defaultDiagnosticsDeps: DiagnosticsDeps = {
       : Promise.resolve(undefined),
   testXtream: testConnection,
   probeList: defaultProbeList,
+  firstLiveChannel,
+  probeStream: defaultProbeStream,
   capabilities: () => getCapabilities(),
   codecs: () => probeCodecs(),
   pageProtocol: () => (globalThis as { location?: { protocol?: string } }).location?.protocol,
@@ -195,6 +210,30 @@ export async function runDiagnostics(
     maskedAddress = m3u.maskedAddress;
   }
 
+  // PLY-06: after the API request, so the two never compete for a one-connection account.
+  let liveStream: LiveStreamOutcome;
+  if (offline) {
+    liveStream = { outcome: 'offline' };
+  } else {
+    try {
+      liveStream = await runLiveStreamTest(
+        source,
+        caps,
+        {
+          firstLiveChannel: deps.firstLiveChannel,
+          readPassword: deps.readPassword,
+          probe: deps.probeStream,
+        },
+        signal,
+      );
+    } catch (error) {
+      // The catalogue could not be read: the other checks still stand.
+      log.warn('Diagnostics: the live stream test could not run', { error });
+      liveStream = { outcome: 'unavailable' };
+    }
+  }
+  if (signal?.aborted === true) throw new DOMException('Diagnostics cancelled', 'AbortError');
+
   const checks: CheckResult[] = [
     checkHttps({
       kind: source.kind,
@@ -207,6 +246,12 @@ export async function runDiagnostics(
       kind: source.kind,
       configured: source.prefs.liveFormat,
       ...(api.allowed ? { allowed: api.allowed } : {}),
+      caps,
+    }),
+    checkLiveStream({
+      kind: source.kind,
+      outcome: liveStream,
+      configured: source.prefs.liveFormat,
       caps,
     }),
     checkBrowser(caps),

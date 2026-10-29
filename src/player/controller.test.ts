@@ -427,6 +427,86 @@ describe('player controller — selection and fallbacks (fake engines)', () => {
   });
 });
 
+describe('player controller — every attempt in the final error (PLY-06 A)', () => {
+  const IOS_MMS: Capabilities = { ...LEGACY_IOS, mms: true };
+  // Fictitious values only (CLAUDE.md).
+  const PREFIX = 'https://panel.example.test/live/jdoe/s3cretpw/42';
+
+  it('keeps each failed candidate in order with its engine, container and masked URL', async () => {
+    const tsUrl = `${PREFIX}.ts`;
+    const hlsUrl = `${PREFIX}.m3u8`;
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: IOS_MMS,
+      engines: fakeEngines({
+        mpegts: [new PlaybackError({ kind: 'blocked', detail: 'Exception', url: tsUrl })],
+        native: [
+          new PlaybackError({
+            kind: 'unsupported-container',
+            detail: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
+            url: hlsUrl,
+          }),
+        ],
+      }),
+    });
+    const errors: PlaybackError[] = [];
+    controller.on('error', (e) => errors.push(e));
+    await controller.play({
+      url: tsUrl,
+      kind: 'live',
+      container: 'ts',
+      fallbacks: [{ url: hlsUrl, kind: 'live', container: 'hls' }],
+    });
+    expect(errors).toHaveLength(1);
+    const [final] = errors;
+    expect(final?.kind).toBe('unsupported-container');
+    expect(final?.target).toBe('https://***/live/***/***/***.m3u8');
+    expect(
+      final?.attempts?.map((a) => [a.engine, a.container, a.mediaSource, a.error.kind]),
+    ).toEqual([
+      ['mpegts', 'ts', 'mms', 'blocked'],
+      ['native', 'hls', undefined, 'unsupported-container'],
+    ]);
+    const text = JSON.stringify([
+      final?.message,
+      ...(final?.attempts ?? []).map((a) => a.error.message),
+    ]);
+    expect(text).not.toContain('jdoe');
+    expect(text).not.toContain('s3cretpw');
+    expect(text).not.toContain('panel.example.test');
+  });
+
+  it('records skipped candidates too', async () => {
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: LEGACY_IOS,
+      engines: fakeEngines({ native: [new PlaybackError({ kind: 'network' })] }),
+    });
+    const errors: PlaybackError[] = [];
+    controller.on('error', (e) => errors.push(e));
+    await controller.play({ ...ts(), fallbacks: [m3u8()] });
+    expect(errors[0]?.attempts?.map((a) => `${a.engine}:${a.container}:${a.error.kind}`)).toEqual([
+      'unsupported:ts:unsupported-container',
+      'native:hls:network',
+    ]);
+  });
+
+  it('a new play() starts a new list', async () => {
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines: fakeEngines({
+        native: [new PlaybackError({ kind: 'network' }), new PlaybackError({ kind: 'decode' })],
+      }),
+    });
+    const errors: PlaybackError[] = [];
+    controller.on('error', (e) => errors.push(e));
+    await controller.play(mp4(1));
+    await controller.play(mp4(2));
+    expect(errors.map((e) => e.attempts?.map((a) => a.error.kind))).toEqual([
+      ['network'],
+      ['decode'],
+    ]);
+  });
+});
+
 describe('player controller — real engines with mocked hls.js/mpegts.js', () => {
   let urls: ReturnType<typeof stubObjectUrls>;
   beforeEach(() => {

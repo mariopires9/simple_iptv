@@ -28,9 +28,11 @@ export const sourcesRoutes: RouteObject[] = [
   // SRC-09: compatibility diagnostics of a list, or of the active one (player error action).
   {
     path: 'settings/sources/:sourceId/diagnostics',
+    // `player`: the live stream test explains its findings with the player's texts (PLY-06).
     lazy: lazyScreen(() => import('./diagnostics/DiagnosticsScreen'), 'DiagnosticsScreen', [
       'sources',
       'diagnostics',
+      'player',
     ]),
   },
   {
