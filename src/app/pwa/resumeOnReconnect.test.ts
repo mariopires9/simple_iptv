@@ -1,59 +1,80 @@
-// PWA-04 AC2: when the connection returns, the scheduled syncs that were skipped resume.
+// PWA-04 AC2: when the connection really returns, the scheduled syncs that were skipped resume —
+// once per recovery, never in a loop.
 import { describe, expect, it, vi } from 'vitest';
-import { createConnectivityStore, type ConnectivityEnv } from '@/core/net/connectivity';
+import { PROBE_COOLDOWN_MS } from '@/core/net/connectivity';
+import { fakeConnectivity } from '@/core/net/test-utils/fakeConnectivity';
 import { installResumeOnReconnect } from './resumeOnReconnect';
 
-function setup() {
-  let onLine = true;
-  const listeners = new Set<() => void>();
-  const env: ConnectivityEnv = {
-    onLine: () => onLine,
-    addEventListener: (_type, listener) => listeners.add(listener),
-    removeEventListener: (_type, listener) => listeners.delete(listener),
-    setTimeout: () => 0,
-    clearTimeout: () => undefined,
-  };
-  const store = createConnectivityStore({ env, failureThreshold: 1 });
-  const go = (online: boolean) => {
-    onLine = online;
-    for (const listener of [...listeners]) listener();
-  };
-  return { store, go, listeners };
-}
-
 describe('installResumeOnReconnect', () => {
-  it('resumes once per return to online, not while online', () => {
-    const { store, go } = setup();
+  it('runs on offline → online, not while online', () => {
+    const fake = fakeConnectivity();
     const resume = vi.fn(() => Promise.resolve());
-    const stop = installResumeOnReconnect(store, resume);
+    const stop = installResumeOnReconnect(fake.store, resume);
 
-    store.reportSuccess();
+    fake.store.reportSuccess();
+    fake.go(true);
     expect(resume).not.toHaveBeenCalled();
 
-    go(false);
-    expect(resume).not.toHaveBeenCalled();
-    go(true);
+    fake.go(false);
+    fake.go(true);
     expect(resume).toHaveBeenCalledTimes(1);
-
-    // Unreachable (failures) → online again also resumes.
-    store.reportFailure();
-    store.reportSuccess();
-    expect(resume).toHaveBeenCalledTimes(2);
     stop();
   });
 
+  it('runs on unreachable → online only once a probe confirms it', async () => {
+    const fake = fakeConnectivity({ reachable: false });
+    const resume = vi.fn(() => Promise.resolve());
+    installResumeOnReconnect(fake.store, resume);
+    fake.store.reportFailure();
+    await fake.store.idle();
+    await fake.advance(60_000); // backoff probes keep failing
+    expect(resume).not.toHaveBeenCalled();
+
+    fake.setReachable(true);
+    await fake.advance(60_000);
+    expect(resume).toHaveBeenCalledTimes(1);
+
+    // A provider-only failure afterwards (origin reachable) is not a recovery.
+    await fake.advance(PROBE_COOLDOWN_MS);
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
+
+  it('never overlaps: a recovery while the previous resume runs is ignored', async () => {
+    const fake = fakeConnectivity();
+    let finish!: () => void;
+    const resume = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    installResumeOnReconnect(fake.store, resume);
+    fake.go(false);
+    fake.go(true);
+    fake.go(false);
+    fake.go(true);
+    expect(resume).toHaveBeenCalledTimes(1);
+    finish();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fake.go(false);
+    fake.go(true);
+    expect(resume).toHaveBeenCalledTimes(2);
+  });
+
   it('a failing resume is logged, not thrown; cleanup unsubscribes', async () => {
-    const { store, go, listeners } = setup();
+    const fake = fakeConnectivity();
     const resume = vi.fn(() => Promise.reject(new Error('worker unavailable')));
-    const stop = installResumeOnReconnect(store, resume);
-    go(false);
-    go(true);
+    const stop = installResumeOnReconnect(fake.store, resume);
+    fake.go(false);
+    fake.go(true);
     await Promise.resolve();
     expect(resume).toHaveBeenCalledTimes(1);
     stop();
-    expect(listeners.size).toBe(0);
-    go(false);
-    go(true);
+    expect(fake.listenerCount()).toBe(0);
+    fake.go(false);
+    fake.go(true);
     expect(resume).toHaveBeenCalledTimes(1);
   });
 });

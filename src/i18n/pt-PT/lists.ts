@@ -8,6 +8,7 @@ export const lists = {
     noneLabel: 'Listas: ainda sem lista',
     manage: 'Gerir listas…',
     add: 'Adicionar lista',
+    syncing: 'A atualizar listas… Abrir As minhas listas',
   },
   switchFailed: 'Não foi possível mudar a lista ativa.',
   chooser: {

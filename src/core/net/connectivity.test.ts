@@ -1,148 +1,228 @@
-// PWA-04: connectivity store — navigator.onLine + online/offline events + consecutive failures.
-import { describe, expect, it, vi } from 'vitest';
+// PWA-04: connectivity store — navigator.onLine + events, and request failures checked with a
+// same-origin reachability probe (a provider failure never puts the app "offline").
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  DEFAULT_FAILURE_THRESHOLD,
+  PROBE_COOLDOWN_MS,
+  UNREACHABLE_PROBE_DELAYS_MS,
   createConnectivityStore,
+  createOriginProbe,
   isNetworkBlocked,
-  type ConnectivityEnv,
 } from './connectivity';
+import { fakeConnectivity } from './test-utils/fakeConnectivity';
 
-function fakeEnv(initial: boolean | undefined = true) {
-  let onLine = initial;
-  const listeners = new Map<string, Set<() => void>>();
-  const timers = new Map<number, () => void>();
-  let nextTimer = 1;
-  const env: ConnectivityEnv = {
-    onLine: () => onLine,
-    addEventListener: (type, listener) => {
-      const set = listeners.get(type) ?? new Set();
-      set.add(listener);
-      listeners.set(type, set);
-    },
-    removeEventListener: (type, listener) => listeners.get(type)?.delete(listener),
-    setTimeout: (callback) => {
-      const id = nextTimer++;
-      timers.set(id, callback);
-      return id;
-    },
-    clearTimeout: (handle) => timers.delete(handle as number),
-  };
-  return {
-    env,
-    go(online: boolean) {
-      onLine = online;
-      for (const listener of listeners.get(online ? 'online' : 'offline') ?? []) listener();
-    },
-    listenerCount: () => [...listeners.values()].reduce((n, set) => n + set.size, 0),
-    runTimers() {
-      const pending = [...timers.values()];
-      timers.clear();
-      for (const callback of pending) callback();
-    },
-    timerCount: () => timers.size,
-  };
-}
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
-describe('connectivity store', () => {
+describe('connectivity store — browser state', () => {
   it('follows navigator.onLine and the online/offline events', () => {
-    const fake = fakeEnv(true);
-    const store = createConnectivityStore({ env: fake.env });
+    const fake = fakeConnectivity();
     const listener = vi.fn();
-    store.subscribe(listener);
-    expect(store.getSnapshot()).toBe('online');
+    fake.store.subscribe(listener);
+    expect(fake.store.getSnapshot()).toBe('online');
 
     fake.go(false);
-    expect(store.getSnapshot()).toBe('offline');
-    expect(isNetworkBlocked(store)).toBe(true);
-    expect(listener).toHaveBeenCalledTimes(1);
-
+    expect(fake.store.getSnapshot()).toBe('offline');
+    expect(isNetworkBlocked(fake.store)).toBe(true);
     fake.go(true);
-    expect(store.getSnapshot()).toBe('online');
-    expect(isNetworkBlocked(store)).toBe(false);
+    expect(fake.store.getSnapshot()).toBe('online');
+    expect(isNetworkBlocked(fake.store)).toBe(false);
     expect(listener).toHaveBeenCalledTimes(2);
   });
 
   it('treats an unknown navigator.onLine as online', () => {
-    const store = createConnectivityStore({ env: fakeEnv(undefined).env });
+    const store = createConnectivityStore({
+      env: { ...fakeConnectivity().env, onLine: () => undefined },
+    });
     expect(store.getSnapshot()).toBe('online');
   });
 
-  it(`becomes unreachable after ${DEFAULT_FAILURE_THRESHOLD} consecutive failures`, () => {
-    const fake = fakeEnv(true);
-    const store = createConnectivityStore({ env: fake.env });
-    const listener = vi.fn();
-    store.subscribe(listener);
-    for (let i = 1; i < DEFAULT_FAILURE_THRESHOLD; i += 1) store.reportFailure();
-    expect(store.getSnapshot()).toBe('online');
-    expect(listener).not.toHaveBeenCalled();
-
-    store.reportFailure();
-    expect(store.getSnapshot()).toBe('unreachable');
-    expect(listener).toHaveBeenCalledTimes(1);
-    // Unreachable does not block network actions: the next attempt is the way to find out.
-    expect(isNetworkBlocked(store)).toBe(false);
-  });
-
-  it('a success in between resets the count', () => {
-    const store = createConnectivityStore({ env: fakeEnv().env, failureThreshold: 2 });
-    store.reportFailure();
-    store.reportSuccess();
-    store.reportFailure();
-    expect(store.getSnapshot()).toBe('online');
-    store.reportFailure();
-    expect(store.getSnapshot()).toBe('unreachable');
-    store.reportSuccess();
-    expect(store.getSnapshot()).toBe('online');
-  });
-
-  it('the browser going back online clears the failures (AC2)', () => {
-    const fake = fakeEnv(true);
-    const store = createConnectivityStore({ env: fake.env, failureThreshold: 1 });
-    store.subscribe(() => undefined);
-    store.reportFailure();
-    expect(store.getSnapshot()).toBe('unreachable');
-    fake.go(false);
-    expect(store.getSnapshot()).toBe('offline');
-    fake.go(true);
-    expect(store.getSnapshot()).toBe('online');
-  });
-
-  it('retry() forgets the failures', () => {
-    const store = createConnectivityStore({ env: fakeEnv().env, failureThreshold: 1 });
-    store.reportFailure();
-    store.retry();
-    expect(store.getSnapshot()).toBe('online');
-  });
-
-  it('unreachable clears itself after a while so it cannot stick', () => {
-    const fake = fakeEnv(true);
-    const store = createConnectivityStore({ env: fake.env, failureThreshold: 1 });
-    const listener = vi.fn();
-    store.subscribe(listener);
-    store.reportFailure();
-    store.reportFailure();
-    expect(fake.timerCount()).toBe(1);
-    fake.runTimers();
-    expect(store.getSnapshot()).toBe('online');
-    expect(listener).toHaveBeenCalledTimes(2);
-  });
-
-  it('listens to the browser only while subscribed, and dispose cleans up', () => {
-    const fake = fakeEnv(true);
-    const store = createConnectivityStore({ env: fake.env, failureThreshold: 1 });
-    const offA = store.subscribe(() => undefined);
-    const offB = store.subscribe(() => undefined);
+  it('listens to the browser only while subscribed; dispose cleans up', async () => {
+    const fake = fakeConnectivity({ reachable: false });
+    const offA = fake.store.subscribe(() => undefined);
+    const offB = fake.store.subscribe(() => undefined);
     expect(fake.listenerCount()).toBe(2); // online + offline, once
     offA();
-    expect(fake.listenerCount()).toBe(2);
     offB();
     expect(fake.listenerCount()).toBe(0);
 
-    store.subscribe(() => undefined);
-    store.reportFailure();
-    expect(fake.timerCount()).toBe(1);
-    store.dispose();
+    fake.store.subscribe(() => undefined);
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.timerCount()).toBe(1); // backoff probe
+    fake.store.dispose();
     expect(fake.listenerCount()).toBe(0);
     expect(fake.timerCount()).toBe(0);
+    expect(fake.store.getSnapshot()).toBe('online');
+  });
+});
+
+describe('connectivity store — request failures and the probe', () => {
+  it('a provider failure with a reachable origin changes nothing (no banner)', async () => {
+    const fake = fakeConnectivity({ reachable: true });
+    const listener = vi.fn();
+    fake.store.subscribe(listener);
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.probeCalls()).toBe(1);
+    expect(fake.store.getSnapshot()).toBe('online');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('a dead link is detected: the probe fails → unreachable', async () => {
+    const fake = fakeConnectivity({ reachable: false });
+    fake.store.subscribe(() => undefined);
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.store.getSnapshot()).toBe('unreachable');
+    // Unreachable does not block network actions: a request that works is how it clears.
+    expect(isNetworkBlocked(fake.store)).toBe(false);
+  });
+
+  it('probes are debounced: one at a time, none during the cool-down after a confirmation', async () => {
+    const fake = fakeConnectivity({ reachable: true });
+    fake.store.reportFailure();
+    fake.store.reportFailure();
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.probeCalls()).toBe(1);
+
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.probeCalls()).toBe(1);
+
+    await fake.advance(PROBE_COOLDOWN_MS);
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.probeCalls()).toBe(2);
+
+    // A real success also counts as a confirmation.
+    await fake.advance(PROBE_COOLDOWN_MS);
+    fake.store.reportSuccess();
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.probeCalls()).toBe(2);
+  });
+
+  it('while unreachable: probes again with backoff, never clears on a timer alone', async () => {
+    const fake = fakeConnectivity({ reachable: false });
+    fake.store.subscribe(() => undefined);
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.probeCalls()).toBe(1);
+
+    // Further failures do not add probes; only the backoff schedule does.
+    fake.store.reportFailure();
+    await fake.advance(UNREACHABLE_PROBE_DELAYS_MS[0]! - 1);
+    expect(fake.probeCalls()).toBe(1);
+    await fake.advance(1);
+    expect(fake.probeCalls()).toBe(2);
+    await fake.advance(UNREACHABLE_PROBE_DELAYS_MS[1]!);
+    expect(fake.probeCalls()).toBe(3);
+    expect(fake.store.getSnapshot()).toBe('unreachable');
+
+    // Hours later, still unreachable (the probes keep failing).
+    await fake.advance(3_600_000);
+    expect(fake.store.getSnapshot()).toBe('unreachable');
+
+    fake.setReachable(true);
+    await fake.advance(60_000);
+    expect(fake.store.getSnapshot()).toBe('online');
+    expect(fake.timerCount()).toBe(0);
+  });
+
+  it('a request that succeeds clears unreachable at once', async () => {
+    const fake = fakeConnectivity({ reachable: false });
+    fake.store.reportFailure();
+    await fake.store.idle();
+    fake.store.reportSuccess();
+    expect(fake.store.getSnapshot()).toBe('online');
+    expect(fake.timerCount()).toBe(0);
+  });
+
+  it('retry() probes now (banner "Try again")', async () => {
+    const fake = fakeConnectivity({ reachable: false });
+    fake.store.reportFailure();
+    await fake.store.idle();
+    fake.setReachable(true);
+    fake.store.retry();
+    await fake.store.idle();
+    expect(fake.probeCalls()).toBe(2);
+    expect(fake.store.getSnapshot()).toBe('online');
+  });
+
+  it('without a probe (worker, tests) failures never change the state', async () => {
+    const store = createConnectivityStore({ env: fakeConnectivity().env });
+    store.reportFailure();
+    await store.idle();
+    expect(store.getSnapshot()).toBe('online');
+  });
+
+  it('no probe while the browser reports offline', async () => {
+    const fake = fakeConnectivity({ online: false, reachable: false });
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.probeCalls()).toBe(0);
+    expect(fake.store.getSnapshot()).toBe('offline');
+  });
+});
+
+describe('connectivity store — recovery', () => {
+  it('fires once per real recovery: offline→online and confirmed unreachable→online', async () => {
+    const fake = fakeConnectivity({ reachable: false });
+    const recovered = vi.fn();
+    fake.store.onRecovery(recovered);
+
+    fake.store.reportSuccess();
+    fake.go(true); // already online: not a recovery
+    expect(recovered).not.toHaveBeenCalled();
+
+    fake.go(false);
+    fake.go(true);
+    expect(recovered).toHaveBeenCalledTimes(1);
+
+    await fake.advance(PROBE_COOLDOWN_MS); // past the cool-down of the success above
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(fake.store.getSnapshot()).toBe('unreachable');
+    fake.setReachable(true);
+    fake.store.retry();
+    await fake.store.idle();
+    expect(recovered).toHaveBeenCalledTimes(2);
+
+    // Provider-only failures (origin reachable) never fake a recovery.
+    await fake.advance(PROBE_COOLDOWN_MS);
+    fake.store.reportFailure();
+    await fake.store.idle();
+    expect(recovered).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('createOriginProbe', () => {
+  it('HEADs the app base with a unique query and no cache; any answer counts', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(new Response(null, { status: 404 })));
+    const probe = createOriginProbe('https://app.example.test/simple_iptv/', fetchImpl);
+    await expect(probe()).resolves.toBe(true);
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toMatch(/^https:\/\/app\.example\.test\/simple_iptv\/\?connectivity-probe=\d+$/);
+    expect(init).toMatchObject({ method: 'HEAD', cache: 'no-store', credentials: 'omit' });
+  });
+
+  it('a network failure → false; a hang times out → false', async () => {
+    expect(
+      await createOriginProbe('https://app.example.test/', () =>
+        Promise.reject(new TypeError('Failed to fetch')),
+      )(),
+    ).toBe(false);
+
+    vi.useFakeTimers();
+    const hanging = (_url: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    const result = createOriginProbe('https://app.example.test/', hanging, 100)();
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(result).resolves.toBe(false);
+    vi.useRealTimers();
   });
 });

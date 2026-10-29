@@ -9,10 +9,12 @@ export type {
   SafeExternalLink,
 } from './url';
 export {
-  DEFAULT_FAILURE_THRESHOLD,
-  DEFAULT_UNREACHABLE_RESET_MS,
+  PROBE_COOLDOWN_MS,
+  PROBE_TIMEOUT_MS,
+  UNREACHABLE_PROBE_DELAYS_MS,
   connectivity,
   createConnectivityStore,
+  createOriginProbe,
   isNetworkBlocked,
 } from './connectivity';
 export type {
@@ -20,6 +22,7 @@ export type {
   ConnectivityStatus,
   ConnectivityStore,
   ConnectivityStoreOptions,
+  ReachabilityProbe,
 } from './connectivity';
 export { DEFAULT_TIMEOUT_MS, fetchJson, fetchStream, fetchText, identityRewriter } from './http';
 export type {

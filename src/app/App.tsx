@@ -13,6 +13,7 @@ import { installChunkReload } from './chunkReload';
 import { installDataDeletionWatch } from './dataDeletionWatch';
 import { DatabaseUnavailableScreen, useDatabaseCheck } from './DatabaseUnavailableScreen';
 import { installResumeOnReconnect } from './pwa/resumeOnReconnect';
+import { scheduleStartupSync } from './pwa/startupSync';
 import { UpdatePrompt } from './pwa/UpdatePrompt';
 import { AppRouter, getAppRouter } from './router';
 import { StartupIndicator } from './StartupIndicator';
@@ -60,6 +61,8 @@ export function App() {
   useEffect(() => installResumeOnReconnect(), []);
 
   const routerReady = db.status === 'ready' && languageRestored;
+  // SRC-07 AC5: lists not synced for 24 h are refreshed once the app is up and idle.
+  useEffect(() => (routerReady ? scheduleStartupSync() : undefined), [routerReady]);
   useEffect(() => {
     if (!routerReady) return undefined;
     const router = getAppRouter();

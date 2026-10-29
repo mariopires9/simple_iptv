@@ -15,8 +15,9 @@ import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { log } from '@/core/log';
+import { connectivity, isNetworkBlocked } from '@/core/net';
 import { t } from '@/i18n';
-import { StateView, useDelayedFlag, useNetworkBlocked, visuallyHidden } from '@/ui/state';
+import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
 import { AUDIO_CHECK_DELAY_MS, audioMissing } from './audioCheck';
@@ -176,6 +177,11 @@ export function PlayerView({
     error: PlaybackError;
     /** The stream had played before this failure (a drop, not a refusal). */
     started: boolean;
+    /**
+     * PWA-04: the browser reported no network when it failed (captured then, not re-derived
+     * later): explained as "no connection", and retried once when the connection returns.
+     */
+    offline: boolean;
   }>();
   const [readyFor, setReadyFor] = useState<object>();
   const [autoplayMuted, setAutoplayMuted] = useState(false);
@@ -222,6 +228,13 @@ export function PlayerView({
       if (!current || timer !== undefined) return;
       failed = true;
       const r = reconnects.current;
+      // PWA-04: offline, a network failure is not worth reconnect attempts — wait for the
+      // connection instead (see the effect below), without using up the live reconnects.
+      if ((e.kind === 'network' || e.kind === 'blocked') && isNetworkBlocked()) {
+        log.info('player: offline, waiting for the connection', { kind: e.kind });
+        setFailure({ load, error: e, started: r.started, offline: true });
+        return;
+      }
       const delay = LIVE_RECONNECT_DELAYS_MS[r.count];
       if (isLiveRef.current && isTransientFailure(e, r.started) && delay !== undefined) {
         r.count += 1;
@@ -234,7 +247,7 @@ export function PlayerView({
         }, delay);
         return;
       }
-      setFailure({ load, error: e, started: r.started });
+      setFailure({ load, error: e, started: r.started, offline: false });
       onFinalErrorRef.current?.(e);
     });
     const offNotice = controller.on('notice', (notice) => {
@@ -427,6 +440,24 @@ export function PlayerView({
     setReloads((n) => n + 1);
   };
 
+  // PWA-04: a load that failed while offline is retried once, automatically, when the
+  // connection returns (a new failure offline waits for the next return).
+  const waitingForConnection = failure?.load === load && failure.offline;
+  useEffect(() => {
+    if (!waitingForConnection) return undefined;
+    const retryOnce = () => {
+      log.info('player: connection back, retrying');
+      setReloads((n) => n + 1);
+    };
+    const off = connectivity.onRecovery(retryOnce);
+    // Already back before this effect ran: retry on the next tick.
+    const timer = connectivity.getSnapshot() === 'online' ? setTimeout(retryOnce, 0) : undefined;
+    return () => {
+      off();
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [waitingForConnection]);
+
   const isLive = kind === 'live';
   const fullscreen = useFullscreen({
     region,
@@ -464,15 +495,13 @@ export function PlayerView({
     }
   }, [autoFocus, region]);
 
-  // PWA-04: a failure while the browser reports no network is explained as such.
-  const offline = useNetworkBlocked();
   const errorText =
     error && failure
       ? describePlaybackError(error, {
           kind,
           requiredHeaders,
           afterStart: failure.started,
-          offline,
+          offline: failure.offline,
         })
       : undefined;
   const showUnmute = autoplayMuted && silent && error === undefined;

@@ -1,7 +1,7 @@
-// PWA-04: the HTTP helpers feed the connectivity store — connection failures count, CORS-like
-// blocks do not (a provider without CORS must not look like "no connection"), any answer resets.
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_FAILURE_THRESHOLD, connectivity } from './connectivity';
+// PWA-04: the HTTP helpers feed the connectivity store — a timeout or fetch failure asks for a
+// reachability probe (the store decides), mixed content never does, any answer is a success.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { connectivity } from './connectivity';
 import { fetchText, type FetchImpl } from './http';
 
 const URL = 'https://panel.example.test/player_api.php';
@@ -11,40 +11,48 @@ const hanging: FetchImpl = (_url, init) =>
     init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
   });
 
+let failure: ReturnType<typeof vi.spyOn>;
+let success: ReturnType<typeof vi.spyOn>;
+beforeEach(() => {
+  failure = vi.spyOn(connectivity, 'reportFailure');
+  success = vi.spyOn(connectivity, 'reportSuccess');
+});
 afterEach(() => {
-  connectivity.retry();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-async function timeOut(): Promise<void> {
-  vi.useFakeTimers();
-  const pending = fetchText(URL, { fetchImpl: hanging, timeoutMs: 10 }).catch(() => undefined);
-  await vi.advanceTimersByTimeAsync(10);
-  await pending;
-  vi.useRealTimers();
-}
-
 describe('HTTP helpers → connectivity', () => {
-  it(`${DEFAULT_FAILURE_THRESHOLD} timeouts in a row make the network unreachable`, async () => {
-    for (let i = 0; i < DEFAULT_FAILURE_THRESHOLD; i += 1) await timeOut();
-    expect(connectivity.getSnapshot()).toBe('unreachable');
+  it('a timeout reports a possible connection failure', async () => {
+    vi.useFakeTimers();
+    const pending = fetchText(URL, { fetchImpl: hanging, timeoutMs: 10 }).catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(10);
+    await pending;
+    expect(failure).toHaveBeenCalledTimes(1);
+    expect(success).not.toHaveBeenCalled();
   });
 
-  it('any server answer (even an HTTP error) clears the failures', async () => {
-    for (let i = 0; i < DEFAULT_FAILURE_THRESHOLD; i += 1) await timeOut();
+  it('a fetch TypeError (CORS/DNS look-alike) reports a possible failure — the probe decides', async () => {
+    await fetchText(URL, {
+      fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')),
+    }).catch(() => undefined);
+    expect(failure).toHaveBeenCalledTimes(1);
+  });
+
+  it('mixed content never does (deterministic, not the link)', async () => {
+    vi.stubGlobal('location', { protocol: 'https:' });
+    await fetchText('http://panel.example.test/x', {
+      fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')),
+    }).catch(() => undefined);
+    vi.unstubAllGlobals();
+    expect(failure).not.toHaveBeenCalled();
+  });
+
+  it('any server answer (even an HTTP error) is a success', async () => {
     await fetchText(URL, {
       fetchImpl: () => Promise.resolve(new Response('', { status: 500 })),
     }).catch(() => undefined);
-    expect(connectivity.getSnapshot()).toBe('online');
-  });
-
-  it('blocked (CORS-like) failures never count', async () => {
-    for (let i = 0; i < DEFAULT_FAILURE_THRESHOLD + 2; i += 1) {
-      await fetchText(URL, {
-        fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')),
-      }).catch(() => undefined);
-    }
-    expect(connectivity.getSnapshot()).toBe('online');
+    expect(success).toHaveBeenCalledTimes(1);
+    expect(failure).not.toHaveBeenCalled();
   });
 });

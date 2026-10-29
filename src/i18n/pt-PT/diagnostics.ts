@@ -10,6 +10,7 @@ export const diagnostics = {
   runAgain: 'Verificar novamente',
   copy: 'Copiar relatório',
   copied: 'Relatório copiado',
+  formatSaveFailed: 'Não foi possível mudar o formato em direto. Tente novamente.',
   copyFailed:
     'Não foi possível copiar o relatório automaticamente. Selecione o texto abaixo e copie-o.',
   reportLabel: 'Relatório de diagnóstico',
@@ -60,6 +61,8 @@ export const diagnostics = {
         offline: 'Não verificado: não há ligação à rede.',
         'no-secret':
           'Não verificado: não foi possível ler o acesso ou o endereço guardados. Edite a lista e introduza-os novamente.',
+        'invalid-address':
+          'Não verificado: o endereço do servidor guardado nesta lista não é válido. Edite a lista e corrija-o.',
         'not-applicable': 'Não é necessário: a lista é um ficheiro neste dispositivo.',
       },
       httpStatus: (status: string) => `Estado HTTP ${status}.`,
@@ -69,9 +72,9 @@ export const diagnostics = {
       reasons: {
         ok: 'Os canais em direto podem ser reproduzidos neste browser no formato escolhido.',
         'format-not-allowed':
-          'A sua conta não permite o formato em direto escolhido. Escolha outro nas Definições.',
+          'A sua conta não permite o formato em direto escolhido. Escolha outro para esta lista.',
         'format-unplayable':
-          'Este browser não consegue reproduzir o formato em direto escolhido. Escolha outro nas Definições.',
+          'Este browser não consegue reproduzir o formato em direto escolhido. Escolha outro para esta lista.',
         'none-playable':
           'Este browser não consegue reproduzir nenhum formato em direto desta lista.',
         'per-channel':
@@ -132,13 +135,13 @@ export const diagnostics = {
     'check-credentials':
       'Verifique o nome de utilizador, a palavra-passe e o endereço do servidor da lista.',
     'contact-provider': 'Pergunte ao seu fornecedor se o serviço funciona em browsers.',
-    'switch-live-format': 'Mude o formato em direto preferido em Definições › Reprodução.',
+    'switch-live-format': 'Mude o formato em direto preferido desta lista.',
     retry: 'Tente novamente daqui a pouco.',
   },
   links: {
     editList: 'Editar lista',
     addList: 'Adicionar lista',
-    settings: 'Abrir Definições',
+    useFormat: (format: string) => `Usar ${format} nesta lista`,
   },
   report: {
     heading: 'Simple IPTV — diagnóstico de compatibilidade',

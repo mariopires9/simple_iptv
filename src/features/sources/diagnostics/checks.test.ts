@@ -64,6 +64,7 @@ describe('checkApi (NetError classification)', () => {
     [{ outcome: 'ok' as const }, 'ok', 'ok'],
     [{ outcome: 'offline' as const }, 'skipped', 'offline'],
     [{ outcome: 'no-secret' as const }, 'skipped', 'no-secret'],
+    [{ outcome: 'invalid-address' as const }, 'error', 'invalid-address'],
     [{ outcome: 'not-applicable' as const }, 'skipped', 'not-applicable'],
     [err({ kind: 'blocked', hint: 'mixed-content' }), 'error', 'mixed-content'],
     [err({ kind: 'blocked', hint: 'cors' }), 'error', 'cors'],
@@ -120,6 +121,24 @@ describe('checkLiveFormat', () => {
       actions: ['switch-live-format'],
       allowed: ['m3u8'],
     });
+  });
+
+  it('suggests the format that works for this list', () => {
+    expect(
+      checkLiveFormat({ kind: 'xtream', configured: 'ts', allowed: ['m3u8'], caps: CHROME })
+        .suggested,
+    ).toBe('m3u8');
+    expect(
+      checkLiveFormat({ kind: 'xtream', configured: 'm3u8', allowed: ['ts'], caps: CHROME })
+        .suggested,
+    ).toBe('ts');
+    // TS chosen on a browser without MSE/MMS: HLS plays natively.
+    expect(checkLiveFormat({ kind: 'xtream', configured: 'ts', caps: OLD_IPHONE }).suggested).toBe(
+      'm3u8',
+    );
+    expect(checkLiveFormat({ kind: 'xtream', configured: 'auto', caps: CHROME }).suggested).toBe(
+      undefined,
+    );
   });
 
   it('Xtream TS chosen on a browser without MSE/MMS → warning, switch format', () => {

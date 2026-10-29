@@ -287,8 +287,14 @@ async function request<T>(
       throw error.error;
     }
     const netError = classify(error, state);
-    // Only failures that point at the device's own connection (not CORS: see ./connectivity).
-    if (netError.kind === 'offline' || netError.kind === 'timeout') connectivity.reportFailure();
+    // A timeout or a fetch failure may be the device's link (or just this provider): the store
+    // checks with a probe of the app's own origin (./connectivity). Mixed content is deterministic.
+    if (
+      netError.kind === 'timeout' ||
+      (netError.kind === 'blocked' && netError.hint !== 'mixed-content')
+    ) {
+      connectivity.reportFailure();
+    }
     log.warn('Network request failed', {
       kind: netError.kind,
       status: netError.status,

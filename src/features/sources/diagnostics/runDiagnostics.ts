@@ -8,7 +8,11 @@ import type { Source } from '@/core/db';
 import { log } from '@/core/log';
 import { fetchStream, isNetError, isNetworkBlocked, shortenUrl } from '@/core/net';
 import { getCapabilities, type Capabilities } from '@/core/platform';
-import { testConnection, type XtreamConnectionReport } from '@/providers/xtream';
+import {
+  InvalidServerUrlError,
+  testConnection,
+  type XtreamConnectionReport,
+} from '@/providers/xtream';
 import { readXtreamPassword } from '../manage';
 import {
   checkApi,
@@ -126,10 +130,11 @@ async function probeXtream(
       ...(signal ? { signal } : {}),
     });
   } catch (error) {
-    // `testConnection` returns network failures in the report; it throws on an invalid address.
+    // `testConnection` returns network failures in the report; it throws on an invalid address
+    // (e.g. a stored server address that no longer validates). Anything else is a bug: rethrown.
     if (isNetError(error)) return { probe: errorProbe(error, signal) };
-    log.warn('Diagnostics: the connection test failed', { error });
-    return { probe: { outcome: 'no-secret' } };
+    if (error instanceof InvalidServerUrlError) return { probe: { outcome: 'invalid-address' } };
+    throw error;
   }
   const out: ApiOutcome = {
     probe: report.error ? { outcome: 'error', error: report.error } : { outcome: 'ok' },

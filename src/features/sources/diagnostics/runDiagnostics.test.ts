@@ -139,6 +139,24 @@ describe('runDiagnostics — Xtream', () => {
     expect(checks.api).toMatchObject({ status: 'skipped', reason: 'no-secret' });
   });
 
+  it('an invalid stored server address → its own result, not "no secret"', async () => {
+    const checks = byId(
+      await runDiagnostics(source({ serverUrl: 'ftp://nope' }), {
+        deps: deps({ testXtream: testConnection }),
+      }),
+    );
+    expect(checks.api).toMatchObject({
+      status: 'error',
+      reason: 'invalid-address',
+      actions: ['check-credentials'],
+    });
+  });
+
+  it('an unexpected (non-network) error is not hidden as a check result', async () => {
+    const testXtream = vi.fn(() => Promise.reject(new Error('bug')));
+    await expect(runDiagnostics(source(), { deps: deps({ testXtream }) })).rejects.toThrow('bug');
+  });
+
   it('against the synthetic panel (real client): API ok, account formats read', async () => {
     server.use(...xtreamHandlers());
     const checks = byId(

@@ -3,7 +3,7 @@
 import 'fake-indexeddb/auto';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { wipeAll } from '@/core/db';
+import { sourcesRepo, wipeAll } from '@/core/db';
 import { NetError } from '@/core/net';
 import type { Capabilities } from '@/core/platform';
 import { t } from '@/i18n';
@@ -116,6 +116,34 @@ describe('DiagnosticsScreen', () => {
     expect(screen.getByTestId('check-browser')).toHaveAttribute('data-status', 'ok');
     expect(screen.getByTestId('check-codecs')).toHaveAttribute('data-status', 'warning');
     expect(screen.getByText(text.summary.error)).toBeInTheDocument();
+  });
+
+  it('"switch live format" changes THIS list (not the active one) and checks again', async () => {
+    await seedSource({ ...xtream, prefs: { liveFormat: 'ts' } }, PASS);
+    await seedSource(makeSource({ id: 'other', kind: 'xtream', name: 'Other' }));
+    await setStoredActive('other');
+    const { user } = await show({
+      deps: deps({
+        ok: true,
+        corsApi: 'ok',
+        error: undefined,
+        account: { status: 'Active', formats: ['m3u8'] },
+      }),
+    });
+    const live = await screen.findByTestId('check-liveFormat');
+    expect(live).toHaveAttribute('data-status', 'warning');
+    expect(within(live).queryByRole('link', { name: /settings/i })).toBeNull();
+
+    await user.click(
+      within(live).getByRole('button', {
+        name: t.diagnostics.links.useFormat(t.diagnostics.checks.liveFormat.formats.m3u8),
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('check-liveFormat')).toHaveAttribute('data-status', 'ok'),
+    );
+    expect((await sourcesRepo.get('tv'))?.prefs.liveFormat).toBe('m3u8');
+    expect((await sourcesRepo.get('other'))?.prefs.liveFormat).toBe('auto');
   });
 
   it('"Copy report" copies a report without credentials or host (AC3)', async () => {

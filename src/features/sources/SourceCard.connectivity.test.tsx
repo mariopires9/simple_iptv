@@ -68,4 +68,10 @@ describe('SourceCard', () => {
     setOnline(true);
     expect(refresh).toBeEnabled();
   });
+
+  it('a local file keeps "Refresh" offline (it asks for the file again, SRC-06)', () => {
+    show(makeSource({ id: 'f', kind: 'm3u-file', name: 'File' }));
+    setOnline(false);
+    expect(screen.getByRole('button', { name: actions.refresh })).toBeEnabled();
+  });
 });

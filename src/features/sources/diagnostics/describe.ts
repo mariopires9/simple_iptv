@@ -1,5 +1,6 @@
 // Localized text of the diagnostics checks (SRC-09, ADR-015), shared by the screen and the copied
 // report so both always say the same thing.
+import type { LiveFormat } from '@/core/db';
 import type { Messages } from '@/i18n';
 import type { EngineChoice } from '@/player';
 import type { CheckResult, CheckStatus, DiagnosticAction } from './checks';
@@ -14,6 +15,8 @@ export interface DescribedCheck {
   /** What was observed (formats, flags, codecs). */
   facts: string[];
   actions: { code: DiagnosticAction; text: string }[];
+  /** Live format check: the preference that would work for this list (`switch-live-format`). */
+  suggestedFormat?: LiveFormat;
 }
 
 type DiagnosticsText = Messages['diagnostics'];
@@ -90,7 +93,7 @@ function explanation(check: CheckResult, text: DiagnosticsText): string {
 }
 
 export function describeCheck(check: CheckResult, text: DiagnosticsText): DescribedCheck {
-  return {
+  const described: DescribedCheck = {
     id: check.id,
     status: check.status,
     title: text.checks[check.id].title,
@@ -99,4 +102,8 @@ export function describeCheck(check: CheckResult, text: DiagnosticsText): Descri
     facts: facts(check, text),
     actions: check.actions.map((code) => ({ code, text: text.actions[code] })),
   };
+  if (check.id === 'liveFormat' && check.suggested !== undefined) {
+    described.suggestedFormat = check.suggested;
+  }
+  return described;
 }

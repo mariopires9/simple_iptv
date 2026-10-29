@@ -1,7 +1,9 @@
 // Pending work resumes when the connection returns (PWA-04 AC2): the scheduled catalogue refresh
-// (SRC-07 AC5, `startBackgroundSyncIfDue`) skips every source while the device is offline, so the
-// refreshes that became due meanwhile are started on the way back online. The worker module is
-// loaded on demand only then (it stays out of the initial bundle).
+// (SRC-07 AC5) skips every list while the device is offline, so the refreshes that became due
+// meanwhile are started on a real recovery — `offline` → `online` (browser) or `unreachable` →
+// `online` confirmed by a probe or a request (see core/net/connectivity). At most one run per
+// recovery, and never while the previous one is still being dispatched. The sync module is loaded
+// on demand only then (it stays out of the initial bundle).
 import { log } from '@/core/log';
 import { connectivity, type ConnectivityStore } from '@/core/net/connectivity';
 
@@ -9,27 +11,26 @@ import { connectivity, type ConnectivityStore } from '@/core/net/connectivity';
 export type ResumeSync = () => Promise<unknown>;
 
 const defaultResume: ResumeSync = async () => {
-  const { startBackgroundSyncIfDue } = await import('@/worker');
-  return startBackgroundSyncIfDue();
+  const { startDueSyncs } = await import('@/features/sources/dueSync');
+  return startDueSyncs();
 };
 
-/**
- * Watches the connectivity store and runs `resume` on every transition back to `online`.
- * Returns the cleanup (unsubscribes).
- */
+/** Runs `resume` once per recovery reported by the store. Returns the cleanup. */
 export function installResumeOnReconnect(
   store: ConnectivityStore = connectivity,
   resume: ResumeSync = defaultResume,
 ): () => void {
-  let previous = store.getSnapshot();
-  return store.subscribe(() => {
-    const status = store.getSnapshot();
-    const reconnected = previous !== 'online' && status === 'online';
-    previous = status;
-    if (!reconnected) return;
+  let running = false;
+  return store.onRecovery(() => {
+    if (running) return;
+    running = true;
     log.info('Connection restored: resuming scheduled syncs');
-    resume().catch((error: unknown) => {
-      log.warn('Resuming scheduled syncs failed', { error });
-    });
+    resume()
+      .catch((error: unknown) => {
+        log.warn('Resuming scheduled syncs failed', { error });
+      })
+      .finally(() => {
+        running = false;
+      });
   });
 }

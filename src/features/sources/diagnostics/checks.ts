@@ -42,6 +42,7 @@ export type ApiReason =
   | 'invalid-response'
   | 'offline'
   | 'no-secret'
+  | 'invalid-address'
   | 'not-applicable';
 export type LiveFormatReason =
   | 'ok'
@@ -75,6 +76,8 @@ export type LiveFormatCheck = CheckBase<'liveFormat', LiveFormatReason> & {
   configured?: LiveFormat;
   /** Xtream: `allowed_output_formats` of the account, when the API answered. */
   allowed?: string[];
+  /** Xtream, with `switch-live-format`: the preference that would work for this list. */
+  suggested?: LiveFormat;
   support: LiveFormatSupport;
 };
 export type BrowserCheck = CheckBase<'browser', BrowserReason> & {
@@ -140,6 +143,7 @@ export type ApiProbe =
   | { outcome: 'error'; error: NetError }
   | { outcome: 'offline' }
   | { outcome: 'no-secret' }
+  | { outcome: 'invalid-address' }
   | { outcome: 'not-applicable' };
 
 /**
@@ -160,6 +164,8 @@ export function checkApi(probe: ApiProbe, kind: SourceKind): ApiCheck {
       return result('skipped', 'offline', ['check-network']);
     case 'no-secret':
       return result('skipped', 'no-secret', ['check-credentials']);
+    case 'invalid-address':
+      return result('error', 'invalid-address', ['check-credentials']);
     case 'not-applicable':
       return result('skipped', 'not-applicable');
   }
@@ -249,21 +255,19 @@ export function checkLiveFormat(input: {
   if (configured === 'auto') return { ...xtream, status: 'ok', reason: 'ok', actions: [] };
 
   const wanted = configured === 'ts' ? 'ts' : 'm3u8';
+  // The other explicit format when it works here, otherwise "auto" (TS first, HLS fallback).
+  const other: LiveFormat = configured === 'ts' ? 'm3u8' : 'ts';
+  const suggested: LiveFormat = (other === 'ts' ? tsOk : hlsOk) ? other : 'auto';
+  const switchTo = {
+    status: 'warning' as const,
+    actions: ['switch-live-format' as const],
+    suggested,
+  };
   if (allowed !== undefined && !allows(allowed, wanted)) {
-    return {
-      ...xtream,
-      status: 'warning',
-      reason: 'format-not-allowed',
-      actions: ['switch-live-format'],
-    };
+    return { ...xtream, ...switchTo, reason: 'format-not-allowed' };
   }
   if (!(configured === 'ts' ? ts : hls)) {
-    return {
-      ...xtream,
-      status: 'warning',
-      reason: 'format-unplayable',
-      actions: ['switch-live-format'],
-    };
+    return { ...xtream, ...switchTo, reason: 'format-unplayable' };
   }
   return { ...xtream, status: 'ok', reason: 'ok', actions: [] };
 }

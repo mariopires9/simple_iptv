@@ -9,6 +9,8 @@ export const diagnostics = {
   runAgain: 'Check again',
   copy: 'Copy report',
   copied: 'Report copied',
+  /** The live format of the list could not be saved. */
+  formatSaveFailed: 'The live format could not be changed. Try again.',
   copyFailed: 'The report could not be copied automatically. Select the text below and copy it.',
   reportLabel: 'Diagnostics report',
   notFound: {
@@ -58,6 +60,8 @@ export const diagnostics = {
         offline: 'Not checked: there is no network connection.',
         'no-secret':
           'Not checked: the saved login or address could not be read. Edit the list and enter it again.',
+        'invalid-address':
+          'Not checked: the saved server address of this list is not valid. Edit the list and correct it.',
         'not-applicable': 'Not needed: the list is a file on this device.',
       },
       /** Argument: HTTP status code. */
@@ -68,9 +72,9 @@ export const diagnostics = {
       reasons: {
         ok: 'Live channels can play in this browser in the chosen format.',
         'format-not-allowed':
-          'Your account does not allow the chosen live format. Choose another one in Settings.',
+          'Your account does not allow the chosen live format. Choose another one for this list.',
         'format-unplayable':
-          'This browser cannot play the chosen live format. Choose another one in Settings.',
+          'This browser cannot play the chosen live format. Choose another one for this list.',
         'none-playable': 'This browser cannot play any live format this list offers.',
         'per-channel':
           'Each channel’s address decides its format; this browser can play both MPEG-TS and HLS.',
@@ -134,13 +138,14 @@ export const diagnostics = {
     'check-network': 'Check your internet connection.',
     'check-credentials': 'Check the username, password and server address of the list.',
     'contact-provider': 'Ask your provider whether their service works in web browsers.',
-    'switch-live-format': 'Change the preferred live format in Settings › Playback.',
+    'switch-live-format': 'Change the preferred live format of this list.',
     retry: 'Try again in a moment.',
   },
   links: {
     editList: 'Edit list',
     addList: 'Add a list',
-    settings: 'Open Settings',
+    /** Argument: format name. Changes this list's preferred live format. */
+    useFormat: (format: string) => `Use ${format} for this list`,
   },
   report: {
     heading: 'Simple IPTV — compatibility diagnostics',

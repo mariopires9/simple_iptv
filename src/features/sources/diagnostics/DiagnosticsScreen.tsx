@@ -13,7 +13,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useEffect, useId, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router';
-import { sourcesRepo, type Source } from '@/core/db';
+import { sourcesRepo, type LiveFormat, type Source } from '@/core/db';
 import { log } from '@/core/log';
 import { loadActiveSource } from '@/core/session';
 import { t } from '@/i18n';
@@ -21,6 +21,7 @@ import { DelayedLoading, ProgressPanel, StateView, errorDetails, useToast } from
 import { overallStatus, type CheckStatus, type DiagnosticAction } from './checks';
 import { describeCheck, type DescribedCheck } from './describe';
 import { buildReport } from './report';
+import { saveListLiveFormat } from './saveListLiveFormat';
 import {
   runDiagnostics as defaultRun,
   type DiagnosticsDeps,
@@ -161,7 +162,7 @@ type RunState =
   | { status: 'failed'; error: unknown };
 
 function SourceDiagnostics({
-  source,
+  source: initialSource,
   deps,
   writeClipboard,
 }: {
@@ -171,6 +172,8 @@ function SourceDiagnostics({
 }) {
   const text = t.diagnostics;
   const toast = useToast();
+  // The list as diagnosed; replaced when an action changes it (live format).
+  const [source, setSource] = useState(initialSource);
   const [run, setRun] = useState<RunState>({ status: 'running' });
   const [round, setRound] = useState(0);
   const [manualCopy, setManualCopy] = useState<string>();
@@ -195,6 +198,20 @@ function SourceDiagnostics({
     setRun({ status: 'running' });
     setManualCopy(undefined);
     setRound((n) => n + 1);
+  };
+
+  /** SRC-09: changes THIS list's live format (not the active list's), then checks again. */
+  const switchFormat = async (liveFormat: LiveFormat) => {
+    try {
+      const updated = await saveListLiveFormat(source.id, liveFormat);
+      if (!updated) return;
+      setRun({ status: 'running' });
+      setManualCopy(undefined);
+      setSource(updated);
+    } catch (error) {
+      log.warn('Diagnostics: the live format could not be saved', { error });
+      toast.show({ message: text.formatSaveFailed, severity: 'error' });
+    }
   };
 
   if (run.status === 'running') return <ProgressPanel phase={text.running} />;
@@ -244,7 +261,12 @@ function SourceDiagnostics({
       <Typography role="status">{text.summary[overallStatus(result.checks)]}</Typography>
       <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
         {checks.map((check) => (
-          <CheckItem key={check.id} check={check} source={source} />
+          <CheckItem
+            key={check.id}
+            check={check}
+            source={source}
+            onSwitchFormat={(format) => void switchFormat(format)}
+          />
         ))}
       </Box>
       <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
@@ -299,14 +321,20 @@ function actionLink(
       return source.kind === 'xtream' ? { to: edit, label: links.editList } : undefined;
     case 'local-file':
       return { to: LISTS_PATH, label: links.addList };
-    case 'switch-live-format':
-      return { to: '/settings', label: links.settings };
     default:
       return undefined;
   }
 }
 
-function CheckItem({ check, source }: { check: DescribedCheck; source: Source }) {
+function CheckItem({
+  check,
+  source,
+  onSwitchFormat,
+}: {
+  check: DescribedCheck;
+  source: Source;
+  onSwitchFormat: (format: LiveFormat) => void;
+}) {
   const headingId = useId();
   const Icon = STATUS_ICONS[check.status];
   return (
@@ -349,6 +377,17 @@ function CheckItem({ check, source }: { check: DescribedCheck; source: Source })
                       {link && (
                         <Button component={Link} to={link.to} size="small" sx={{ ml: -1 }}>
                           {link.label}
+                        </Button>
+                      )}
+                      {action.code === 'switch-live-format' && check.suggestedFormat && (
+                        <Button
+                          size="small"
+                          sx={{ ml: -1 }}
+                          onClick={() => onSwitchFormat(check.suggestedFormat!)}
+                        >
+                          {t.diagnostics.links.useFormat(
+                            t.diagnostics.checks.liveFormat.formats[check.suggestedFormat],
+                          )}
                         </Button>
                       )}
                     </Box>

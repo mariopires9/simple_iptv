@@ -39,15 +39,15 @@ export const player = {
       title: 'Problema de ligação',
       message: 'Não foi possível carregar a emissão devido a um erro de rede. Tente novamente.',
     },
-    offline: {
-      title: 'Sem ligação',
-      message:
-        'A reprodução precisa de ligação à internet. Verifique a sua ligação e tente novamente.',
-    },
     networkLive: {
       title: 'Ligação perdida',
       message:
         'Não foi possível restabelecer a ligação ao canal após várias tentativas. Verifique a sua ligação e tente novamente, ou mude de canal.',
+    },
+    offline: {
+      title: 'Sem ligação',
+      message:
+        'A reprodução precisa de ligação à internet. Verifique a sua ligação e tente novamente.',
     },
     blocked: {
       title: 'Emissão bloqueada pelo browser',
