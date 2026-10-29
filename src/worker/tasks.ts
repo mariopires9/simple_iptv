@@ -2,6 +2,9 @@
 // Lives outside core because tasks use providers (core must not import them). Only data.worker.ts
 // imports this module at runtime; the main thread imports it with `import type` (client.ts).
 // How to add a task: see the header of src/core/worker/tasks.ts.
+import type { Source } from '@/core/db';
+import type { UrlRewriter } from '@/core/net';
+import { rewritersForSource } from '@/core/session';
 import { WorkerTaskError, type TaskContext, type TaskRegistry } from '@/core/worker';
 import {
   syncXtreamSource,
@@ -38,6 +41,10 @@ export interface SelfTestOutput {
   steps: number;
 }
 
+/** PRX-01: a list's data requests (API, M3U download) follow its personal proxy routing. */
+const dataRewriterFor = (source: Source): Promise<UrlRewriter> =>
+  rewritersForSource(source).then((rewriters) => rewriters.data);
+
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Demo task: exercises progress, cancellation and error propagation. */
@@ -58,7 +65,10 @@ export async function selfTest(input: SelfTestInput, ctx: TaskContext): Promise<
  * queues its search index rebuild (SCH-01).
  */
 export function syncXtream(input: SyncXtreamInput, ctx: TaskContext): Promise<SyncXtreamResult> {
-  return syncXtreamSource(input, ctx, { afterSync: rebuildSearchIndexAfterSync });
+  return syncXtreamSource(input, ctx, {
+    afterSync: rebuildSearchIndexAfterSync,
+    rewriterFor: dataRewriterFor,
+  });
 }
 
 /**
@@ -66,7 +76,10 @@ export function syncXtream(input: SyncXtreamInput, ctx: TaskContext): Promise<Sy
  * vault in here and never crosses postMessage), then queues its search index rebuild (SCH-01).
  */
 export function syncM3u(input: SyncM3uInput, ctx: TaskContext): Promise<SyncM3uResult> {
-  return syncM3uSource(input, ctx, { afterSync: rebuildSearchIndexAfterSync });
+  return syncM3uSource(input, ctx, {
+    afterSync: rebuildSearchIndexAfterSync,
+    rewriterFor: dataRewriterFor,
+  });
 }
 
 /**

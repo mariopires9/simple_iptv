@@ -107,6 +107,37 @@ describe('PlayerView — element and lifecycle', () => {
     expect(t.controller.play).toHaveBeenLastCalledWith(next, {});
   });
 
+  it('PRX-01: the controller gets one stable rewriter that follows the `rewriter` prop', async () => {
+    const proxyA = { rewrite: vi.fn((url: string) => `https://pc.example.test/a?${url}`) };
+    const proxyB = { rewrite: vi.fn((url: string) => `https://pc.example.test/b?${url}`) };
+    const t = setup({ descriptor: LIVE, kind: 'live', rewriter: proxyA });
+    await flush();
+    expect(t.factory).toHaveBeenCalledTimes(1);
+    const call = t.factory.mock.calls[0] as unknown[] | undefined;
+    const options = call?.[1] as
+      { rewriter?: { rewrite: (u: string, p: 'stream') => string } } | undefined;
+    const given = options?.rewriter;
+    expect(given).toBeDefined();
+    // By the time the controller plays, requests go through the prop's rewriter.
+    expect(t.controller.play).toHaveBeenCalledTimes(1);
+    expect(given?.rewrite('http://edge.example.test/1.ts', 'stream')).toBe(
+      'https://pc.example.test/a?http://edge.example.test/1.ts',
+    );
+    expect(proxyA.rewrite).toHaveBeenCalledWith('http://edge.example.test/1.ts', 'stream');
+    t.rerender({ descriptor: LIVE, kind: 'live', rewriter: proxyB });
+    await flush();
+    expect(t.factory).toHaveBeenCalledTimes(1);
+    expect(given?.rewrite('http://edge.example.test/2.ts', 'stream')).toBe(
+      'https://pc.example.test/b?http://edge.example.test/2.ts',
+    );
+    // Without a rewriter: direct.
+    t.rerender({ descriptor: LIVE, kind: 'live', rewriter: undefined });
+    await flush();
+    expect(given?.rewrite('http://edge.example.test/3.ts', 'stream')).toBe(
+      'http://edge.example.test/3.ts',
+    );
+  });
+
   it('does not reload when the parent passes an equal descriptor object', async () => {
     const t = setup();
     await flush();
