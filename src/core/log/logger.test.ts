@@ -24,8 +24,8 @@ afterEach(() => {
 describe('log', () => {
   it('redacts message and context before the console and the buffer', () => {
     registerSecret('s3gr3d0');
-    log.error('Failure at http://h.test/live/joao/abc/1.ts', {
-      url: 'http://h.test/get.php?username=joao&password=abc',
+    log.error('Failure at http://h.test/live/joao/Qx7pZv9w/1.ts', {
+      url: 'http://h.test/get.php?username=joao&password=Qx7pZv9w',
       extra: 'value s3gr3d0',
     });
 
@@ -37,12 +37,12 @@ describe('log', () => {
     );
 
     const printed = vi.mocked(console.error).mock.calls.flat().join(' ');
-    expect(printed).not.toMatch(/joao|abc|s3gr3d0/);
+    expect(printed).not.toMatch(/joao|Qx7pZv9w|s3gr3d0/);
   });
 
   it('serializes Error (name/message/stack/cause) and redacts it', () => {
     registerSecret('s3gr3d0');
-    const err = new Error('request to http://h.test/?password=abc', {
+    const err = new Error('request to http://h.test/?password=Qx7pZv9w', {
       cause: new TypeError('s3gr3d0'),
     });
     log.warn('error', { err });
@@ -51,7 +51,7 @@ describe('log', () => {
     expect(context).toContain('"stack":');
     expect(context).toContain('password=***');
     expect(context).toContain('"cause":{"name":"TypeError","message":"***"');
-    expect(context).not.toMatch(/abc|s3gr3d0/);
+    expect(context).not.toMatch(/Qx7pZv9w|s3gr3d0/);
   });
 
   it('supports circular references and bigint', () => {
