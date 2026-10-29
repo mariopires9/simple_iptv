@@ -6,7 +6,9 @@ import { installNetworkSandbox, type NetworkSandbox } from './network';
 export const test = base.extend<{ sandbox: NetworkSandbox }>({
   sandbox: [
     async ({ context, baseURL }, use) => {
-      const appOrigin = new URL(baseURL ?? 'http://localhost:4173/').origin;
+      // The sandbox lets only the preview origin through: without it, every request would be blocked.
+      if (!baseURL) throw new Error('E2E: `use.baseURL` must be set (playwright.config.ts).');
+      const appOrigin = new URL(baseURL).origin;
       const sandbox = await installNetworkSandbox(context, { appOrigin });
       await use(sandbox);
       expect(sandbox.blocked, 'requests to hosts outside the E2E sandbox').toEqual([]);

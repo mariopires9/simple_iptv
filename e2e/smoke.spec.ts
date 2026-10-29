@@ -36,134 +36,140 @@ function requested(streams: readonly string[], streamId: number): boolean {
 }
 
 test.describe('smoke', () => {
-  test('Xtream onboarding → live → zapping → movie → search → favorites → delete all data', async ({
-    page,
-    sandbox,
-    browserName,
-  }) => {
-    test.slow();
+  // The main flow checks Cache Storage (PWA-02) and the service worker after deletion (SRC-10):
+  // it needs the production worker, which every other test blocks (playwright.config.ts).
+  test.describe('with the service worker', () => {
+    test.use({ serviceWorkers: 'allow' });
 
-    await test.step('onboarding with the synthetic Xtream panel', async () => {
-      await addXtreamSource(page);
-      expect(sandbox.panel).toContain('auth');
-      expect(sandbox.panel).toEqual(
-        expect.arrayContaining(['get_live_streams', 'get_vod_streams']),
-      );
-    });
+    test('Xtream onboarding → live → zapping → movie → search → favorites → delete all data', async ({
+      page,
+      sandbox,
+      browserName,
+    }) => {
+      test.slow();
 
-    await test.step('live: play a channel', async () => {
-      await page.getByRole('option', { name: /Example News HD/ }).click();
-      const player = page.getByRole('region', { name: 'Player: Example News HD' });
-      await expect(player).toBeVisible();
-      await expect.poll(() => requested(sandbox.streams, 1001)).toBe(true);
-      // Playwright's Firefox build has no H.264/AAC decoders (it shows the codec error instead),
-      // so actual playback is only asserted where the test stream's codecs are available.
-      if (browserName === 'chromium') {
-        await expect(player.getByRole('status')).toHaveText('Playing');
-      }
-    });
+      await test.step('onboarding with the synthetic Xtream panel', async () => {
+        await addXtreamSource(page);
+        expect(sandbox.panel).toContain('auth');
+        expect(sandbox.panel).toEqual(
+          expect.arrayContaining(['get_live_streams', 'get_vod_streams']),
+        );
+      });
 
-    await test.step('live: zapping with next channel', async () => {
-      // "Next channel" is offered both by the controls and by the playback error overlay.
-      await page.getByRole('button', { name: 'Next channel' }).click();
-      await expect(page.getByRole('region', { name: 'Player: Notícias Exemplo' })).toBeVisible();
-      await expect.poll(() => requested(sandbox.streams, 1002)).toBe(true);
-      await page.getByRole('button', { name: 'Next channel' }).click();
-      await expect(page.getByRole('region', { name: 'Player: Test Sports 1' })).toBeVisible();
-      await expect.poll(() => requested(sandbox.streams, 1003)).toBe(true);
-    });
+      await test.step('live: play a channel', async () => {
+        await page.getByRole('option', { name: /Example News HD/ }).click();
+        const player = page.getByRole('region', { name: 'Player: Example News HD' });
+        await expect(player).toBeVisible();
+        await expect.poll(() => requested(sandbox.streams, 1001)).toBe(true);
+        // Playwright's Firefox build has no H.264/AAC decoders (it shows the codec error instead),
+        // so actual playback is only asserted where the test stream's codecs are available.
+        if (browserName === 'chromium') {
+          await expect(player.getByRole('status')).toHaveText('Playing');
+        }
+      });
 
-    await test.step('live: mark the channel as favorite (F)', async () => {
-      await page.getByRole('button', { name: 'Close player' }).click();
-      // The listbox keeps focus and moves an active option (aria-activedescendant).
-      const list = page.getByRole('listbox', { name: 'Channels in All' });
-      await list.focus();
-      await page.keyboard.press('Home');
-      await page.keyboard.press('f');
-      // A favorite's option gets a visually hidden "Favorite" suffix.
-      await expect(page.getByRole('option', { name: /Example News HD.*Favorite/ })).toBeVisible();
-    });
+      await test.step('live: zapping with next channel', async () => {
+        // "Next channel" is offered both by the controls and by the playback error overlay.
+        await page.getByRole('button', { name: 'Next channel' }).click();
+        await expect(page.getByRole('region', { name: 'Player: Notícias Exemplo' })).toBeVisible();
+        await expect.poll(() => requested(sandbox.streams, 1002)).toBe(true);
+        await page.getByRole('button', { name: 'Next channel' }).click();
+        await expect(page.getByRole('region', { name: 'Player: Test Sports 1' })).toBeVisible();
+        await expect.poll(() => requested(sandbox.streams, 1003)).toBe(true);
+      });
 
-    await test.step('movie: details, favorite and play start', async () => {
-      await mainNav(page, 'Movies').click();
-      await page.getByRole('link', { name: 'The Synthetic Movie (2024)' }).click();
-      const details = page.getByRole('article', { name: 'The Synthetic Movie (2024)' });
-      await expect(details.getByRole('heading', { level: 1 })).toBeVisible();
-      await details.getByRole('button', { name: 'Add to favorites' }).click();
-      await expect(details.getByRole('button', { name: 'Remove from favorites' })).toBeVisible();
-      await details.getByRole('button', { name: 'Play' }).click();
-      await expect(
-        page.getByRole('region', { name: 'Player: The Synthetic Movie (2024)' }),
-      ).toBeVisible();
-      await expect
-        .poll(() => sandbox.streams)
-        .toContain(`/movie/${PANEL.username}/${PANEL.password}/2001.mp4`);
-      await page.getByRole('button', { name: 'Close player' }).click();
-    });
+      await test.step('live: mark the channel as favorite (F)', async () => {
+        await page.getByRole('button', { name: 'Close player' }).click();
+        // The listbox keeps focus and moves an active option (aria-activedescendant).
+        const list = page.getByRole('listbox', { name: 'Channels in All' });
+        await list.focus();
+        await page.keyboard.press('Home');
+        await page.keyboard.press('f');
+        // A favorite's option gets a visually hidden "Favorite" suffix.
+        await expect(page.getByRole('option', { name: /Example News HD.*Favorite/ })).toBeVisible();
+      });
 
-    await test.step('search', async () => {
-      await page.getByRole('link', { name: 'Search' }).first().click();
-      await page
-        .getByRole('searchbox', { name: 'Search channels, movies and series' })
-        .fill('news');
-      await expect(page.getByRole('link', { name: /Example News HD/ })).toBeVisible();
-      await page
-        .getByRole('searchbox', { name: 'Search channels, movies and series' })
-        .fill('drama');
-      await expect(page.getByRole('link', { name: /Example Drama/ })).toBeVisible();
-    });
+      await test.step('movie: details, favorite and play start', async () => {
+        await mainNav(page, 'Movies').click();
+        await page.getByRole('link', { name: 'The Synthetic Movie (2024)' }).click();
+        const details = page.getByRole('article', { name: 'The Synthetic Movie (2024)' });
+        await expect(details.getByRole('heading', { level: 1 })).toBeVisible();
+        await details.getByRole('button', { name: 'Add to favorites' }).click();
+        await expect(details.getByRole('button', { name: 'Remove from favorites' })).toBeVisible();
+        await details.getByRole('button', { name: 'Play' }).click();
+        await expect(
+          page.getByRole('region', { name: 'Player: The Synthetic Movie (2024)' }),
+        ).toBeVisible();
+        await expect
+          .poll(() => sandbox.streams)
+          .toContain(`/movie/${PANEL.username}/${PANEL.password}/2001.mp4`);
+        await page.getByRole('button', { name: 'Close player' }).click();
+      });
 
-    await test.step('favorites', async () => {
-      await mainNav(page, 'Favorites').click();
-      await expect(page.getByRole('tab', { name: 'Channels' })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
-      await expect(page.getByRole('tabpanel').getByText('Example News HD')).toBeVisible();
-      await page.getByRole('tab', { name: 'Movies' }).click();
-      await expect(
-        page.getByRole('tabpanel').getByText('The Synthetic Movie (2024)'),
-      ).toBeVisible();
-    });
+      await test.step('search', async () => {
+        await page.getByRole('link', { name: 'Search' }).first().click();
+        await page
+          .getByRole('searchbox', { name: 'Search channels, movies and series' })
+          .fill('news');
+        await expect(page.getByRole('link', { name: /Example News HD/ })).toBeVisible();
+        await page
+          .getByRole('searchbox', { name: 'Search channels, movies and series' })
+          .fill('drama');
+        await expect(page.getByRole('link', { name: /Example Drama/ })).toBeVisible();
+      });
 
-    await test.step('PWA-02: nothing cross-origin or with credentials in Cache Storage', async () => {
-      const result = await cachedUrls(page);
-      const { ready, urls } = result ?? { ready: false, urls: [] };
-      if (!ready) {
-        test.info().annotations.push({
-          type: 'PWA-02',
-          description: `${browserName}: service worker not active, Cache Storage checked as is`,
-        });
-      }
-      // Chromium always runs the production service worker: it must be active and hold the shell.
-      if (browserName === 'chromium') expect(ready).toBe(true);
-      if (ready)
-        expect(urls.some((url) => new URL(url).pathname.endsWith('/index.html'))).toBe(true);
-      const origin = new URL(page.url()).origin;
-      const offending = urls.filter(
-        (url) =>
-          new URL(url).origin !== origin ||
-          url.includes(PANEL.password) ||
-          url.includes(PANEL.username) ||
-          url.includes('example.test'),
-      );
-      expect(offending).toEqual([]);
-    });
+      await test.step('favorites', async () => {
+        await mainNav(page, 'Favorites').click();
+        await expect(page.getByRole('tab', { name: 'Channels' })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+        await expect(page.getByRole('tabpanel').getByText('Example News HD')).toBeVisible();
+        await page.getByRole('tab', { name: 'Movies' }).click();
+        await expect(
+          page.getByRole('tabpanel').getByText('The Synthetic Movie (2024)'),
+        ).toBeVisible();
+      });
 
-    await test.step('delete all data (SRC-10)', async () => {
-      await deleteAllData(page);
-      expect(await storedRows(page)).toEqual({});
-      // Nothing of the old list is reachable: every route leads back to onboarding.
-      await page.goto('./#/favorites');
-      await expect(page).toHaveURL(/#\/onboarding$/);
-      await expect(page.getByText('Example News HD')).toHaveCount(0);
-      const left = await page.evaluate(async () => ({
-        caches: await caches.keys(),
-        registered: (await navigator.serviceWorker?.getRegistration()) !== undefined,
-      }));
-      // Only the service worker's app-shell precache may remain, and the app stays installed (AC2).
-      expect(left.caches.filter((name) => !name.startsWith('workbox-precache'))).toEqual([]);
-      if (browserName === 'chromium') expect(left.registered).toBe(true);
+      await test.step('PWA-02: nothing cross-origin or with credentials in Cache Storage', async () => {
+        const result = await cachedUrls(page);
+        const { ready, urls } = result ?? { ready: false, urls: [] };
+        if (!ready) {
+          test.info().annotations.push({
+            type: 'PWA-02',
+            description: `${browserName}: service worker not active, Cache Storage checked as is`,
+          });
+        }
+        // Chromium always runs the production service worker: it must be active and hold the shell.
+        if (browserName === 'chromium') expect(ready).toBe(true);
+        if (ready)
+          expect(urls.some((url) => new URL(url).pathname.endsWith('/index.html'))).toBe(true);
+        const origin = new URL(page.url()).origin;
+        const offending = urls.filter(
+          (url) =>
+            new URL(url).origin !== origin ||
+            url.includes(PANEL.password) ||
+            url.includes(PANEL.username) ||
+            url.includes('example.test'),
+        );
+        expect(offending).toEqual([]);
+      });
+
+      await test.step('delete all data (SRC-10)', async () => {
+        await deleteAllData(page);
+        expect(await storedRows(page)).toEqual({});
+        // Nothing of the old list is reachable: every route leads back to onboarding.
+        await page.goto('./#/favorites');
+        await expect(page).toHaveURL(/#\/onboarding$/);
+        await expect(page.getByText('Example News HD')).toHaveCount(0);
+        const left = await page.evaluate(async () => ({
+          caches: await caches.keys(),
+          registered: (await navigator.serviceWorker?.getRegistration()) !== undefined,
+        }));
+        // Only the service worker's app-shell precache may remain, and the app stays installed (AC2).
+        expect(left.caches.filter((name) => !name.startsWith('workbox-precache'))).toEqual([]);
+        if (browserName === 'chromium') expect(left.registered).toBe(true);
+      });
     });
   });
 

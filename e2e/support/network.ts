@@ -43,6 +43,17 @@ const PIXEL = Buffer.from(
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
+/** Test media read once per worker (the same few files are served many times per test). */
+const fileCache = new Map<string, Promise<Buffer>>();
+function readFixture(file: string): Promise<Buffer> {
+  let buffer = fileCache.get(file);
+  if (!buffer) {
+    buffer = readFile(file);
+    fileCache.set(file, buffer);
+  }
+  return buffer;
+}
+
 /**
  * Maps a synthetic stream URL (Xtream `/live/<u>/<p>/<id>.<ext>`, or the M3U fixtures'
  * `/live/<id>.<ext>`) to a test file:
@@ -117,7 +128,7 @@ export async function installNetworkSandbox(
       const file = streamFileFor(url.pathname);
       if (file) {
         sandbox.streams.push(url.pathname);
-        const body = await readFile(file);
+        const body = await readFixture(file);
         return route.fulfill({
           status: 200,
           body,
@@ -127,9 +138,13 @@ export async function installNetworkSandbox(
           },
         });
       }
+      const method = request.method();
+      // GET/HEAD cannot carry a body; any other method forwards it so a handler can read it.
+      const postData = method === 'GET' || method === 'HEAD' ? null : request.postDataBuffer();
+      const requestBody = postData ? new Uint8Array(postData) : null;
       const mocked = await getResponse(
         handlers,
-        new Request(request.url(), { method: request.method(), headers: request.headers() }),
+        new Request(request.url(), { method, headers: request.headers(), body: requestBody }),
       );
       if (mocked?.type === 'error') {
         // `HttpResponse.error()`: what a CORS or mixed-content block looks like to the app.

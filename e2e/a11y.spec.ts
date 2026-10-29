@@ -51,9 +51,12 @@ const SETTINGS: readonly RouteCheck[] = [
   { path: '/no-such-page' },
 ];
 
-/** Waits until CSS transitions/animations (MUI fades, toasts) are over, so contrast is final. */
+/**
+ * Waits until CSS transitions/animations (MUI fades, toasts) are over, so contrast is final. No
+ * `networkidle`: the live screen keeps requesting (EPG, stream segments), and the visible h1
+ * awaited by `check` already means the screen's data has rendered.
+ */
 async function settle(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle').catch(() => undefined);
   // Endless ones (spinners, skeleton pulses) never finish and do not change colours for long.
   await page.waitForFunction(() =>
     document
@@ -72,7 +75,10 @@ async function check(page: Page, route: RouteCheck): Promise<AxeFinding[]> {
   const findings: AxeFinding[] = [];
   for (const colorScheme of SCHEMES) {
     // Theme "System" follows the media query: set it before loading, so nothing is mid-transition.
+    // Going through about:blank forces a full load: a hash-only `goto` to the same page would
+    // keep the previous pass's document (and its theme transition).
     await page.emulateMedia({ colorScheme });
+    await page.goto('about:blank');
     await page.goto(`./#${route.path}`);
     await expect(page.locator('main').getByRole('heading', { level: 1 }).first()).toBeVisible();
     await route.prepare?.(page);
