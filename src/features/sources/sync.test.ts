@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearLogBuffer, getLogEntries } from '@/core/log';
+import { resetSourceSyncs } from './sourceSync';
 import { startInitialSync } from './sync';
 
 const runTask = vi.fn();
@@ -8,6 +9,7 @@ vi.mock('@/worker', () => ({ runTask: (...args: unknown[]) => runTask(...args) }
 afterEach(() => {
   clearLogBuffer();
   runTask.mockReset();
+  resetSourceSyncs();
   vi.restoreAllMocks();
 });
 
@@ -17,7 +19,11 @@ describe('startInitialSync', () => {
   it('dispatches the syncXtream worker task and resolves "started" without waiting for it', async () => {
     runTask.mockReturnValue(new Promise(() => undefined)); // a long sync
     await expect(startInitialSync('source-1')).resolves.toBe('started');
-    expect(runTask).toHaveBeenCalledWith('syncXtream', { sourceId: 'source-1' });
+    expect(runTask).toHaveBeenCalledWith(
+      'syncXtream',
+      { sourceId: 'source-1' },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it('a sync that fails later is logged, never rejected', async () => {

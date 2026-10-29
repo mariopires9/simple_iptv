@@ -26,7 +26,15 @@ function serverUrlMessage(reason: ExternalUrlRejection): string {
   return t.sources.validation.serverUrl[reason];
 }
 
-export function validateXtreamForm(values: XtreamFormValues): XtreamValidation {
+export interface XtreamValidationOptions {
+  /** Editing a saved list (SRC-08): an empty password keeps the stored one. */
+  passwordOptional?: boolean;
+}
+
+export function validateXtreamForm(
+  values: XtreamFormValues,
+  options: XtreamValidationOptions = {},
+): XtreamValidation {
   const errors: XtreamFormErrors = {};
   let baseUrl = '';
   let host = '';
@@ -40,7 +48,8 @@ export function validateXtreamForm(values: XtreamFormValues): XtreamValidation {
   }
   if (values.username.trim() === '') errors.username = t.sources.validation.usernameRequired;
   // Passwords are used exactly as typed (spaces may be significant); only empty is rejected.
-  if (values.password === '') errors.password = t.sources.validation.passwordRequired;
+  if (values.password === '' && !options.passwordOptional)
+    errors.password = t.sources.validation.passwordRequired;
 
   const firstInvalid = XTREAM_FIELDS.find((field) => errors[field] !== undefined);
   if (firstInvalid !== undefined) return { ok: false, errors, firstInvalid };

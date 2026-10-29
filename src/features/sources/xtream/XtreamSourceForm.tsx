@@ -1,6 +1,8 @@
 // Add-Xtream form (SRC-03, docs/UX_UI.md §4.2): validation with focus on the first error, a
 // cancelable connection test in visible steps, then saving (vault + source row) and the initial
 // sync. The typed data stays in component state (memory only) until it is saved.
+// Also edits a saved list (SRC-08 AC2): a rename is applied directly; a new server, username or
+// password is tested first (with the stored password when none is typed) and only then applied.
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import WarningAmberRounded from '@mui/icons-material/WarningAmberRounded';
@@ -17,6 +19,7 @@ import { log } from '@/core/log';
 import type { FetchImpl } from '@/core/net';
 import { detectLocale, t } from '@/i18n';
 import {
+  normalizeServerUrl,
   testConnection,
   type ConnectionAccount,
   type ConnectionFixCode,
@@ -25,6 +28,7 @@ import {
   type XtreamConnectionReport,
 } from '@/providers/xtream';
 import { describeError, ProgressPanel, StateView, useToast } from '@/ui/state';
+import { readXtreamPassword, sourceName, updateXtreamSource } from '../manage';
 import { startInitialSync, type InitialSyncDispatch, type StartInitialSync } from '../sync';
 import { MAX_SOURCE_NAME_LENGTH, saveXtreamSource } from './saveXtreamSource';
 import { TextInput } from './TextInput';
@@ -40,12 +44,18 @@ export interface XtreamSourceFormDeps {
   testConnection: typeof testConnection;
   saveSource: typeof saveXtreamSource;
   startInitialSync: StartInitialSync;
+  /** Edit mode: applies the changes to the saved list. */
+  updateSource: typeof updateXtreamSource;
+  /** Edit mode: the stored password, to re-test changed server/username without retyping it. */
+  readPassword: typeof readXtreamPassword;
 }
 
 const defaultDeps: XtreamSourceFormDeps = {
   testConnection,
   saveSource: saveXtreamSource,
   startInitialSync,
+  updateSource: updateXtreamSource,
+  readPassword: readXtreamPassword,
 };
 
 export interface XtreamSourceFormProps {
@@ -53,6 +63,8 @@ export interface XtreamSourceFormProps {
   doneTo: string;
   /** Initial field values (e.g. converted from an M3U `get.php` URL, SRC-05 AC2). */
   initialValues?: Partial<XtreamFormValues> | undefined;
+  /** Edit this saved Xtream list instead of adding one (SRC-08). */
+  editing?: Source | undefined;
   /** Overrides for tests. */
   deps?: Partial<XtreamSourceFormDeps>;
 }
@@ -119,9 +131,27 @@ function errorFailure(error: unknown): Failure {
   };
 }
 
+/** Base URL of a saved list's server, normalized like the form's (to detect a change). */
+function storedBaseUrl(source: Source): string | undefined {
+  if (source.serverUrl === undefined) return undefined;
+  const result = normalizeServerUrl(source.serverUrl);
+  return result.ok ? result.baseUrl : undefined;
+}
+
+function editValues(source: Source): XtreamFormValues {
+  return {
+    name: source.name,
+    server: source.serverUrl ?? '',
+    username: source.username ?? '',
+    // Never shown: empty keeps the stored password.
+    password: '',
+  };
+}
+
 export function XtreamSourceForm({
   doneTo,
   initialValues,
+  editing,
   deps: depsOverride,
 }: XtreamSourceFormProps) {
   const deps = { ...defaultDeps, ...depsOverride };
@@ -129,7 +159,9 @@ export function XtreamSourceForm({
   const toast = useToast();
   const text = t.sources;
 
-  const [values, setValues] = useState<XtreamFormValues>(() => ({ ...EMPTY, ...initialValues }));
+  const [values, setValues] = useState<XtreamFormValues>(() =>
+    editing ? editValues(editing) : { ...EMPTY, ...initialValues },
+  );
   const [errors, setErrors] = useState<XtreamFormErrors>({});
   const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState<Step | undefined>();
@@ -213,7 +245,7 @@ export function XtreamSourceForm({
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (step !== undefined) return;
-    const validation = validateXtreamForm(values);
+    const validation = validateXtreamForm(values, { passwordOptional: editing !== undefined });
     if (!validation.ok) {
       setErrors(validation.errors);
       setFailure(undefined);
@@ -222,7 +254,38 @@ export function XtreamSourceForm({
     }
     setErrors({});
     setFailure(undefined);
-    const tested = values;
+    let tested = values;
+
+    if (editing) {
+      const username = values.username.trim();
+      const unchanged =
+        values.password === '' &&
+        username === (editing.username ?? '') &&
+        validation.baseUrl === storedBaseUrl(editing);
+      if (unchanged) {
+        // A rename (or nothing): no connection test needed.
+        await applyEdit(editing, {
+          name: sourceName(values.name, validation.host),
+          serverUrl: editing.serverUrl ?? validation.baseUrl,
+          username,
+          resync: false,
+        });
+        return;
+      }
+      if (values.password === '') {
+        // Re-test with the stored password, read into memory only for the test.
+        const stored = await deps.readPassword(editing.id).catch((error: unknown) => {
+          log.warn('Reading the stored password failed', { error });
+          return undefined;
+        });
+        if (stored === undefined) {
+          setErrors({ password: text.edit.passwordLost });
+          inputs.current.password?.focus();
+          return;
+        }
+        tested = { ...values, password: stored };
+      }
+    }
 
     const abort = new AbortController();
     controller.current = abort;
@@ -260,10 +323,60 @@ export function XtreamSourceForm({
     }
 
     if (report.ok) {
+      if (editing) {
+        await applyEdit(editing, {
+          name: sourceName(tested.name, validation.host),
+          serverUrl: report.baseUrl,
+          username: tested.username.trim(),
+          password: values.password === '' ? undefined : values.password,
+          resync: true,
+        });
+        return;
+      }
       await save({ serverUrl: report.baseUrl, host: validation.host, values: tested }, { report });
     } else {
       setStep(undefined);
-      setFailure(reportFailure(report, validation.host, tested));
+      const failure = reportFailure(report, validation.host, tested);
+      // A saved list keeps its working settings: an edit is only applied after a passing test.
+      if (editing) delete failure.saveAnyway;
+      setFailure(failure);
+    }
+  }
+
+  async function applyEdit(
+    source: Source,
+    change: {
+      name: string;
+      serverUrl: string;
+      username: string;
+      password?: string | undefined;
+      resync: boolean;
+    },
+  ) {
+    setStep('saving');
+    try {
+      await deps.updateSource({
+        id: source.id,
+        name: change.name,
+        serverUrl: change.serverUrl,
+        username: change.username,
+        password: change.password,
+      });
+      // New server or account: reload the catalogue (not awaited beyond the dispatch).
+      const dispatch = change.resync
+        ? await deps.startInitialSync(source.id).catch((): InitialSyncDispatch => 'unavailable')
+        : undefined;
+      if (!mounted.current) return;
+      setStep(undefined);
+      toast.show({
+        message: dispatch === 'started' ? text.toasts.syncing : text.myLists.toasts.updated,
+      });
+      void navigate(doneTo);
+    } catch (error) {
+      log.warn('Updating the Xtream source failed', { error });
+      if (!mounted.current) return;
+      setStep(undefined);
+      setFailure(errorFailure(error));
     }
   }
 
@@ -304,7 +417,7 @@ export function XtreamSourceForm({
             onChange: setField(field),
             error: error !== undefined,
             disabled: step !== undefined,
-            required: field !== 'name',
+            required: field !== 'name' && !(editing && field === 'password'),
             inputRef: (el: HTMLInputElement | null) => {
               inputs.current[field] = el;
             },
@@ -350,7 +463,7 @@ export function XtreamSourceForm({
                 <TextInput
                   key={field}
                   {...common}
-                  helperText={error}
+                  helperText={error ?? (editing ? text.edit.passwordKeepHelp : undefined)}
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   htmlInput={{ autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false }}
@@ -381,7 +494,7 @@ export function XtreamSourceForm({
           />
         ) : (
           <Button type="submit" variant="contained" size="large" sx={{ minHeight: 44 }}>
-            {text.submit}
+            {editing ? text.edit.save : text.submit}
           </Button>
         )}
 

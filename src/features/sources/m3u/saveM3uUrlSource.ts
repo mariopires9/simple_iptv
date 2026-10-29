@@ -5,7 +5,9 @@
 import { credentialVault } from '@/core/crypto';
 import { settingsRepo, sourcesRepo, type Source } from '@/core/db';
 import { log } from '@/core/log';
+import { forgetActiveSource } from '../activeSource';
 import { invalidateSourcesPresence, setSourcesPresent } from '../sourcesPresence';
+import { reloadSourcesIfLoaded } from '../sourcesList';
 import { MAX_SOURCE_NAME_LENGTH } from '../xtream/saveXtreamSource';
 
 export interface SaveM3uUrlSourceInput {
@@ -56,6 +58,9 @@ export async function saveM3uUrlSource(input: SaveM3uUrlSourceInput): Promise<So
   } catch (error) {
     log.warn('Could not update the first-run settings', { error });
   }
+  // The selector and "My lists" pick up the new list (and the first-run active list).
+  forgetActiveSource();
+  reloadSourcesIfLoaded();
   log.info('M3U URL source saved', { sourceId: id, https: input.url.startsWith('https:') });
   return source;
 }
@@ -65,5 +70,7 @@ export async function deleteM3uUrlSource(source: Pick<Source, 'id'>): Promise<vo
   // One transaction: source row, catalogue, favourites/history and the vault secret (`secretRef`).
   await sourcesRepo.remove(source.id);
   invalidateSourcesPresence();
+  forgetActiveSource();
+  reloadSourcesIfLoaded();
   log.info('M3U URL source deleted', { sourceId: source.id });
 }

@@ -20,6 +20,14 @@ const INITIAL = [
   ...sourceFiles(join(SRC, 'app')),
   ...sourceFiles(join(SRC, 'ui')),
   ...sourceFiles(join(SRC, 'i18n')),
+  // features/sources modules the shell and router import statically (SRC-08 selector slot).
+  ...[
+    'index.ts',
+    'routes.tsx',
+    'sourcesPresence.ts',
+    'activeSource.ts',
+    'SourceSelectorSlot.tsx',
+  ].map((file) => join(SRC, 'features', 'sources', file)),
 ];
 
 /** Static, non-type imports of the core/db barrel (or any of its modules). */

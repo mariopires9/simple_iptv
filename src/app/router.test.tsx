@@ -5,6 +5,7 @@ import { createMemoryRouter, type RouteObject } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { wipeAll } from '@/core/db';
 import { invalidateSourcesPresence, setSourcesPresent } from '@/features/sources';
+import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { AppRouter, appRoutes } from './router';
@@ -19,9 +20,12 @@ let media: ReturnType<typeof installMatchMedia> | undefined;
 function renderRoute(path: string, width = 1400) {
   media = installMatchMedia({ width });
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] });
+  // As in App: screens show toasts (e.g. My lists, SRC-08).
   render(
     <ThemeModeProvider>
-      <AppRouter router={router} />
+      <ToastProvider>
+        <AppRouter router={router} />
+      </ToastProvider>
     </ThemeModeProvider>,
   );
   return router;

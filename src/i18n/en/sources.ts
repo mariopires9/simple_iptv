@@ -1,6 +1,7 @@
 // Sources (SRC-03, docs/UX_UI.md §4.2): the add-Xtream form, its connection test, problem and
 // suggested-fix texts (mapped from the stable codes of the connection report), the add-M3U-by-URL
-// import (SRC-05) and the "coming soon" placeholder for the local M3U file (SRC-06).
+// import (SRC-05), the "coming soon" placeholder for the local M3U file (SRC-06), and the "My lists"
+// page, the top-bar list selector and the edit-list screen (SRC-08).
 export const sources = {
   addXtream: {
     title: 'Add Xtream list',
@@ -228,5 +229,132 @@ export const sources = {
       message: 'Adding a local M3U file is coming soon.',
     },
     back: 'Back',
+  },
+
+  /** SRC-08: the "My lists" page (docs/UX_UI.md §4.1b). */
+  myLists: {
+    title: 'My lists',
+    add: 'Add list',
+    loadError: {
+      title: 'Could not load your lists',
+      message: 'Your lists could not be read from this device.',
+    },
+    empty: {
+      title: "You don't have any IPTV lists yet",
+      message: 'Add an Xtream or M3U list to start watching.',
+    },
+    active: 'Active',
+    kinds: { xtream: 'Xtream', 'm3u-url': 'M3U (URL)', 'm3u-file': 'M3U (file)' },
+    /** `count` selects the plural form; `formatted` is the localized number. */
+    counts: {
+      channels: (count: number, formatted: string) =>
+        count === 1 ? '1 channel' : `${formatted} channels`,
+      movies: (count: number, formatted: string) =>
+        count === 1 ? '1 movie' : `${formatted} movies`,
+      series: (_count: number, formatted: string) => `${formatted} series`,
+    },
+    /** `when` is a relative time already formatted (e.g. "2 hours ago"). */
+    updated: (when: string) => `Updated ${when}`,
+    neverUpdated: 'Never updated',
+    /** Content types named in a partial-update status. */
+    contentTypes: { live: 'channels', movie: 'movies', series: 'series' },
+    status: {
+      never: 'Not loaded yet',
+      syncing: 'Updating…',
+      ok: 'Up to date',
+      /** `types` is a localized list (e.g. "movies and series"). */
+      partial: (types: string, reason: string) =>
+        `Some content was not updated (${types}): ${reason}`,
+      error: (reason: string) => `Update failed: ${reason}`,
+    },
+    /** Short reasons by sync error code (the providers' stable codes, never sensitive). */
+    reasons: {
+      offline: 'no network connection',
+      timeout: 'the server took too long',
+      blocked: 'the browser blocked the server',
+      'blocked-mixed-content': 'insecure (HTTP) server address',
+      http: 'unexpected server response',
+      auth: 'access refused',
+      parse: 'unreadable server response',
+      'account-inactive': 'the account is not active',
+      'invalid-response': 'the server did not answer as expected',
+      'empty-response': 'the server returned an empty list',
+      'server-unreachable': 'server not reachable',
+      storage: 'device storage is full or unavailable',
+      'credentials-lost': 'the saved credentials can no longer be read — edit the list',
+      'not-m3u': 'not an M3U list',
+      'empty-list': 'the list has no usable entries',
+      'too-large': 'the list is too large',
+      'invalid-url': 'invalid list address',
+      unknown: 'unknown error',
+    },
+    actions: {
+      use: 'Use this',
+      refresh: 'Refresh',
+      edit: 'Edit',
+      remove: 'Remove',
+    },
+    /** Sync progress phases (Xtream and M3U). */
+    phases: {
+      starting: 'Starting update…',
+      auth: 'Signing in…',
+      'live-categories': 'Loading channel categories…',
+      live: 'Loading channels…',
+      'movie-categories': 'Loading movie categories…',
+      movie: 'Loading movies…',
+      'series-categories': 'Loading series categories…',
+      series: 'Loading series…',
+      download: 'Downloading list…',
+      parse: 'Reading list…',
+      write: 'Saving channels…',
+      done: 'Finishing…',
+    },
+    toasts: {
+      switched: (name: string) => `Now using “${name}”.`,
+      switchFailed: 'Could not change the active list.',
+      removed: (name: string) => `“${name}” removed.`,
+      removeFailed: (name: string) => `Could not remove “${name}”.`,
+      refreshed: (name: string) => `“${name}” updated.`,
+      refreshPartial: (name: string) => `“${name}” was only partly updated.`,
+      refreshFailed: (name: string) => `Could not update “${name}”.`,
+      refreshUnavailable: 'The update could not be started.',
+      updated: 'List updated.',
+    },
+    remove: {
+      title: (name: string) => `Remove “${name}”?`,
+      message:
+        'Its channels, movies, series, favorites and history are deleted from this device. Your subscription is not affected.',
+      confirm: 'Remove',
+    },
+    chooser: {
+      title: 'Add list',
+      xtream: { title: 'Xtream Codes', subtitle: 'Server, username and password (recommended)' },
+      m3uUrl: { title: 'M3U list (URL)', subtitle: 'The address of an M3U list' },
+      m3uFile: { title: 'Local M3U file', subtitle: 'Coming soon' },
+    },
+  },
+  /** SRC-08: the active list selector in the top bar. */
+  selector: {
+    label: (name: string) => `Active list: ${name}`,
+    none: 'No list',
+    noneLabel: 'Lists: no list yet',
+    manage: 'Manage lists…',
+    add: 'Add list',
+  },
+  /** SRC-08: edit a list (rename; Xtream server and credentials). */
+  edit: {
+    title: 'Edit list',
+    back: 'Back',
+    notFound: {
+      title: 'List not found',
+      message: 'This list no longer exists on this device.',
+    },
+    loadError: { title: 'Could not load this list', message: 'Try again in a moment.' },
+    name: 'Name',
+    nameHelp: 'If empty, the server name is used.',
+    passwordKeepHelp: 'Leave empty to keep the current password.',
+    passwordLost: 'The saved password can no longer be read on this device. Enter it again.',
+    save: 'Save',
+    saveAndTest: 'Test and save',
   },
 };
