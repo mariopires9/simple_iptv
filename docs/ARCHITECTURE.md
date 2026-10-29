@@ -178,7 +178,7 @@ Catalog keys are composite: `key = "${sourceId}:${type}:${externalId}"` — allo
 | `favorites` | `itemKey` | `[sourceId+type]`, `addedAt` | `type` |
 | `history` | `itemKey` | `[sourceId+type]`, `lastWatchedAt` | `positionSec?`, `durationSec?`, `episodeKey?`, `completed` |
 | `epgPrograms` | `[channelEpgId+start]` | `end`, `sourceId` | `title`, `desc?` (post-MVP, XMLTV) |
-| `settings` | `key` | — | `theme`, `locale` (ADR-015), `activeSourceId`, `lastRoute`, `lastChannelKey`, `onboardingDone` |
+| `settings` | `key` | — | `theme`, `locale` (ADR-015: `system`/`en`/`pt-PT`), `activeSourceId`, `lastRoute`, `lastChannelKey`, `onboardingDone`, `playLastChannelOnOpen`, `fullscreenOnLandscape` (UX-04), … (`SettingsMap` in `src/core/db/types.ts`) |
 | `searchIndex` | `sourceId` | — | serialized MiniSearch index (`toJSON`) |
 
 \* `streamPath`: for Xtream only `id` + extension are stored; the full URL is built in memory with the credentials (`resolveStream`). For M3U, encrypting each URL individually has a prohibitive cost on 100k-entry lists; decision: store the URL in plain text in the `channels` table and document it (see `SECURITY.md §2`); if the list is an Xtream `get.php` type, offer conversion to an Xtream source (encrypted credentials, URLs built in memory).

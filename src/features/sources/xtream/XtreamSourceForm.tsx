@@ -17,7 +17,7 @@ import { useNavigate } from 'react-router';
 import type { Source } from '@/core/db';
 import { log } from '@/core/log';
 import type { FetchImpl } from '@/core/net';
-import { detectLocale, t } from '@/i18n';
+import { dateTimeFormat, numberFormat as activeNumberFormat, t } from '@/i18n';
 import {
   normalizeServerUrl,
   testConnection,
@@ -557,9 +557,11 @@ function FixList({ fixes }: { fixes: readonly ConnectionFixCode[] }) {
   );
 }
 
-const locale = detectLocale();
-const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: 'long' });
-const numberFormat = new Intl.NumberFormat(locale);
+// Active locale at call time (a language switch applies at once, UX-06 AC5).
+const dateFormat = {
+  format: (epochMs: number) => dateTimeFormat({ dateStyle: 'long' }).format(epochMs),
+};
+const numberFormat = { format: (value: number) => activeNumberFormat().format(value) };
 
 /** Account lines shown after a successful test (status, expiry, connections). */
 export function accountLines(account: ConnectionAccount | undefined): string[] {

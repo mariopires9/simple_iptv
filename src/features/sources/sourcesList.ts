@@ -6,7 +6,7 @@
 // dynamically and its types as types only.
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Source } from '@/core/db';
-import { detectLocale, type Locale } from '@/i18n';
+import { activeLocale, type Locale } from '@/i18n';
 
 export interface SourcesListSnapshot {
   /** In creation order; `undefined` until first read. */
@@ -128,7 +128,7 @@ function collator(locale: Locale): Intl.Collator {
 export function sortSources<S extends Pick<Source, 'id' | 'name' | 'createdAt'>>(
   sources: readonly S[],
   activeId: string | undefined,
-  locale: Locale = detectLocale(),
+  locale: Locale = activeLocale(),
 ): S[] {
   const compare = collator(locale).compare;
   return [...sources].sort(

@@ -309,9 +309,18 @@ export interface EpgProgram {
 export const THEMES = ['system', 'dark', 'light'] as const;
 export type Theme = (typeof THEMES)[number];
 
+/**
+ * Interface language preferences, in display order (UX-06, ADR-015): `system` follows the browser
+ * language. Single source of truth for the `LanguagePreference` type.
+ */
+export const LANGUAGE_PREFERENCES = ['system', 'en', 'pt-PT'] as const;
+export type LanguagePreference = (typeof LANGUAGE_PREFERENCES)[number];
+
 /** Typed values per key of the `settings` table. */
 export interface SettingsMap {
   theme: Theme;
+  /** Interface language preference (UX-06, ADR-015); absent = `system`. */
+  locale: LanguagePreference;
   activeSourceId: string;
   lastRoute: string;
   lastChannelKey: string;
@@ -320,6 +329,11 @@ export interface SettingsMap {
   liveViewState: unknown;
   /** Start the last live channel when the app opens on Live (LIV-03; UI in UX-04). */
   playLastChannelOnOpen: boolean;
+  /**
+   * Offer fullscreen when the device turns to landscape during playback (PLY-03; UI in UX-04).
+   * Absent = on for phones and tablets.
+   */
+  fullscreenOnLandscape: boolean;
   /**
    * Last global searches, most recent first (SCH-02, max. 10). Untrusted on read: owned and
    * validated by features/search.

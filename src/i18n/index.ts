@@ -5,6 +5,9 @@
 // the initial bundle. Feature namespaces load with their feature: routes declare them in
 // `lazyScreen(load, name, namespaces)`, which awaits `ensureMessages` with the screen chunk.
 // Feature code keeps reading `t.<namespace>.<key>`.
+// `@/core/db` (Dexie) is only imported as types here and loaded on demand (`loadSettingsRepo`),
+// so it stays out of the initial chunk (ADR-003). The first paint uses the localStorage mirror.
+import type { LANGUAGE_PREFERENCES as STORED_LANGUAGE_PREFERENCES } from '@/core/db';
 import { log } from '@/core/log';
 import type { Messages } from './en';
 import { enEager } from './en/eager';
@@ -18,9 +21,58 @@ export type { Locale } from './types';
 
 export const LOCALES: readonly Locale[] = ['en', 'pt-PT'];
 
+/**
+ * Interface language preferences in display order (UX-06): `system` follows the browser. A copy of
+ * core/db's `LANGUAGE_PREFERENCES` (importing the value would pull Dexie into the initial chunk);
+ * the `satisfies` fails to compile if they ever diverge.
+ */
+export const LANGUAGE_PREFERENCES = [
+  'system',
+  'en',
+  'pt-PT',
+] as const satisfies typeof STORED_LANGUAGE_PREFERENCES;
+export type LanguagePreference = (typeof LANGUAGE_PREFERENCES)[number];
+
+/**
+ * localStorage mirror of the language preference, read synchronously so the first paint is already
+ * in the chosen language (IndexedDB is async). Per-viewer convenience: IndexedDB is the source of
+ * truth (`restoreLanguagePreference`).
+ */
+export const LANGUAGE_CACHE_KEY = 'simple-iptv:language';
+
+export function isLanguagePreference(value: unknown): value is LanguagePreference {
+  return LANGUAGE_PREFERENCES.includes(value as LanguagePreference);
+}
+
+function readCachedLanguagePreference(): LanguagePreference | undefined {
+  try {
+    const value = globalThis.localStorage?.getItem(LANGUAGE_CACHE_KEY);
+    return isLanguagePreference(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCachedLanguagePreference(value: LanguagePreference): void {
+  try {
+    if (value === 'system') globalThis.localStorage?.removeItem(LANGUAGE_CACHE_KEY);
+    else globalThis.localStorage?.setItem(LANGUAGE_CACHE_KEY, value);
+  } catch {
+    // Storage blocked (private mode, quota): the cache is optional.
+  }
+}
+
 /** Namespaces loaded with their feature (never in the initial bundle). */
 export type LazyNamespace =
-  'favorites' | 'live' | 'movies' | 'onboarding' | 'player' | 'search' | 'series' | 'sources';
+  | 'favorites'
+  | 'live'
+  | 'movies'
+  | 'onboarding'
+  | 'player'
+  | 'search'
+  | 'series'
+  | 'settings'
+  | 'sources';
 type EagerNamespace = Exclude<keyof Messages, LazyNamespace>;
 type EagerMessages = Pick<Messages, EagerNamespace>;
 type LazyMessages = Pick<Messages, LazyNamespace>;
@@ -57,6 +109,10 @@ const lazy: NamespaceLoaders<LazyMessages, Locale> = {
     en: () => import('./en/series').then((m) => m.series),
     'pt-PT': () => import('./pt-PT/series').then((m) => m.series),
   },
+  settings: {
+    en: () => import('./en/settings').then((m) => m.settings),
+    'pt-PT': () => import('./pt-PT/settings').then((m) => m.settings),
+  },
   sources: {
     en: () => import('./en/sources').then((m) => m.sources),
     'pt-PT': () => import('./pt-PT/sources').then((m) => m.sources),
@@ -82,9 +138,12 @@ export function detectLocale(
   return 'en';
 }
 
-// Resolved once at load time; `setLocale` switches it (UI and persistence come with UX-06).
+let preference: LanguagePreference = readCachedLanguagePreference() ?? 'system';
+
+// Resolved at load time from the cached preference (else the browser); `setLanguagePreference`
+// and `restoreLanguagePreference` switch it (UX-06).
 const registry = createMessageRegistry<EagerMessages, LazyMessages, Locale>({
-  locale: detectLocale(),
+  locale: detectLocale(preference),
   eager,
   lazy,
   // Development and tests: an undeclared namespace fails loudly. Production: it heals itself (loads
@@ -138,4 +197,145 @@ export function setLocale(locale: Locale): Promise<LocaleSwitchResult> {
 /** Called after each locale switch; returns the unsubscribe function. */
 export function subscribeLocale(listener: () => void): () => void {
   return registry.subscribe(listener);
+}
+
+// ---------------------------------------------------------------------------------------------
+// `<html lang>` follows the active locale (UX-06 AC3).
+// ---------------------------------------------------------------------------------------------
+
+function syncDocumentLanguage(): void {
+  if (typeof document !== 'undefined') document.documentElement.lang = registry.getLocale();
+}
+syncDocumentLanguage();
+registry.subscribe(syncDocumentLanguage);
+
+// ---------------------------------------------------------------------------------------------
+// Language preference (UX-06): System / English / Português, persisted in the `settings` table.
+// ---------------------------------------------------------------------------------------------
+
+const preferenceListeners = new Set<() => void>();
+/** Once the user picks a language, a late read of the stored value must not override it. */
+let userChoseLanguage = false;
+
+async function loadSettingsRepo() {
+  return (await import('@/core/db')).settingsRepo;
+}
+
+function publishPreference(next: LanguagePreference): void {
+  writeCachedLanguagePreference(next);
+  if (next === preference) return;
+  preference = next;
+  for (const listener of [...preferenceListeners]) listener();
+}
+
+/** Applies the locale a preference resolves to; a switch failure keeps the current strings. */
+async function applyPreference(next: LanguagePreference): Promise<void> {
+  try {
+    await setLocale(detectLocale(next));
+  } catch (error) {
+    log.warn('i18n: the interface language could not be switched', { error });
+  }
+}
+
+/** What the user chose (`system` until a choice is known). */
+export function languagePreference(): LanguagePreference {
+  return preference;
+}
+
+/** Called when the preference changes; returns the unsubscribe function. */
+export function subscribeLanguagePreference(listener: () => void): () => void {
+  preferenceListeners.add(listener);
+  return () => {
+    preferenceListeners.delete(listener);
+  };
+}
+
+/**
+ * The user picks a language (Settings › Language): every string switches at once (the app
+ * re-renders on `subscribeLocale`), and the choice is saved. A failed save is only logged: the
+ * localStorage mirror keeps it for this browser.
+ */
+export async function setLanguagePreference(next: LanguagePreference): Promise<void> {
+  userChoseLanguage = true;
+  publishPreference(next);
+  const saved = loadSettingsRepo()
+    .then((settingsRepo) => settingsRepo.set('locale', next))
+    .catch((error: unknown) => {
+      log.warn('i18n: the language preference could not be saved', { error });
+    });
+  await Promise.all([applyPreference(next), saved]);
+}
+
+/**
+ * Start-up: reconciles with the stored preference (the source of truth; no stored value means
+ * `system`), unless the user already chose meanwhile. A database error keeps the cached choice.
+ */
+export async function restoreLanguagePreference(): Promise<void> {
+  let stored: unknown;
+  try {
+    stored = await (await loadSettingsRepo()).get('locale');
+  } catch (error) {
+    log.warn('i18n: the language preference could not be read', { error });
+    return;
+  }
+  if (userChoseLanguage) return;
+  const next = isLanguagePreference(stored) ? stored : 'system';
+  publishPreference(next);
+  await applyPreference(next);
+}
+
+/**
+ * App start-up (src/app/App.tsx): restores the stored preference and, while it is `system`,
+ * follows browser language changes. Returns the cleanup.
+ */
+export function installLanguagePreference(): () => void {
+  void restoreLanguagePreference();
+  const onLanguageChange = () => {
+    if (preference === 'system') void applyPreference('system');
+  };
+  globalThis.addEventListener?.('languagechange', onLanguageChange);
+  return () => globalThis.removeEventListener?.('languagechange', onLanguageChange);
+}
+
+/** Tests only: back to the start-up state (`system`, nothing chosen, nothing cached). */
+export function resetLanguagePreferenceForTests(): void {
+  userChoseLanguage = false;
+  writeCachedLanguagePreference('system');
+  preference = 'system';
+}
+
+// ---------------------------------------------------------------------------------------------
+// Intl formatters of the active locale (UX-06 AC5): read the locale at call time, so a language
+// switch applies to dates, times and numbers too. Cached per locale and options.
+// ---------------------------------------------------------------------------------------------
+
+const numberFormats = new Map<string, Intl.NumberFormat>();
+const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();
+
+/** `Intl.NumberFormat` for the active locale (or `locale`). */
+export function numberFormat(
+  options: Intl.NumberFormatOptions = {},
+  locale: Locale = activeLocale(),
+): Intl.NumberFormat {
+  const id = `${locale}|${JSON.stringify(options)}`;
+  let format = numberFormats.get(id);
+  if (!format) {
+    format = new Intl.NumberFormat(locale, options);
+    numberFormats.set(id, format);
+  }
+  return format;
+}
+
+/** `Intl.DateTimeFormat` for the active locale (or `locale`). */
+export function dateTimeFormat(
+  options: Intl.DateTimeFormatOptions,
+  locale: Locale = activeLocale(),
+): Intl.DateTimeFormat {
+  const id = `${locale}|${JSON.stringify(options)}`;
+  let format = dateTimeFormats.get(id);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, options);
+    dateTimeFormats.set(id, format);
+  }
+  return format;
 }

@@ -11,12 +11,7 @@ export const onboardingRoutes: RouteObject[] = [
 ];
 
 /**
- * Inside the AppShell: the Settings › Privacy placeholder that "Learn more" opens.
- * TODO(UX-04): moves to features/settings.
+ * Inside the AppShell: none since UX-04 (the Settings › Privacy page moved to features/settings).
+ * Kept, empty, because src/app/router.tsx (serialized) still spreads it; remove both together.
  */
-export const onboardingShellRoutes: RouteObject[] = [
-  {
-    path: 'settings/privacy',
-    lazy: lazyScreen(() => import('./PrivacyScreen'), 'PrivacyScreen', ['onboarding']),
-  },
-];
+export const onboardingShellRoutes: RouteObject[] = [];

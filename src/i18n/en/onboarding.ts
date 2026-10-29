@@ -16,11 +16,4 @@ export const onboarding = {
   legal: 'Use only sources and content you are authorized to access.',
   learnMore: 'Learn more',
   /** Placeholder for Settings › Privacy and data (filled in by UX-04). */
-  privacy: {
-    title: 'Privacy and data',
-    storage:
-      'Your credentials are stored only on this device, encrypted. This prevents casual reading of the app’s data, but does not protect against someone with access to your unlocked device. Your credentials are also part of the channel addresses, which are sent to your provider. You can delete everything in Settings › Privacy.',
-    noChannels:
-      'Simple IPTV is a player: it does not provide, host or suggest channels or lists. There is no tracking or analytics.',
-  },
 };

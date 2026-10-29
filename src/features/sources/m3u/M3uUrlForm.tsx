@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import type { Source, SourceStats } from '@/core/db';
 import { log } from '@/core/log';
-import { detectLocale, t } from '@/i18n';
+import { numberFormat, t } from '@/i18n';
 import { detectXtreamPlaylistUrl, type SyncM3uResult } from '@/providers/m3u';
 import { describeError, ProgressPanel, StateView, useToast } from '@/ui/state';
 import type { TaskProgress } from '@/worker';
@@ -79,9 +79,11 @@ interface Progress {
 const EMPTY: M3uUrlFormValues = { url: '', name: '' };
 const NO_PROGRESS: Progress = { bytes: 0, entries: 0, written: 0 };
 
-const locale = detectLocale();
-const integer = new Intl.NumberFormat(locale);
-const decimal = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
+// Active locale at call time (a language switch applies at once, UX-06 AC5).
+const integer = { format: (value: number) => numberFormat().format(value) };
+const decimal = {
+  format: (value: number) => numberFormat({ maximumFractionDigits: 1 }).format(value),
+};
 
 /** `512 KB`, `12.3 MB`. */
 export function formatBytes(bytes: number): string {

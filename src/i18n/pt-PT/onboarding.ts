@@ -20,11 +20,4 @@ export const onboarding = {
   note: 'Não incluímos canais · os seus dados ficam neste dispositivo.',
   legal: 'Use apenas fontes e conteúdos a que tem autorização para aceder.',
   learnMore: 'Saber mais',
-  privacy: {
-    title: 'Privacidade e dados',
-    storage:
-      'As suas credenciais são guardadas apenas neste dispositivo, cifradas. Isto impede a leitura casual dos dados da aplicação, mas não protege contra alguém com acesso ao seu dispositivo desbloqueado. As credenciais também fazem parte dos endereços dos canais, que são enviados ao seu fornecedor. Pode apagar tudo em Definições › Privacidade.',
-    noChannels:
-      'O Simple IPTV é um leitor: não fornece, aloja nem sugere canais ou listas. Não há rastreio nem estatísticas de utilização.',
-  },
 } satisfies MessageShape<typeof base>;

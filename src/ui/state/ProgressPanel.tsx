@@ -5,7 +5,7 @@ import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { useEffect, useId, useRef } from 'react';
-import { detectLocale, t } from '@/i18n';
+import { numberFormat as activeNumberFormat, t } from '@/i18n';
 import { visuallyHidden } from './visuallyHidden';
 
 export interface ProgressPanelProps {
@@ -21,7 +21,8 @@ export interface ProgressPanelProps {
   cancelling?: boolean;
 }
 
-const numberFormat = new Intl.NumberFormat(detectLocale());
+// Active locale at call time (UX-06 AC5).
+const numberFormat = { format: (value: number) => activeNumberFormat().format(value) };
 
 export function ProgressPanel({ phase, count, total, onCancel, cancelling }: ProgressPanelProps) {
   const phaseId = useId();

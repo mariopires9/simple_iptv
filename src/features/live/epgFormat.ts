@@ -1,11 +1,11 @@
 // Programme times (EPG-01 AC4): Unix timestamps shown as wall-clock times of the device's time
-// zone, in the UI locale (`detectLocale`, the same one `t` uses).
-import { detectLocale, type Locale } from '@/i18n';
+// zone, in the active UI locale (`activeLocale`, the one `t` holds — UX-06 AC5).
+import { activeLocale, type Locale } from '@/i18n';
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
 /** `HH:mm` (or the locale's equivalent) of `epochMs`; `timeZone` is for tests only. */
-export function formatTime(epochMs: number, locale: Locale = detectLocale(), timeZone?: string) {
+export function formatTime(epochMs: number, locale: Locale = activeLocale(), timeZone?: string) {
   const id = `${locale}|${timeZone ?? ''}`;
   let formatter = formatters.get(id);
   if (!formatter) {
