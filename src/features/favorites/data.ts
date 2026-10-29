@@ -3,28 +3,30 @@
 //
 // - Recent channels (FAV-02 AC1): the history keeps one entry per channel (no duplicates); the
 //   most recent first, at most `RECENT_CHANNELS_LIMIT`. Channels that left the list are skipped.
-// - Continue watching (FAV-02 AC2): movies and series (episodes) with a saved position between
-//   `MIN_RESUME_SEC` and `MAX_RESUME_FRACTION` of the duration, not completed, most recent first,
-//   at most `CONTINUE_WATCHING_LIMIT`.
+// - Continue watching (FAV-02 AC2), most recent first, at most `CONTINUE_WATCHING_LIMIT`, with the
+//   VOD-03 rules (`@/ui/vod/resume`): movies with a resumable position (1 min to 95 %, not
+//   completed); series whose entry points at an episode to watch (`episodeKey`: the one in
+//   progress, or the next one after a finished episode, SER-03) until the last one is finished.
+//   The per-episode entries (SER-02/03, `isEpisodeItemKey`) are the series' own bookkeeping.
 // - Favorites (FAV-01 AC2/AC3): those of the active list only; a favorite whose item is no longer
 //   in the catalogue (removed by a re-sync) is kept and reported as unavailable.
 import {
   catalogRepo,
   favoritesRepo,
   historyRepo,
+  isEpisodeItemKey,
   parseCategoryKey,
   type CatalogItemByType,
   type ContentType,
   type Favorite,
   type HistoryEntry,
 } from '@/core/db';
+import { RESUME_MIN_SEC, resumePosition, watchedFraction } from '@/ui/vod/resume';
 
 export const RECENT_CHANNELS_LIMIT = 30;
 export const CONTINUE_WATCHING_LIMIT = 20;
 /** Favorites shown on Home (all types, most recently added first); the rest via "See all". */
 export const HOME_FAVORITES_LIMIT = 20;
-export const MIN_RESUME_SEC = 60;
-export const MAX_RESUME_FRACTION = 0.95;
 /**
  * Live route id of "All" (features/live `VIRTUAL_CATEGORY_IDS.all`; features cannot import each
  * other): the category used for a channel without one.
@@ -69,14 +71,29 @@ export function toCard(item: CatalogItemByType[ContentType]): CardItem {
   return { key: item.key, type: item.type, name: item.name, image, href: itemHref(item) };
 }
 
-/** Watched fraction when the entry belongs in "Continue watching" (FAV-02 AC2), else undefined. */
-export function resumeFraction(entry: HistoryEntry): number | undefined {
+/** A "Continue watching" entry and its progress bar (`fraction` undefined: no bar). */
+export interface ContinueWatching {
+  fraction: number | undefined;
+}
+
+/** Whether the entry belongs in "Continue watching" (FAV-02 AC2, VOD-03 rules), else undefined. */
+export function continueWatching(entry: HistoryEntry): ContinueWatching | undefined {
   if (entry.completed) return undefined;
-  const { positionSec, durationSec } = entry;
-  if (positionSec === undefined || durationSec === undefined) return undefined;
-  if (!(durationSec > 0) || !(positionSec >= MIN_RESUME_SEC)) return undefined;
-  const fraction = positionSec / durationSec;
-  return fraction < MAX_RESUME_FRACTION ? fraction : undefined;
+  switch (entry.type) {
+    case 'movie':
+      return resumePosition(entry) === undefined ? undefined : { fraction: watchedFraction(entry) };
+    case 'series':
+      if (isEpisodeItemKey(entry.itemKey) || entry.episodeKey === undefined) return undefined;
+      // Position 0: the series moved on to the next episode after a finished one (SER-03), so
+      // it is shown. Otherwise the episode in progress follows the VOD-03 minimum (1 min): a few
+      // seconds of an episode are not "watching" the series yet.
+      if (entry.positionSec !== 0 && !((entry.positionSec ?? 0) >= RESUME_MIN_SEC)) {
+        return undefined;
+      }
+      return { fraction: watchedFraction(entry) };
+    default:
+      return undefined;
+  }
 }
 
 /** Catalogue items by key (missing ones absent). */
@@ -118,14 +135,14 @@ async function recentChannelsRow(sourceId: string): Promise<HistoryRow> {
 async function continueWatchingRow(sourceId: string): Promise<HistoryRow> {
   const { items, scanned } = await historyRepo.listRecentItems(sourceId, ['movie', 'series'], {
     limit: CONTINUE_WATCHING_LIMIT,
-    accept: (entry) => resumeFraction(entry) !== undefined,
+    accept: (entry) => continueWatching(entry) !== undefined,
   });
   const series = items.filter(({ entry }) => entry.type === 'series').map(({ entry }) => entry);
   const found = await episodesOf(series);
   const episodes = new Map(series.map((entry, i) => [entry.itemKey, found[i]]));
   const cards = items.map(({ entry, item }) => ({
     ...toCard(item),
-    progress: resumeFraction(entry),
+    progress: continueWatching(entry)?.fraction,
     episode: entry.type === 'series' ? episodes.get(entry.itemKey) : undefined,
   }));
   return { cards, hasHistory: scanned > 0 };

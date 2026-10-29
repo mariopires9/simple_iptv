@@ -9,10 +9,16 @@
 //
 // The request needs the account password: it is read from the vault (which registers it with
 // the log redactor) and only lives in the client; neither it nor the URL is ever logged.
-import { credentialVault, type CredentialVault } from '@/core/crypto';
 import type { Movie, Source } from '@/core/db';
-import type { FetchImpl } from '@/core/net';
-import { createXtreamClient, fetchVodInfo, type VodInfo } from '@/providers/xtream';
+import { fetchVodInfo, type VodInfo } from '@/providers/xtream';
+import { sourceIdentity } from '@/ui/vod/resolveVod';
+import {
+  MissingCredentialsError,
+  xtreamClientFor,
+  type XtreamClientDeps,
+} from '@/ui/vod/xtreamClient';
+
+export { MissingCredentialsError };
 
 export const INFO_TTL_MS = 24 * 60 * 60 * 1000;
 /** Movies kept in the cache (the oldest fetch is dropped first). */
@@ -30,16 +36,8 @@ export function clearInfoCache(): void {
   cache.clear();
 }
 
-export interface InfoDeps {
-  vault?: Pick<CredentialVault, 'get'>;
-  fetchImpl?: FetchImpl;
+export interface InfoDeps extends XtreamClientDeps {
   now?: () => number;
-  signal?: AbortSignal;
-}
-
-/** Thrown when the source cannot authenticate (no address, user or readable password). */
-export class MissingCredentialsError extends Error {
-  override readonly name = 'MissingCredentialsError';
 }
 
 /** Stream id of an Xtream movie: `streamPath` is `id.ext` (or the bare id). */
@@ -50,28 +48,11 @@ export function xtreamStreamId(movie: Pick<Movie, 'streamPath' | 'externalId'>):
 
 /** Cache key: the movie, and the version of the source it was fetched with. */
 export function infoCacheKey(source: Source, movie: Pick<Movie, 'key'>): string {
-  return [
-    source.id,
-    source.serverUrl ?? '',
-    source.username ?? '',
-    source.secretRef ?? '',
-    source.lastSyncAt ?? 'never',
-    movie.key,
-  ].join('\n');
+  return `${sourceIdentity(source)}\n${movie.key}`;
 }
 
 async function fetchInfo(source: Source, movie: Movie, deps: InfoDeps): Promise<VodInfo> {
-  const { serverUrl, username, secretRef } = source;
-  if (!serverUrl || !username || !secretRef) throw new MissingCredentialsError();
-  const password = await (deps.vault ?? credentialVault).get(secretRef);
-  if (password === undefined) throw new MissingCredentialsError();
-  deps.signal?.throwIfAborted();
-  const client = createXtreamClient({
-    baseUrl: serverUrl,
-    username,
-    password,
-    ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}),
-  });
+  const client = await xtreamClientFor(source, deps);
   return fetchVodInfo(client, xtreamStreamId(movie), deps.signal);
 }
 

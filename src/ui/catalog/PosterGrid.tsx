@@ -1,11 +1,12 @@
-// Virtualised poster grid (VOD-01 AC1/AC3/AC4, docs/UX_UI.md §4.6, §7, §8).
+// Virtualised poster grid (VOD-01 AC1/AC3/AC4, SER-01, docs/UX_UI.md §4.6, §7, §8). Shared by
+// the Movies and Series screens since SER-01.
 //
 // - Rows of N posters, N from the available width: 3 on mobile, 4–6 on tablet, 6–8 on desktop.
 //   Only the rows in (and just around) the viewport are in the DOM (`@tanstack/react-virtual`).
-// - Movies come from a `MoviePageCache` (pages read by key as the viewport reaches them); a cell
+// - Items come from a `CatalogPageCache` (pages read by key as the viewport reaches them); a cell
 //   whose page is still loading renders as a placeholder.
 // - Keyboard: ARIA grid with a roving tab stop — one cell is tabbable, arrows move between cells
-//   (and scroll), Home/End jump to the first/last movie, Enter opens the focused movie's details.
+//   (and scroll), Home/End jump to the first/last item, Enter opens the focused item's details.
 //   `aria-rowcount`/`aria-rowindex` describe the full grid even though most rows are not in DOM.
 import Box from '@mui/material/Box';
 import Skeleton from '@mui/material/Skeleton';
@@ -21,21 +22,18 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { Link } from 'react-router';
-import type { Movie } from '@/core/db';
-import { t } from '@/i18n';
 import { visuallyHidden } from '@/ui/state';
 import { focusRing, radii } from '@/ui/theme/tokens';
-import { FROM_GRID, gridPosition, saveGridPosition } from './browseState';
-import { moviePath } from './categories';
+import type { BrowseState } from './browseState';
 import { formatPercent } from './format';
-import type { MoviePageCache } from './pageCache';
+import type { CatalogPageCache } from './pageCache';
 import { Poster } from './Poster';
 
 /** Rows rendered above and below the viewport. */
 export const OVERSCAN = 2;
 /** Gap between posters (px). */
 export const GAP = 16;
-/** Height of the text under a poster: two title lines + the year + spacing (px). */
+/** Height of the text under a poster: two title lines + the caption + spacing (px). */
 export const CAPTION_HEIGHT = 72;
 
 export type GridBand = 'mobile' | 'tablet' | 'desktop';
@@ -59,20 +57,44 @@ export function cellWidth(width: number, columns: number): number {
   return Math.max(1, (width - GAP * (columns - 1)) / columns);
 }
 
-export interface MovieGridProps {
-  cache: MoviePageCache;
+/** What a grid cell needs from an item. */
+export interface PosterItem {
+  key: string;
+  name: string;
+}
+
+export interface PosterGridTexts {
+  /** Visually hidden keyboard instructions of the grid. */
+  keyboardHint: string;
+  /** Visually hidden name of a cell whose page is loading. */
+  loadingCard: string;
+  /** Visually hidden progress, e.g. "40% watched". */
+  watched: (percent: string) => string;
+}
+
+export interface PosterGridProps<T extends PosterItem> {
+  cache: CatalogPageCache<T>;
   /** Accessible name of the grid. */
   label: string;
   band: GridBand;
-  /** Watched fraction per movie key ("Continue watching" bars). */
+  /** Watched fraction per item key ("Continue watching" bars). */
   progress: ReadonlyMap<string, number>;
   /** Loading a page failed. */
-  onError?: (error: unknown) => void;
+  onError?: ((error: unknown) => void) | undefined;
+  /** The feature's browse memory: scroll positions and the "opened from the grid" marker. */
+  browse: BrowseState;
   /**
-   * Remembers this grid's scroll position and active cell under this key (browseState.ts), and
+   * Remembers this grid's scroll position and active cell under this key (`browse`), and
    * restores them on mount — e.g. after "Back to movies".
    */
-  restoreKey?: string;
+  restoreKey?: string | undefined;
+  /** Route path of an item's details. */
+  itemPath: (item: T) => string;
+  posterOf: (item: T) => string | undefined;
+  /** Line under the title (the year, the number of seasons…), if any. */
+  captionOf: (item: T) => string | undefined;
+  texts: PosterGridTexts;
+  testId?: string | undefined;
 }
 
 /** Width of the scroll container (ResizeObserver when available; jsdom has none). */
@@ -93,7 +115,20 @@ function useWidth(el: HTMLElement | null): number {
   return width;
 }
 
-export function MovieGrid({ cache, label, band, progress, onError, restoreKey }: MovieGridProps) {
+export function PosterGrid<T extends PosterItem>({
+  cache,
+  label,
+  band,
+  progress,
+  onError,
+  browse,
+  restoreKey,
+  itemPath,
+  posterOf,
+  captionOf,
+  texts,
+  testId,
+}: PosterGridProps<T>) {
   const gridId = useId();
   const hintId = useId();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
@@ -109,7 +144,9 @@ export function MovieGrid({ cache, label, band, progress, onError, restoreKey }:
   const total = cache.total;
   const rowCount = Math.ceil(total / columns);
 
-  const [saved] = useState(() => (restoreKey === undefined ? undefined : gridPosition(restoreKey)));
+  const [saved] = useState(() =>
+    restoreKey === undefined ? undefined : browse.position(restoreKey),
+  );
   const [selected, setActive] = useState(saved?.active ?? 0);
   const active = Math.max(0, Math.min(total - 1, selected));
   const activeRow = Math.floor(active / columns);
@@ -164,8 +201,8 @@ export function MovieGrid({ cache, label, band, progress, onError, restoreKey }:
       el.scrollTo({ top: offset });
       return;
     }
-    if (restoreKey !== undefined) saveGridPosition(restoreKey, { topItem, active });
-  }, [width, columns, rowHeight, totalSize, topItem, active, restoreKey, saved]);
+    if (restoreKey !== undefined) browse.savePosition(restoreKey, { topItem, active });
+  }, [width, columns, rowHeight, totalSize, topItem, active, restoreKey, saved, browse]);
 
   // The active cell's page is pinned (read once, never evicted); the viewport alone decides
   // which other pages are read and kept.
@@ -192,7 +229,7 @@ export function MovieGrid({ cache, label, band, progress, onError, restoreKey }:
       return;
     }
     cell.focus({ preventScroll: true });
-    // A placeholder is replaced by the movie's link when its page arrives: keep following it.
+    // A placeholder is replaced by the item's link when its page arrives: keep following it.
     if (cell.getAttribute('aria-busy') !== 'true') pendingFocus.current = undefined;
   });
 
@@ -242,7 +279,7 @@ export function MovieGrid({ cache, label, band, progress, onError, restoreKey }:
   return (
     <>
       <Box component="span" id={hintId} sx={visuallyHidden}>
-        {t.movies.keyboardHint}
+        {texts.keyboardHint}
       </Box>
       <Box
         ref={setScroll}
@@ -253,7 +290,7 @@ export function MovieGrid({ cache, label, band, progress, onError, restoreKey }:
         aria-rowcount={rowCount}
         aria-colcount={columns}
         onKeyDown={onKeyDown}
-        data-testid="movie-grid"
+        data-testid={testId}
         sx={{
           height: '100%',
           overflowY: 'auto',
@@ -283,7 +320,7 @@ export function MovieGrid({ cache, label, band, progress, onError, restoreKey }:
                 {Array.from({ length: columns }, (_, column) => {
                   const index = row.index * columns + column;
                   if (index >= total) return null;
-                  const movie = cache.get(index);
+                  const item = cache.get(index);
                   return (
                     <Box
                       key={column}
@@ -291,14 +328,28 @@ export function MovieGrid({ cache, label, band, progress, onError, restoreKey }:
                       aria-colindex={column + 1}
                       sx={{ minWidth: 0 }}
                     >
-                      <PosterCard
-                        index={index}
-                        movie={movie}
-                        width={posterWidth}
-                        tabbable={index === active}
-                        progress={movie ? progress.get(movie.key) : undefined}
-                        onFocus={setActive}
-                      />
+                      {item ? (
+                        <PosterCard
+                          index={index}
+                          name={item.name}
+                          to={itemPath(item)}
+                          from={browse.fromGrid}
+                          poster={posterOf(item)}
+                          caption={captionOf(item)}
+                          width={posterWidth}
+                          tabbable={index === active}
+                          progress={progress.get(item.key)}
+                          watched={texts.watched}
+                          onFocus={setActive}
+                        />
+                      ) : (
+                        <LoadingCard
+                          index={index}
+                          label={texts.loadingCard}
+                          tabbable={index === active}
+                          onFocus={setActive}
+                        />
+                      )}
                     </Box>
                   );
                 })}
@@ -308,15 +359,6 @@ export function MovieGrid({ cache, label, band, progress, onError, restoreKey }:
       </Box>
     </>
   );
-}
-
-interface PosterCardProps {
-  index: number;
-  movie: Movie | undefined;
-  width: number;
-  tabbable: boolean;
-  progress: number | undefined;
-  onFocus: (index: number) => void;
 }
 
 const cardSx = {
@@ -335,39 +377,74 @@ const cardSx = {
   '&:hover .poster-title': { textDecoration: 'underline' },
 } as const;
 
-function PosterCard({ index, movie, width, tabbable, progress, onFocus }: PosterCardProps) {
-  if (!movie) {
-    return (
-      <Box
-        data-index={index}
-        tabIndex={tabbable ? 0 : -1}
-        aria-busy="true"
-        onFocus={() => onFocus(index)}
-        sx={cardSx}
-      >
-        <Box component="span" sx={visuallyHidden}>
-          {t.movies.loadingCard}
-        </Box>
-        <Skeleton
-          aria-hidden
-          variant="rounded"
-          sx={{ width: '100%', height: 'auto', aspectRatio: '2 / 3' }}
-        />
-        <Skeleton aria-hidden variant="text" width="80%" />
+interface LoadingCardProps {
+  index: number;
+  label: string;
+  tabbable: boolean;
+  onFocus: (index: number) => void;
+}
+
+function LoadingCard({ index, label, tabbable, onFocus }: LoadingCardProps) {
+  return (
+    <Box
+      data-index={index}
+      tabIndex={tabbable ? 0 : -1}
+      aria-busy="true"
+      onFocus={() => onFocus(index)}
+      sx={cardSx}
+    >
+      <Box component="span" sx={visuallyHidden}>
+        {label}
       </Box>
-    );
-  }
+      <Skeleton
+        aria-hidden
+        variant="rounded"
+        sx={{ width: '100%', height: 'auto', aspectRatio: '2 / 3' }}
+      />
+      <Skeleton aria-hidden variant="text" width="80%" />
+    </Box>
+  );
+}
+
+interface PosterCardProps {
+  index: number;
+  name: string;
+  to: string;
+  /** `location.state.from` of the details page. */
+  from: string;
+  poster: string | undefined;
+  caption: string | undefined;
+  width: number;
+  tabbable: boolean;
+  progress: number | undefined;
+  watched: (percent: string) => string;
+  onFocus: (index: number) => void;
+}
+
+function PosterCard({
+  index,
+  name,
+  to,
+  from,
+  poster,
+  caption,
+  width,
+  tabbable,
+  progress,
+  watched,
+  onFocus,
+}: PosterCardProps) {
   return (
     <Box
       component={Link}
-      to={moviePath(movie.externalId)}
-      state={{ from: FROM_GRID }}
+      to={to}
+      state={{ from }}
       data-index={index}
       tabIndex={tabbable ? 0 : -1}
       onFocus={() => onFocus(index)}
       sx={cardSx}
     >
-      <Poster title={movie.name} url={movie.poster} width={width} progress={progress} />
+      <Poster title={name} url={poster} width={width} progress={progress} />
       <Box
         component="span"
         className="poster-title"
@@ -381,9 +458,9 @@ function PosterCard({ index, movie, width, tabbable, progress, onFocus }: Poster
           wordBreak: 'break-word',
         }}
       >
-        {movie.name}
+        {name}
       </Box>
-      {movie.year !== undefined && (
+      {caption !== undefined && (
         <Box
           component="span"
           sx={{
@@ -392,12 +469,12 @@ function PosterCard({ index, movie, width, tabbable, progress, onFocus }: Poster
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {movie.year}
+          {caption}
         </Box>
       )}
       {progress !== undefined && (
         <Box component="span" sx={visuallyHidden}>
-          {`, ${t.movies.watched(formatPercent(progress))}`}
+          {`, ${watched(formatPercent(progress))}`}
         </Box>
       )}
     </Box>

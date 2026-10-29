@@ -1,27 +1,21 @@
-// Movie details (VOD-02, docs/UX_UI.md §4.7): blurred backdrop, poster, title, year, duration,
-// rating, genre, Play / "Resume at mm:ss", ★ favourite and the synopsis (3 lines + "More").
+// Movie details (VOD-02, VOD-03, docs/UX_UI.md §4.7): the shared details header (blurred backdrop,
+// poster, title, year, duration, rating, genre, synopsis — `@/ui/catalog/DetailsHero`) with
+// Play / "Resume at mm:ss" + "Start from the beginning" and ★ favourite.
 //
 // - The movie comes from the active list's catalogue (`/movies/:movieId`, the provider's id).
 // - Xtream: `get_vod_info` adds/overrides fields (24 h cache, movieInfo.ts). Missing fields are
-//   simply not rendered — no empty labels or separators. A failure keeps the catalogue data and
-//   still allows playback (AC4).
-// - Every server text is rendered as React text (never HTML), so markup stays inert (AC2).
+//   simply not rendered. A failure keeps the catalogue data and still allows playback (AC4).
+// - Resume (VOD-03 AC2): offered from 1 min up to 95 % of the duration (`@/ui/vod/resume`); the
+//   player saves the position, and the buttons follow it when the player closes.
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import PlayArrowRounded from '@mui/icons-material/PlayArrowRounded';
+import ReplayRounded from '@mui/icons-material/ReplayRounded';
 import StarBorderRounded from '@mui/icons-material/StarBorderRounded';
 import StarRounded from '@mui/icons-material/StarRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type MouseEvent,
-} from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
   catalogRepo,
@@ -36,8 +30,12 @@ import {
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import type { VodInfo } from '@/providers/xtream';
+import { openedFromGrid } from '@/ui/catalog/browseState';
+import { resolveActiveSource } from '@/ui/catalog/catalogSource';
+import { DetailsHero } from '@/ui/catalog/DetailsHero';
+import { formatClock, formatDuration } from '@/ui/catalog/format';
+import { useFavoriteToggle } from '@/ui/catalog/useFavoriteToggle';
 import { useActiveSource } from '@/ui/hooks/useActiveSource';
-import { isLoadableImage } from '@/ui/images';
 import {
   DelayedLoading,
   DetailHeaderSkeleton,
@@ -45,13 +43,11 @@ import {
   errorDetails,
   visuallyHidden,
 } from '@/ui/state';
-import { FROM_GRID, lastBrowseLocation } from './browseState';
+import { resumePosition, type ProgressSnapshot } from '@/ui/vod/resume';
+import { lastBrowseLocation, moviesBrowse } from './browseState';
 import { ALL_CATEGORY_ID, categoryPath } from './categories';
-import { formatClock, formatDuration, formatRating } from './format';
 import { loadMovieInfo } from './movieInfo';
 import { MoviePlayer } from './MoviePlayer';
-import { resolveActiveSource } from './moviesSource';
-import { Poster } from './Poster';
 
 type DetailsState =
   | { status: 'loading' }
@@ -79,9 +75,6 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve };
 }
 
-/** Plots longer than this always get "More" (layout measurement is not available everywhere). */
-const LONG_PLOT = 240;
-
 async function loadDetails(movieId: string): Promise<DetailsState> {
   const source = await resolveActiveSource();
   if (!source) return { status: 'not-found' };
@@ -106,15 +99,6 @@ export function backTarget(movie: Movie | undefined): { pathname: string; search
   const parsed = movie?.categoryKey ? parseCategoryKey(movie.categoryKey) : undefined;
   const categoryId = parsed?.externalId ?? last?.categoryId ?? ALL_CATEGORY_ID;
   return { pathname: categoryPath(categoryId), search: last?.search ?? '' };
-}
-
-/** Saved position to resume from, if any (VOD-03 writes it; here it is only read). */
-export function resumePosition(entry: HistoryEntry | undefined): number | undefined {
-  if (!entry || entry.completed) return undefined;
-  const position = entry.positionSec;
-  return position !== undefined && Number.isFinite(position) && position >= 1
-    ? position
-    : undefined;
 }
 
 export function MovieDetailsScreen() {
@@ -154,7 +138,7 @@ export function MovieDetailsScreen() {
   // Back: opened from the grid → history back (category, sort and scroll are restored there);
   // otherwise (deep link, reload) → the movie's category with the last sort used.
   const location = useLocation();
-  const fromGrid = (location.state as { from?: unknown } | null)?.from === FROM_GRID;
+  const fromGrid = openedFromGrid(location.state, moviesBrowse);
   const backTo = backTarget(details.status === 'ready' ? details.movie : undefined);
   const back = (
     <Button
@@ -227,7 +211,12 @@ interface MovieDetailsProps {
   favorite: boolean;
 }
 
-function MovieDetails({ source, movie, history, favorite: initialFavorite }: MovieDetailsProps) {
+function MovieDetails({
+  source,
+  movie,
+  history: initialHistory,
+  favorite: initialFavorite,
+}: MovieDetailsProps) {
   const texts = t.movies.details;
   const [info, setInfo] = useState<InfoState>(
     source.kind === 'xtream' ? { status: 'loading' } : { status: 'none' },
@@ -262,56 +251,45 @@ function MovieDetails({ source, movie, history, favorite: initialFavorite }: Mov
   const getInfoExt = useCallback(() => infoExt.promise, [infoExt]);
 
   const extra = info.status === 'ok' ? info.info : undefined;
-  const year = extra?.year ?? movie.year;
-  const rating = extra?.rating ?? movie.rating;
-  const genre = extra?.genre ?? movie.genre;
-  const plot = extra?.plot ?? movie.plot;
-  const duration = formatDuration(extra?.durationSec);
   const poster = movie.poster ?? extra?.poster;
-  const backdrop = extra?.backdrop ?? poster;
-
-  // --- favourite (optimistic) ----------------------------------------------------------------
-  const [favorite, setFavorite] = useState(initialFavorite);
-  const [announcement, setAnnouncement] = useState('');
-  const toggleVersion = useRef(0);
-  const toggleFavorite = useCallback(() => {
-    const next = !favorite;
-    const version = ++toggleVersion.current;
-    setFavorite(next);
-    setAnnouncement(next ? texts.favoriteAdded(movie.name) : texts.favoriteRemoved(movie.name));
-    (next ? favoritesRepo.add(movie.key) : favoritesRepo.remove(movie.key)).catch(() => {
-      if (toggleVersion.current !== version) return;
-      setFavorite(!next);
-      setAnnouncement(texts.favoriteFailed(movie.name));
-    });
-  }, [favorite, movie, texts]);
-
-  // --- playback ------------------------------------------------------------------------------
-  const resumeAt = resumePosition(history);
-  const [playing, setPlaying] = useState(false);
-  const playButton = useRef<HTMLButtonElement>(null);
-  const closePlayer = useCallback(() => {
-    setPlaying(false);
-    // Back to the button that opened it.
-    queueMicrotask(() => playButton.current?.focus());
-  }, []);
-
-  // --- synopsis --------------------------------------------------------------------------------
-  const [expanded, setExpanded] = useState(false);
-  const [overflowing, setOverflowing] = useState(false);
-  const plotRef = useRef<HTMLParagraphElement>(null);
-  useLayoutEffect(() => {
-    const el = plotRef.current;
-    if (el && !expanded) setOverflowing(el.scrollHeight > el.clientHeight + 1);
-  }, [plot, expanded]);
-  const plotId = useId();
-  const titleId = useId();
-  const canExpand = plot !== undefined && (overflowing || plot.length > LONG_PLOT);
-
   const meta: string[] = [];
+  const year = extra?.year ?? movie.year;
+  const duration = formatDuration(extra?.durationSec, texts);
+  const genre = extra?.genre ?? movie.genre;
   if (year !== undefined) meta.push(String(year));
   if (duration !== undefined) meta.push(duration);
   if (genre !== undefined) meta.push(genre);
+
+  const {
+    favorite,
+    toggle: toggleFavorite,
+    announcement,
+  } = useFavoriteToggle(movie.key, movie.name, initialFavorite, texts);
+
+  // --- playback (VOD-03) ------------------------------------------------------------------------
+  const [history, setHistory] = useState(initialHistory);
+  const resumeAt = resumePosition(history);
+  /** The player and where it starts (`undefined` = from the beginning). */
+  const [playing, setPlaying] = useState<{ startAt: number | undefined }>();
+  const playButton = useRef<HTMLButtonElement>(null);
+  const closePlayer = useCallback(() => {
+    setPlaying(undefined);
+    // Back to the button that opened it.
+    queueMicrotask(() => playButton.current?.focus());
+  }, [setPlaying]);
+  const onSaved = useCallback(
+    (snapshot: ProgressSnapshot) =>
+      setHistory((previous) => ({
+        itemKey: movie.key,
+        sourceId: movie.sourceId,
+        type: 'movie',
+        ...previous,
+        ...snapshot,
+        lastWatchedAt: Date.now(),
+      })),
+    [movie.key, movie.sourceId],
+  );
+  const titleId = useId();
 
   return (
     <Box component="article" aria-labelledby={titleId} sx={{ position: 'relative' }}>
@@ -320,201 +298,68 @@ function MovieDetails({ source, movie, history, favorite: initialFavorite }: Mov
           <MoviePlayer
             source={source}
             movie={movie}
-            startAt={resumeAt}
+            startAt={playing.startAt}
             getInfoExt={getInfoExt}
+            onSaved={onSaved}
             onClose={closePlayer}
           />
         </Box>
       )}
-      <Box
-        sx={{
-          position: 'relative',
-          borderRadius: 4,
-          overflow: 'hidden',
-          bgcolor: 'tokens.surface1',
-          p: { xs: 2, sm: 3 },
-        }}
-      >
-        {isLoadableImage(backdrop) && (
-          // Decorative blurred backdrop at the top (≤ 40 % of the viewport height).
-          <Box
-            aria-hidden="true"
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              bottom: 'auto',
-              height: '40vh',
-              maxHeight: '100%',
-              overflow: 'hidden',
-              pointerEvents: 'none',
-            }}
-          >
-            <Box
-              component="img"
-              src={backdrop}
-              alt=""
-              referrerPolicy="no-referrer"
-              decoding="async"
-              data-testid="movie-backdrop"
-              sx={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                filter: 'blur(24px)',
-                opacity: 0.35,
-                transform: 'scale(1.1)',
-              }}
-            />
-          </Box>
-        )}
-        <Box
-          sx={{
-            position: 'relative',
-            display: 'grid',
-            gap: 3,
-            gridTemplateColumns: { xs: '1fr', sm: '200px minmax(0, 1fr)' },
-            alignItems: 'start',
-          }}
-        >
-          <Box sx={{ width: { xs: 160, sm: 200 } }}>
-            <Poster title={movie.name} url={poster} width={200} eager />
-          </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, minWidth: 0 }}>
-            <Typography id={titleId} variant="h3" component="h1" sx={{ wordBreak: 'break-word' }}>
-              {movie.name}
-            </Typography>
-            {(meta.length > 0 || rating !== undefined) && (
-              <Box
-                data-testid="movie-meta"
-                sx={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  columnGap: 1,
-                  rowGap: 0.5,
-                  color: 'text.secondary',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {meta.map((part, i) => (
-                  <Box component="span" key={i}>
-                    {i > 0 && (
-                      <Box component="span" aria-hidden="true" sx={{ mr: 1 }}>
-                        ·
-                      </Box>
-                    )}
-                    {part}
-                  </Box>
-                ))}
-                {rating !== undefined && (
-                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                    {meta.length > 0 && (
-                      <Box component="span" aria-hidden="true" sx={{ mr: 1 }}>
-                        ·
-                      </Box>
-                    )}
-                    <StarRounded aria-hidden fontSize="small" sx={{ mr: 0.5 }} />
-                    <Box component="span" aria-hidden="true">
-                      {formatRating(rating)}
-                    </Box>
-                    <Box component="span" sx={visuallyHidden}>
-                      {texts.rating(formatRating(rating))}
-                    </Box>
-                  </Box>
-                )}
-              </Box>
-            )}
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>
-              <Button
-                ref={playButton}
-                variant="contained"
-                size="large"
-                startIcon={<PlayArrowRounded aria-hidden />}
-                onClick={() => setPlaying(true)}
-                sx={{ minHeight: 44 }}
-              >
-                {resumeAt !== undefined ? texts.resumeAt(formatClock(resumeAt)) : texts.play}
-              </Button>
+      <DetailsHero
+        title={movie.name}
+        titleId={titleId}
+        poster={poster}
+        backdrop={extra?.backdrop ?? poster}
+        meta={meta}
+        rating={extra?.rating ?? movie.rating}
+        plot={extra?.plot ?? movie.plot}
+        director={extra?.director}
+        cast={extra?.cast}
+        texts={texts}
+        testIdPrefix="movie"
+        actions={
+          <>
+            <Button
+              ref={playButton}
+              variant="contained"
+              size="large"
+              startIcon={<PlayArrowRounded aria-hidden />}
+              onClick={() => setPlaying({ startAt: resumeAt })}
+              sx={{ minHeight: 44 }}
+            >
+              {resumeAt !== undefined ? texts.resumeAt(formatClock(resumeAt)) : texts.play}
+            </Button>
+            {resumeAt !== undefined && (
               <Button
                 variant="outlined"
                 size="large"
-                aria-pressed={favorite}
-                startIcon={
-                  favorite ? <StarRounded aria-hidden /> : <StarBorderRounded aria-hidden />
-                }
-                onClick={toggleFavorite}
+                startIcon={<ReplayRounded aria-hidden />}
+                onClick={() => setPlaying({ startAt: undefined })}
                 sx={{ minHeight: 44 }}
               >
-                {favorite ? texts.removeFavorite : texts.addFavorite}
+                {texts.startOver}
               </Button>
-            </Box>
-            {plot !== undefined && (
-              <Box>
-                <Typography component="h2" variant="h6" sx={visuallyHidden}>
-                  {texts.synopsis}
-                </Typography>
-                <Typography
-                  ref={plotRef}
-                  id={plotId}
-                  data-testid="movie-plot"
-                  sx={{
-                    whiteSpace: 'pre-line',
-                    wordBreak: 'break-word',
-                    ...(!expanded && {
-                      display: '-webkit-box',
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }),
-                  }}
-                >
-                  {plot}
-                </Typography>
-                {canExpand && (
-                  <Button
-                    size="small"
-                    aria-expanded={expanded}
-                    aria-controls={plotId}
-                    onClick={() => setExpanded((e) => !e)}
-                    sx={{ mt: 0.5, minHeight: 44 }}
-                  >
-                    {expanded ? texts.less : texts.more}
-                  </Button>
-                )}
-              </Box>
             )}
-            {(extra?.director !== undefined || extra?.cast !== undefined) && (
-              <Box component="dl" sx={{ m: 0, display: 'grid', gap: 0.5 }}>
-                {extra.director !== undefined && (
-                  <Box>
-                    <Box component="dt" sx={{ display: 'inline', color: 'text.secondary', mr: 1 }}>
-                      {texts.director}
-                    </Box>
-                    <Box component="dd" sx={{ display: 'inline', m: 0 }}>
-                      {extra.director}
-                    </Box>
-                  </Box>
-                )}
-                {extra.cast !== undefined && (
-                  <Box>
-                    <Box component="dt" sx={{ display: 'inline', color: 'text.secondary', mr: 1 }}>
-                      {texts.cast}
-                    </Box>
-                    <Box component="dd" sx={{ display: 'inline', m: 0 }}>
-                      {extra.cast}
-                    </Box>
-                  </Box>
-                )}
-              </Box>
-            )}
-            {info.status === 'failed' && (
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {texts.infoFailed}
-              </Typography>
-            )}
-          </Box>
-        </Box>
-      </Box>
+            <Button
+              variant="outlined"
+              size="large"
+              aria-pressed={favorite}
+              startIcon={favorite ? <StarRounded aria-hidden /> : <StarBorderRounded aria-hidden />}
+              onClick={toggleFavorite}
+              sx={{ minHeight: 44 }}
+            >
+              {favorite ? texts.removeFavorite : texts.addFavorite}
+            </Button>
+          </>
+        }
+        footer={
+          info.status === 'failed' && (
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              {texts.infoFailed}
+            </Typography>
+          )
+        }
+      />
       <Box role="status" aria-live="polite" sx={visuallyHidden}>
         {announcement}
       </Box>

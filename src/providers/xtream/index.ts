@@ -46,3 +46,5 @@ export { decodeBase64Utf8, fetchShortEpg, parseShortEpg } from './shortEpg';
 export type { ShortEpgEncoding, ShortEpgProgramme } from './shortEpg';
 export { fetchVodInfo, parseVodInfo } from './vodInfo';
 export type { VodInfo } from './vodInfo';
+export { MAX_EPISODES, episodeTitle, fetchSeriesInfo, parseSeriesInfo } from './seriesInfo';
+export type { SeriesInfo, SeriesInfoEpisode, SeriesInfoSeason } from './seriesInfo';

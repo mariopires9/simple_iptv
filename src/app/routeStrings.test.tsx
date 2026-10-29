@@ -117,7 +117,7 @@ describe('route strings (TEC-01)', () => {
     ['/movies', ['movies']],
     ['/onboarding', ['onboarding']],
     ['/onboarding/xtream', ['sources']],
-    ['/series', []],
+    ['/series', ['series']],
     ['/search', ['search']],
   ] as const)('%s loads exactly %j with the screen', async (path, namespaces) => {
     renderRoute(path);

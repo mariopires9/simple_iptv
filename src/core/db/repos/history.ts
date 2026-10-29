@@ -59,6 +59,38 @@ export const historyRepo = {
     });
   },
 
+  /**
+   * Writes the item's entry with exactly these fields (no merge with the stored one): an omitted
+   * `positionSec`/`durationSec`/`episodeKey` is cleared. `completed` defaults to `false`.
+   */
+  async set(entry: HistoryUpsert): Promise<HistoryEntry> {
+    const parsed = parseItemKey(entry.itemKey);
+    if (!parsed) throw new TypeError(`Invalid item key: "${entry.itemKey}"`);
+    const db = await getDb();
+    const record: HistoryEntry = {
+      itemKey: entry.itemKey,
+      sourceId: parsed.sourceId,
+      type: parsed.type,
+      lastWatchedAt: entry.lastWatchedAt ?? Date.now(),
+      completed: entry.completed ?? false,
+      ...(entry.positionSec !== undefined ? { positionSec: entry.positionSec } : {}),
+      ...(entry.durationSec !== undefined ? { durationSec: entry.durationSec } : {}),
+      ...(entry.episodeKey !== undefined ? { episodeKey: entry.episodeKey } : {}),
+    };
+    await db.history.put(record);
+    return record;
+  },
+
+  /**
+   * Entries whose key starts with `prefix` (e.g. the episodes of one series,
+   * `${seriesKey}:ep:`), read through the primary key: never the rest of the history.
+   */
+  async listByKeyPrefix(prefix: string): Promise<HistoryEntry[]> {
+    if (prefix === '') throw new TypeError('Empty history key prefix');
+    const db = await getDb();
+    return db.history.where('itemKey').startsWith(prefix).toArray();
+  },
+
   async get(itemKey: string): Promise<HistoryEntry | undefined> {
     const db = await getDb();
     return db.history.get(itemKey);

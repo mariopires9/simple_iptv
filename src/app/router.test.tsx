@@ -51,8 +51,9 @@ describe('router — routes', () => {
     // No list in this test: the details route answers "Movie not found" (VOD-02).
     ['/movies/42', 'Movie not found', null],
     ['/series', 'Series', null],
-    ['/series/category/5', 'Series', 'Category: 5'],
-    ['/series/77', 'Series details', 'Item: 77'],
+    ['/series/category/5', 'Series', null],
+    // No list in this test: the details route answers "Series not found" (SER-02).
+    ['/series/77', 'Series not found', null],
     ['/favorites', 'Favorites', null],
     ['/search', 'Search', null],
     ['/settings', 'Settings', null],
@@ -90,11 +91,10 @@ describe('router — routes', () => {
 
   it('a second router over the same routes still renders the screens', async () => {
     renderRoute('/series/1');
-    await heading('Series details');
+    await heading('Series not found');
     cleanup();
     renderRoute('/series/2');
-    await heading('Series details');
-    expect(screen.getByText('Item: 2')).toBeInTheDocument();
+    await heading('Series not found');
   });
 });
 

@@ -31,10 +31,12 @@ export interface VodInfo {
   ext?: string;
 }
 
-function text(value: unknown): string | undefined {
+/** Clipped free text, or `undefined`. */
+export function clippedText(value: unknown): string | undefined {
   const t = toText(value);
   return t === undefined ? undefined : clip(t);
 }
+const text = clippedText;
 
 /** `"01:42:05"`, `"1:42"` (h:mm) → seconds; anything else → undefined. */
 function clockToSeconds(value: unknown): number | undefined {
@@ -46,13 +48,15 @@ function clockToSeconds(value: unknown): number | undefined {
   return total > 0 ? total : undefined;
 }
 
-function toDuration(secs: unknown, clock: unknown): number | undefined {
+/** `duration_secs`, else the `duration` clock (`01:42:05`) → seconds. */
+export function toDuration(secs: unknown, clock: unknown): number | undefined {
   const n = toInt(secs);
   if (n !== undefined && n > 0) return n;
   return clockToSeconds(clock);
 }
 
-function toImage(value: unknown): string | undefined {
+/** First `http(s)` image URL of a string or a list of strings. */
+export function toImage(value: unknown): string | undefined {
   const first = Array.isArray(value) ? (value as unknown[]).find((x) => toText(x)) : value;
   const t = toText(first);
   if (t === undefined) return undefined;

@@ -108,4 +108,5 @@ export const player = {
   tapForFullscreen: 'Toque para ecrã inteiro',
   nativeFullscreenNote:
     'Neste dispositivo, o ecrã inteiro usa o leitor do sistema e os respetivos controlos.',
+  resumeUnsupported: 'A começar do início',
 } satisfies MessageShape<typeof base>;

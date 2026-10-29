@@ -13,7 +13,7 @@ import {
 } from '@/core/db';
 import { forgetActiveSource, setActiveSource } from '@/core/session';
 import { clearBrowseState } from './browseState';
-import { clearProjectionCache } from './sortIndex';
+import { clearProjectionCache } from '@/ui/catalog/sortIndex';
 import { installScrollMetrics, m3uSource, renderMovies } from './test-utils';
 
 const SOURCE = 'src1';

@@ -1,5 +1,6 @@
-// 2:3 poster with a tonal fallback (VOD-01 AC3, docs/UX_UI.md §4.6): a missing, unloadable or
-// failed image becomes a tonal block (stable colour per title) with the title on it.
+// 2:3 poster with a tonal fallback (VOD-01 AC3, SER-01, docs/UX_UI.md §4.6): a missing, unloadable
+// or failed image becomes a tonal block (stable colour per title) with the title on it. Shared by
+// the Movies and Series grids and details since SER-01.
 import Box from '@mui/material/Box';
 import { useTheme } from '@mui/material/styles';
 import { useState } from 'react';

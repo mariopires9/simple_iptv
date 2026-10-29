@@ -1,4 +1,6 @@
-// Sorting of the movie grid (VOD-01 AC2: Recently added · A–Z · Rating, without the network).
+// Sorting of the poster grids (VOD-01 AC2, SER-01: Recently added · A–Z · Rating, without the
+// network). Shared by Movies and Series since SER-01 (series have no `addedAt`: "Recently added"
+// keeps the source order for them).
 //
 // Why in memory: the only ordered index over movies of a category is `[categoryKey+order]` (the
 // source's own order). IndexedDB cannot sort a category by `addedAt`, name or rating without new
@@ -17,7 +19,10 @@
 // but offsets over `[categoryKey+order]` are cursor walks (measured on fake-indexeddb: 10 000
 // rows read with limit took ~25 s vs 36 ms for one unbounded read). A dedicated core/db read of
 // the sort fields (or sort indexes per category) is the follow-up if large catalogues need it.
-import { catalogRepo, type Movie } from '@/core/db';
+import type { Movie, Series } from '@/core/db';
+
+/** Content types with a poster grid. */
+export type PosterType = 'movie' | 'series';
 
 export type SortMode = 'added' | 'name' | 'rating';
 export const SORT_MODES: readonly SortMode[] = ['added', 'name', 'rating'];
@@ -42,16 +47,22 @@ export interface SortProjection {
   hasRatings: boolean;
 }
 
-function project(movie: Movie, pos: number): SortRow {
-  return { key: movie.key, name: movie.name, addedAt: movie.addedAt, rating: movie.rating, pos };
+function project(item: Movie | Series, pos: number): SortRow {
+  const addedAt = item.type === 'movie' ? item.addedAt : undefined;
+  return { key: item.key, name: item.name, addedAt, rating: item.rating, pos };
 }
 
 /** Reads the projection of the given categories (in this order), one category at a time. */
-export async function readProjection(categoryKeys: readonly string[]): Promise<SortProjection> {
+export async function readProjection(
+  type: PosterType,
+  categoryKeys: readonly string[],
+): Promise<SortProjection> {
+  // Dynamic: `src/ui` is checked as part of the initial bundle (ADR-003); only lazy screens use this.
+  const { catalogRepo } = await import('@/core/db');
   const rows: SortRow[] = [];
   let hasRatings = false;
   for (const key of categoryKeys) {
-    const movies = await catalogRepo.listByCategory('movie', key);
+    const movies: readonly (Movie | Series)[] = await catalogRepo.listByCategory(type, key);
     for (const movie of movies) {
       const row = project(movie, rows.length);
       if (row.rating !== undefined) hasRatings = true;
@@ -75,11 +86,12 @@ export function clearProjectionCache(): void {
  * catalogue only changes on a sync, which moves `lastSyncAt`, so that timestamp is in the key.
  */
 export function loadProjection(
+  type: PosterType,
   sourceId: string,
   syncStamp: number | undefined,
   categoryKeys: readonly string[],
 ): Promise<SortProjection> {
-  const id = [sourceId, syncStamp ?? 'never', ...categoryKeys].join('\n');
+  const id = [type, sourceId, syncStamp ?? 'never', ...categoryKeys].join('\n');
   let found = projections.get(id);
   if (found) {
     // Most recently used last.
@@ -87,7 +99,7 @@ export function loadProjection(
     projections.set(id, found);
     return found;
   }
-  found = readProjection(categoryKeys);
+  found = readProjection(type, categoryKeys);
   projections.set(id, found);
   // A failed read is not memoised: Retry reads again.
   found.catch(() => {
