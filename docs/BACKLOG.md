@@ -7,7 +7,7 @@ Allowed statuses (exactly one per story):
 
 **Wave** column: stories in the same wave **can run in parallel** as long as their dependencies are `Done` and they do not share "serialized" files (see `AGENT_WORKFLOW.md §5`).
 
-## MVP (v1.0) — 55 stories · 162 points
+## MVP (v1.0) — 57 stories · 167 points
 
 | ID | Title | Epic | Prio | Pts | Depends on | Wave | Milestone | Status |
 |---|---|---|---|---|---|---|---|---|
@@ -66,6 +66,8 @@ Allowed statuses (exactly one per story):
 | FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | Backlog |
 | UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | Backlog |
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
+| TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Backlog |
+| LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Backlog |
 
 ## Post-MVP
 
@@ -79,6 +81,7 @@ Allowed statuses (exactly one per story):
 | EXP-01 | Export/import settings | Should | 3 | SRC-08, FAV-03 | Backlog |
 | UX-05 | D-pad navigation | Should | 5 | UX-03 | Backlog |
 | MSS-01 | Media Session | Should | 1 | PLY-02 | Backlog |
+| TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | Backlog |
 | SEC-03 | Parental control PIN | Could | 3 | LIV-01, VOD-01 | Backlog |
 | EPG-04 | EPG grid | Could | 8 | EPG-03 | Backlog |
 | PRF-01 | Multiple profiles | Could | 5 | FAV-03 | Backlog |

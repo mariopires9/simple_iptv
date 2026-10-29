@@ -797,3 +797,25 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 ### MSS-01 — Media Session
 - **Priority:** Should · **Effort:** 1 · **Value:** Low
 - **AC:** title/artwork on the lock screen and play/pause/previous/next controls where supported.
+
+---
+
+## E15 — Technical follow-ups (added 2026-10-29)
+
+### TEC-01 — Load feature strings with their feature
+- **Priority:** Must · **Effort:** 3 · **Value:** Medium (performance budget)
+- **Story:** As a user on a slow phone, I want the app to start fast, so that new features don't make every launch slower.
+- **AC:** (1) Given the initial bundle, Then it contains only the strings of the shell, onboarding guard, state views and errors; each feature's strings (live, movies, series, sources, player…) load with that feature's lazy chunk. (2) Given the type-level completeness check between `en` and `pt-PT`, Then it still fails on a missing key. (3) Given the locale switch (UX-06), Then lazily loaded strings follow the active locale. (4) Initial JS drops by at least the size of the feature string files (measured with the manifest closure).
+- **Dependencies:** none. **Risk:** touches every feature's imports — run alone (serialized).
+
+### TEC-02 — Extract shared feature helpers into `src/ui`
+- **Priority:** Should · **Effort:** 3 · **Value:** Low (maintainability)
+- **Story:** As a maintainer, I want one copy of the helpers duplicated between Live and Movies (active-source hook, fill-height hook, category nav, page cache, image checks, stable colour hash), so that fixes apply everywhere.
+- **AC:** no duplicated helper remains in `features/*`; behaviour and tests unchanged.
+- **Dependencies:** VOD-01, LIV-03.
+
+### LIV-05 — Live player integration follow-ups
+- **Priority:** Must · **Effort:** 2 · **Value:** Medium
+- **Story:** As a user, I want the channels panel in fullscreen and one clear message for restricted channels, so that the Live player behaves consistently.
+- **AC:** (1) LivePlayer passes `requiredHeaders` to PlayerView and drops its own "restricted" banner (one message, from the player overlay). (2) The channels panel (L) is rendered inside the fullscreen element (PlayerView overlay slot), so it works in fullscreen. (3) LivePlayer ignores errors while PlayerView is reconnecting (only final errors count).
+- **Dependencies:** PLY-03, PLY-04, LIV-03.
