@@ -264,7 +264,7 @@ flowchart TD
 ## 10. Performance (design decisions)
 - Lists are always virtualized; images with `loading="lazy"` + `decoding="async"` + fixed dimensions.
 - Never load the whole catalog into UI memory: paginated queries per category via Dexie indexes.
-- hls.js (full build ~179 KB gz, ADR-017) and mpegts.js (~62 KB gz) only on first play; the service worker precaches them so later first plays are instant.
+- hls.js (full build ~179 KB gz, ADR-017) and mpegts.js (~62 KB gz) only on first play; the service worker does not precache them (PLY-01 AC2: engines download only on first use), so a first play needs the network and later plays use the browser HTTP cache.
 - Reuse the same `<video>` when zapping; `destroy()` the previous engine before `load()`.
 - Search in the worker with a 120 ms debounce.
 

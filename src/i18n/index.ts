@@ -65,6 +65,7 @@ function writeCachedLanguagePreference(value: LanguagePreference): void {
 /** Namespaces loaded with their feature (never in the initial bundle). */
 export type LazyNamespace =
   | 'favorites'
+  | 'install'
   | 'live'
   | 'movies'
   | 'onboarding'
@@ -84,6 +85,10 @@ const lazy: NamespaceLoaders<LazyMessages, Locale> = {
   favorites: {
     en: () => import('./en/favorites').then((m) => m.favorites),
     'pt-PT': () => import('./pt-PT/favorites').then((m) => m.favorites),
+  },
+  install: {
+    en: () => import('./en/install').then((m) => m.install),
+    'pt-PT': () => import('./pt-PT/install').then((m) => m.install),
   },
   live: {
     en: () => import('./en/live').then((m) => m.live),

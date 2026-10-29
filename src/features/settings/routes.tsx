@@ -6,7 +6,7 @@ import { lazyScreen } from '@/ui/lazyScreen';
 export const settingsRoutes: RouteObject[] = [
   {
     path: 'settings',
-    lazy: lazyScreen(() => import('./SettingsScreen'), 'SettingsScreen', ['settings']),
+    lazy: lazyScreen(() => import('./SettingsScreen'), 'SettingsScreen', ['settings', 'install']),
   },
   {
     path: 'settings/privacy',

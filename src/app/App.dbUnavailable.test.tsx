@@ -82,4 +82,23 @@ describe('App — database unavailable at start-up', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('navigation')).toBeNull();
   });
+
+  // PWA-03 AC4: a new version's schema upgrade runs inside this open, before any screen mounts;
+  // when it takes a while, the start-up indicator shows instead of a blank page.
+  it('a slow open (e.g. a migration) shows the start-up indicator, then the app', async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    openDatabase.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    render(<App />);
+    expect(screen.queryByText('Preparing your data…')).toBeNull(); // short opens never flash it
+    expect(await screen.findByText('Preparing your data…')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).toBeNull();
+
+    await act(async () => finish({}));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument();
+    expect(screen.queryByText('Preparing your data…')).toBeNull();
+  });
 });

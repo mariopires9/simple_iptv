@@ -91,7 +91,10 @@ function safely(check: () => boolean): boolean {
  * `navigator.vendor` is `Apple Computer, Inc.` for every WebKit browser on iOS and for Safari on
  * macOS; Chrome reports `Google Inc.` and Firefox an empty string.
  */
-function detectAppleWebKit(nav: PlatformEnv['navigator']): { isIOS: boolean; isSafari: boolean } {
+export function detectAppleWebKit(nav: PlatformEnv['navigator']): {
+  isIOS: boolean;
+  isSafari: boolean;
+} {
   const ua = nav.userAgent;
   const iPadAsMac = nav.platform === 'MacIntel' && (nav.maxTouchPoints ?? 0) > 1;
   const isIOS = /\b(iPhone|iPod|iPad)\b/.test(ua) || iPadAsMac;
