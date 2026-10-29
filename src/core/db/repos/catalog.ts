@@ -322,6 +322,32 @@ export const catalogRepo = {
   },
 
   /**
+   * Like `putSearchIndex`, but only if the `sources` row still exists, checked in the same rw
+   * transaction (SCH-01): an index built while the source was being removed is not left behind.
+   * Returns whether it was written.
+   */
+  async putSearchIndexForExistingSource(entry: SearchIndexEntry): Promise<boolean> {
+    const db = await getDb();
+    return db.transaction('rw', [db.sources, db.searchIndex], async () => {
+      if ((await db.sources.get(entry.sourceId)) === undefined) return false;
+      await db.searchIndex.put(entry);
+      return true;
+    });
+  },
+
+  /**
+   * Every item of a source+type (index `sourceId`), in no particular order. For whole-catalogue
+   * work in the data worker (SCH-01 search index); screens page by category instead.
+   */
+  async listForSource<T extends ContentType>(
+    sourceId: string,
+    type: T,
+  ): Promise<CatalogItemByType[T][]> {
+    const db = await getDb();
+    return itemTable(db, type).where('sourceId').equals(sourceId).toArray();
+  },
+
+  /**
    * Position (0-based) an item with `order` has in its category: the number of items of the
    * category before it in the original order. One count over the `[categoryKey+order]` index
    * (LIV-02: locating the playing channel for zapping), never a scan.

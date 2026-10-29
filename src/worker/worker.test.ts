@@ -79,8 +79,10 @@ function source(id: string, extra: Partial<Source> = {}): Source {
 }
 
 describe('registry and client', () => {
-  it('registers selfTest, syncXtream and syncM3u', () => {
+  it('registers selfTest, the syncs and the search tasks', () => {
     expect(Object.keys(tasks).sort()).toEqual([
+      'searchQuery',
+      'searchWarmup',
       'selfTest',
       'syncM3u',
       'syncXtream',

@@ -190,6 +190,12 @@ Implementation notes (FND-05):
 - `DatabaseUnavailableError.reason` ∈ `unsupported|open-failed|timeout`; the user-facing text comes from `t.db.errors[reason]` (`src/i18n/<locale>/db.ts`, ADR-015).
 - `closeDatabase()` is asynchronous; `wipeAll()` closes connections and cancels pending opens before deleting.
 
+Implementation notes (SCH-01/SCH-02):
+- The search index lives in `src/worker/search` (worker composition root). MiniSearch 7.2.0; one document per item: id `<l|m|s>:<externalId>`, indexed `name` (+ `num` for channels), stored `c` (category external id); keys are rebuilt with the source id. Stream URLs, logos and credentials never enter the index.
+- Built after every sync that wrote data (`afterSync` hook injected by `src/worker/tasks.ts` into both providers' sync, run while the source is still held) and on demand when a query finds it missing, stale (`lastSyncByType[*].lastOkAt > builtAt`), corrupt or of another `version`. Stored with `catalogRepo.putSearchIndexForExistingSource` (`searchIndex` row: `data`, `builtAt`, `version`, `items`).
+- Tasks: `searchQuery({ sourceId, query, types?, limit? })` → hits grouped by type with totals, hydrated with name/number/year/category (never URLs); `searchWarmup({ sourceId })` loads the index into worker memory (one source at a time). Prefix on every term, fuzzy 0.2 (max 2) on terms ≥ 5 letters, all terms required; queries < 2 letters/digits return nothing.
+- UI (`features/search`): `/` or the top-bar icon open `/search`; `?q=` and `&type=` (see all, max 200) live in the URL; recent searches in the `recentSearches` setting (max 10, validated on read).
+
 Migrations: `db.version(n).stores(...).upgrade(...)`; each schema change is its own story and goes through review (shared file — see the conflict policy).
 
 ## 6. Main flows

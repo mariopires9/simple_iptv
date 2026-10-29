@@ -115,6 +115,12 @@ export interface SyncXtreamDeps {
   itemsTimeoutMs?: number;
   /** How often an in-flight request / a queued sync checks for cancellation (ms). Default 50. */
   cancelPollMs?: number;
+  /**
+   * Called after a completed sync that wrote at least one type, while the source is still held
+   * (SCH-01: the data worker rebuilds the search index here). Must not throw; a rejection is
+   * logged and ignored.
+   */
+  afterSync?: (sourceId: string) => Promise<void>;
 }
 
 export const CATEGORIES_TIMEOUT_MS = 30_000;
@@ -506,6 +512,11 @@ async function runSync(
 
     checkpoint();
     const result = await finish('complete');
+    if (result.status !== 'error' && deps.afterSync) {
+      await deps.afterSync(sourceId).catch((error: unknown) => {
+        log.warn('xtream sync: after-sync hook failed', { sourceId, error });
+      });
+    }
     ctx.progress({ phase: 'done', done: types.length, total: types.length });
     log.info('xtream sync: finished', {
       sourceId,

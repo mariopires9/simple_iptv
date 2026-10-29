@@ -10,6 +10,7 @@ import { nav } from './nav';
 import { onboarding } from './onboarding';
 import { player } from './player';
 import { routes } from './routes';
+import { search } from './search';
 import { sources } from './sources';
 import { state } from './state';
 
@@ -24,6 +25,7 @@ export const ptPT = {
   onboarding,
   player,
   routes,
+  search,
   sources,
   state,
 } satisfies MessageShape<Messages>;

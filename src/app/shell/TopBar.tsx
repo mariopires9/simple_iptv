@@ -1,7 +1,6 @@
 // Top bar: app name, source selector slot, search and the overflow menu (theme; Settings on mobile).
 import CheckRounded from '@mui/icons-material/CheckRounded';
 import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
-import SearchRounded from '@mui/icons-material/SearchRounded';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
@@ -15,6 +14,7 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useId, useState, type ReactNode } from 'react';
 import { NavLink } from 'react-router';
+import { SearchAction } from '@/features/search';
 import { t } from '@/i18n';
 import { THEME_PREFERENCES, useThemeMode } from '@/ui/theme';
 import { navSize } from '@/ui/theme/tokens';
@@ -26,22 +26,15 @@ export interface TopBarProps {
   settingsSelected: boolean;
   /** Active list selector — filled in by the sources stories. */
   sourceSelector?: ReactNode;
-  /** Search entry point — filled in by the search story. */
+  /** Search entry point; defaults to the global search button and `/` shortcut (SCH-02). */
   searchAction?: ReactNode;
 }
-
-// TODO(SRCH): replace with the real global search entry point.
-const searchPlaceholder = (
-  <IconButton aria-label={t.nav.search} disabled>
-    <SearchRounded />
-  </IconButton>
-);
 
 export function TopBar({
   showSettings,
   settingsSelected,
   sourceSelector,
-  searchAction = searchPlaceholder,
+  searchAction = <SearchAction />,
 }: TopBarProps) {
   const { preference, setPreference } = useThemeMode();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);

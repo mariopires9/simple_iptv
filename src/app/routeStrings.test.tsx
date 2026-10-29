@@ -118,6 +118,7 @@ describe('route strings (TEC-01)', () => {
     ['/onboarding', ['onboarding']],
     ['/onboarding/xtream', ['sources']],
     ['/series', []],
+    ['/search', ['search']],
   ] as const)('%s loads exactly %j with the screen', async (path, namespaces) => {
     renderRoute(path);
     await screen.findByRole('heading', { level: 1 });

@@ -19,7 +19,8 @@ export type { Locale } from './types';
 export const LOCALES: readonly Locale[] = ['en', 'pt-PT'];
 
 /** Namespaces loaded with their feature (never in the initial bundle). */
-export type LazyNamespace = 'favorites' | 'live' | 'movies' | 'onboarding' | 'player' | 'sources';
+export type LazyNamespace =
+  'favorites' | 'live' | 'movies' | 'onboarding' | 'player' | 'search' | 'sources';
 type EagerNamespace = Exclude<keyof Messages, LazyNamespace>;
 type EagerMessages = Pick<Messages, EagerNamespace>;
 type LazyMessages = Pick<Messages, LazyNamespace>;
@@ -47,6 +48,10 @@ const lazy: NamespaceLoaders<LazyMessages, Locale> = {
   player: {
     en: () => import('./en/player').then((m) => m.player),
     'pt-PT': () => import('./pt-PT/player').then((m) => m.player),
+  },
+  search: {
+    en: () => import('./en/search').then((m) => m.search),
+    'pt-PT': () => import('./pt-PT/search').then((m) => m.search),
   },
   sources: {
     en: () => import('./en/sources').then((m) => m.sources),

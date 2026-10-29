@@ -123,6 +123,11 @@ export interface SyncM3uDeps {
   inactivityTimeoutMs?: number;
   /** How often cancellation is polled while waiting (ms). Default 50. */
   cancelPollMs?: number;
+  /**
+   * Called after a successful import, while the source is still held (SCH-01: the data worker
+   * rebuilds the search index here). Must not throw; a rejection is logged and ignored.
+   */
+  afterSync?: (sourceId: string) => Promise<void>;
 }
 
 /** Guards against lists that would exhaust memory on weak devices. */
@@ -489,6 +494,11 @@ async function runSync(
     epgUrls,
   };
   if (!(await sourcesRepo.update(sourceId, changes))) throw new SourceRemovedError();
+  if (deps.afterSync) {
+    await deps.afterSync(sourceId).catch((error: unknown) => {
+      log.warn('m3u sync: after-sync hook failed', { sourceId, error });
+    });
+  }
   progress({ phase: 'done', done: totalItems, total: totalItems });
   log.info('m3u sync: finished', {
     sourceId,
