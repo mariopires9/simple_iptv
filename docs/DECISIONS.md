@@ -106,7 +106,7 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 - **Budget:** hls chunk ≤ 190 KB gz (QA-03). Revisit if a later hls.js release grows past it, or if PLY-05 is dropped (switch to light).
 
 #### ADR-015 implementation notes (TEC-01, 2026-10-29)
-- Eager namespaces (in the initial bundle): `app`, `db`, `nav`, `routes`, `state`, `lists` (top-bar list selector). Lazy namespaces: `favorites`, `live`, `movies`, `onboarding`, `player`, `sources` (and every new feature namespace).
+- Eager namespaces (in the initial bundle): `app`, `db`, `nav`, `routes`, `state`, `lists` (top-bar list selector). Lazy namespaces: `favorites`, `live`, `movies`, `onboarding`, `player`, `search`, `sources` (and every new feature namespace).
 - A new feature namespace must be added to `LazyNamespace` and the loaders in `src/i18n/index.ts`, and declared by its routes: `lazyScreen(load, exportName, namespaces)` — `namespaces` is required (`[]` when the screen only uses eager strings).
 - `player` strings load with `@/player/ui` (its `PlayerView` wrapper waits for them), not with the list routes.
 - `ensureMessages(...ns)` loads and dedupes; `setLocale(locale)` reloads loaded namespaces and returns `'switched' | 'unchanged' | 'superseded'`.
