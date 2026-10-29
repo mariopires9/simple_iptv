@@ -11,3 +11,4 @@ test-results/
 !.vscode/extensions.json
 *.tsbuildinfo
 .claude
+graphify-out/
