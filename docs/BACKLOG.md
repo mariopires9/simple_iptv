@@ -81,7 +81,7 @@ Allowed statuses (exactly one per story):
 | EXP-01 | Export/import settings | Should | 3 | SRC-08, FAV-03 | Backlog |
 | UX-05 | D-pad navigation | Should | 5 | UX-03 | Backlog |
 | MSS-01 | Media Session | Should | 1 | PLY-02 | Backlog |
-| TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | In Review |
+| TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | Done |
 | SEC-03 | Parental control PIN | Could | 3 | LIV-01, VOD-01 | Backlog |
 | EPG-04 | EPG grid | Could | 8 | EPG-03 | Backlog |
 | PRF-01 | Multiple profiles | Could | 5 | FAV-03 | Backlog |

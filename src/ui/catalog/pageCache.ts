@@ -151,10 +151,10 @@ export class CatalogPageCache<T extends { key: string }> {
   }
 
   private evict(): void {
+    const pinned = new Set(this.pinned.values());
     while (this.pages.size > this.maxPages) {
       let farthest = -1;
       let distance = -1;
-      const pinned = new Set(this.pinned.values());
       for (const page of this.pages.keys()) {
         if (pinned.has(page)) continue;
         const d = Math.abs(page - this.center);

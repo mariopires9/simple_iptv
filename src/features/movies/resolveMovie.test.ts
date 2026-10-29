@@ -143,6 +143,11 @@ describe('containerOf', () => {
   it.each([
     ['mp4', 'mp4'],
     ['.MKV', 'mkv'],
+    [' .mkv', 'mkv'],
+    ['m2ts', 'ts'],
+    ['mpegts', 'ts'],
+    ['wav', 'mp4'],
+    ['opus', 'mp4'],
     ['m3u8', 'hls'],
     ['mp3', 'mp4'],
     ['mpd', 'dash'],

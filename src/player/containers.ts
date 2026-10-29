@@ -23,6 +23,8 @@ const EXTENSION_CONTAINERS: Readonly<Record<string, ContainerOrDash>> = {
   m3u: 'hls',
   ts: 'ts',
   mpegts: 'ts',
+  mts: 'ts',
+  m2ts: 'ts',
   mp4: 'mp4',
   m4v: 'mp4',
   mkv: 'mkv',

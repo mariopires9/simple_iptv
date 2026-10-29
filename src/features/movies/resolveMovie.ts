@@ -31,7 +31,7 @@ export const DEFAULT_VOD_EXT = 'mp4';
 
 /** Container of an extension (`mkv`, `.MP4`…), `dash`, or `unknown`. */
 export function containerOf(ext: string | undefined): ContainerOrDash {
-  return declaredContainer(ext?.replace(/^\./, '')) ?? 'unknown';
+  return declaredContainer(ext?.trim().replace(/^\./, '')) ?? 'unknown';
 }
 
 function extensionOf(path: string): string | undefined {
