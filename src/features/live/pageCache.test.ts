@@ -1,6 +1,8 @@
+// Live's channel cache. The paging, eviction, pins and subscribers are tested with the shared
+// cache (`src/ui/catalog/pageCache.test.ts`); this covers the Live wiring.
 import { describe, expect, it, vi } from 'vitest';
 import type { Channel } from '@/core/db';
-import { PageCache } from './pageCache';
+import { MAX_PAGES, PAGE_SIZE, PageCache } from './pageCache';
 import type { ChannelPager } from './pagers';
 
 const channel = (i: number) => ({ key: `s:live:${i}`, name: `Channel ${i}` }) as Channel;
@@ -19,146 +21,40 @@ function fakePager(total: number) {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-describe('PageCache', () => {
-  it('loads the pages covering a range once, then serves rows from memory', async () => {
-    const { pager, load } = fakePager(1000);
-    const cache = new PageCache(pager, 100, 4);
-    const onChange = vi.fn();
-    cache.subscribe(onChange);
-    cache.ensure(150, 250);
-    cache.ensure(150, 250); // pending: not requested again
-    expect(load.mock.calls).toEqual([
-      [100, 100],
-      [200, 100],
-    ]);
-    expect(cache.get(150)).toBeUndefined();
+describe('PageCache (Live)', () => {
+  it('pages the channels of its pager by offset, PAGE_SIZE at a time', async () => {
+    const { pager, load } = fakePager(PAGE_SIZE * (MAX_PAGES + 2));
+    const cache = new PageCache(pager);
+    cache.subscribe(() => {});
+    expect(cache.pager).toBe(pager);
+    expect(cache.total).toBe(PAGE_SIZE * (MAX_PAGES + 2));
+    cache.setViewport(PAGE_SIZE + 1, PAGE_SIZE + 1);
+    expect(load.mock.calls).toEqual([[PAGE_SIZE, PAGE_SIZE]]);
     await flush();
-    expect(cache.get(150)?.name).toBe('Channel 150');
-    expect(cache.get(299)?.name).toBe('Channel 299');
-    expect(onChange).toHaveBeenCalledTimes(2);
-    cache.ensure(120, 280);
+    expect(cache.get(PAGE_SIZE + 1)?.name).toBe(`Channel ${PAGE_SIZE + 1}`);
+    expect(cache.indexOf(`s:live:${PAGE_SIZE + 1}`)).toBe(PAGE_SIZE + 1);
+  });
+
+  it('keeps at most MAX_PAGES pages by default', async () => {
+    const { pager } = fakePager(PAGE_SIZE * (MAX_PAGES + 2));
+    const cache = new PageCache(pager);
+    cache.subscribe(() => {});
+    for (let page = 0; page < MAX_PAGES + 2; page++) {
+      cache.setViewport(page * PAGE_SIZE, page * PAGE_SIZE);
+      await flush();
+    }
+    expect(cache.cachedPages).toBe(MAX_PAGES);
+  });
+
+  it('builds the quick-filter index once, and again after a failed build', async () => {
+    const { pager, load } = fakePager(3);
+    load.mockRejectedValueOnce(new Error('boom'));
+    const cache = new PageCache(pager);
+    await expect(cache.filterIndex()).rejects.toThrow('boom');
+    await flush();
+    const retry = cache.filterIndex();
+    expect(cache.filterIndex()).toBe(retry);
+    await expect(retry).resolves.toBeDefined();
     expect(load).toHaveBeenCalledTimes(2);
-  });
-
-  it('keeps at most maxPages pages, evicting the farthest from the viewport', async () => {
-    const { pager } = fakePager(10_000);
-    const cache = new PageCache(pager, 100, 3);
-    cache.subscribe(() => {});
-    for (const page of [0, 1, 2, 3, 50]) {
-      cache.ensure(page * 100, page * 100);
-      await flush();
-    }
-    expect(cache.cachedPages).toBe(3);
-    expect(cache.get(5000)).toBeDefined();
-    expect(cache.get(0)).toBeUndefined();
-  });
-
-  it('never evicts the pinned page of the active row, so it is read only once', async () => {
-    // Active row 0, then the viewport scrolls 2 000 rows away (and further) page by page,
-    // exactly as ChannelList calls it: the active row first, then the viewport.
-    const { pager, load } = fakePager(10_000);
-    const cache = new PageCache(pager, 100, 3);
-    cache.subscribe(() => {});
-    for (let row = 0; row <= 2_000; row += 100) {
-      cache.pin(0);
-      cache.ensure(0, 0);
-      cache.ensure(row, row + 50);
-      await flush();
-    }
-    expect(load.mock.calls.filter(([offset]) => offset === 0)).toHaveLength(1);
-    expect(cache.get(0)?.name).toBe('Channel 0');
-    expect(cache.get(2_000)?.name).toBe('Channel 2000');
-    expect(cache.cachedPages).toBe(3);
-
-    // Unpinned, it is evicted like any other page.
-    cache.pin(undefined);
-    cache.ensure(5_000, 5_000);
-    await flush();
-    expect(cache.get(0)).toBeUndefined();
-  });
-
-  it('serves several lists: each is notified, each pin is kept, results stop with the last', async () => {
-    const { pager, load } = fakePager(10_000);
-    const cache = new PageCache(pager, 100, 2);
-    const main = vi.fn();
-    const panel = vi.fn();
-    const offMain = cache.subscribe(main);
-    const offPanel = cache.subscribe(panel);
-    const mainOwner = {};
-    const panelOwner = {};
-    cache.pin(0, mainOwner);
-    cache.pin(5_000, panelOwner);
-    cache.ensure(0, 0);
-    cache.ensure(5_000, 5_000);
-    await flush();
-    expect(main).toHaveBeenCalledTimes(2);
-    expect(panel).toHaveBeenCalledTimes(2);
-    // Two more pages: both pinned pages survive eviction (maxPages is a soft limit for pins).
-    for (const row of [2_000, 3_000]) {
-      cache.ensure(row, row);
-      await flush();
-    }
-    expect(cache.get(0)).toBeDefined();
-    expect(cache.get(5_000)).toBeDefined();
-    expect(load.mock.calls.filter(([offset]) => offset === 0)).toHaveLength(1);
-
-    // One list leaves: the other still gets pages.
-    offPanel();
-    cache.pin(undefined, panelOwner);
-    cache.ensure(7_000, 7_000);
-    await flush();
-    expect(cache.get(7_000)).toBeDefined();
-    expect(cache.get(5_000)).toBeUndefined();
-    offMain();
-    cache.ensure(9_000, 9_000);
-    await flush();
-    expect(cache.get(9_000)).toBeUndefined();
-  });
-
-  it('indexOf finds a channel among the cached pages only', async () => {
-    const { pager } = fakePager(1000);
-    const cache = new PageCache(pager, 100, 4);
-    cache.subscribe(() => {});
-    expect(cache.indexOf('s:live:250')).toBe(-1);
-    cache.ensure(250, 250);
-    await flush();
-    expect(cache.indexOf('s:live:250')).toBe(250);
-    expect(cache.indexOf('s:live:999')).toBe(-1);
-  });
-
-  it('clamps to the total and ignores an empty pager', () => {
-    const { pager, load } = fakePager(150);
-    const cache = new PageCache(pager, 100, 3);
-    cache.ensure(0, 10_000);
-    expect(load.mock.calls).toEqual([
-      [0, 100],
-      [100, 100],
-    ]);
-    const empty = fakePager(0);
-    new PageCache(empty.pager).ensure(0, 10);
-    expect(empty.load).not.toHaveBeenCalled();
-  });
-
-  it('drops results that arrive after unsubscribe, and reports load errors', async () => {
-    const { pager } = fakePager(500);
-    const cache = new PageCache(pager, 100, 3);
-    const onChange = vi.fn();
-    const unsubscribe = cache.subscribe(onChange);
-    cache.ensure(0, 0);
-    unsubscribe();
-    await flush();
-    expect(onChange).not.toHaveBeenCalled();
-    expect(cache.get(0)).toBeUndefined();
-
-    const failing = new PageCache({
-      total: 10,
-      load: () => Promise.reject(new Error('boom')),
-      locate: () => Promise.resolve(-1),
-    });
-    const onError = vi.fn();
-    failing.subscribe(() => {}, onError);
-    failing.ensure(0, 5);
-    await flush();
-    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'boom' }));
   });
 });

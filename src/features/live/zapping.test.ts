@@ -26,7 +26,7 @@ describe('zapping', () => {
     const { p, load, locate: loc } = pager(300);
     const cache = new PageCache(p, 100, 3);
     cache.subscribe(() => {});
-    cache.ensure(0, 99);
+    cache.setViewport(0, 99);
     await flush();
     load.mockClear();
     // Row 99 is the last of page 0: the next one is on page 1, not cached.
@@ -49,7 +49,7 @@ describe('zapping', () => {
     const { p, locate: loc } = pager(300);
     const cache = new PageCache(p, 100, 3);
     cache.subscribe(() => {});
-    cache.ensure(0, 0);
+    cache.setViewport(0, 0);
     await flush();
     expect(await locate(cache, { channel: channel(42) })).toBe(42);
     expect(loc).not.toHaveBeenCalled();

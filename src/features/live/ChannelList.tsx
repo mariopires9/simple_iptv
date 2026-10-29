@@ -137,9 +137,9 @@ export function ChannelList({
   // ranges, so jumping with End does not fetch every page in between.
   useEffect(() => {
     cache.pin(active < total ? active : undefined, pinOwner);
-    if (active < total) cache.ensure(active, active);
+    if (active < total) cache.setViewport(active, active);
     // Last, so eviction keeps the pages around the viewport.
-    if (lastIndex >= 0) cache.ensure(firstIndex, lastIndex);
+    if (lastIndex >= 0) cache.setViewport(firstIndex, lastIndex);
   }, [cache, pinOwner, firstIndex, lastIndex, active, total]);
 
   // Mount only: start at the saved offset (LIV-03) or at the initial row (the playing channel in

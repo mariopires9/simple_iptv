@@ -13,10 +13,12 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { activeLocale, t } from '@/i18n';
+import { CategoryNav } from '@/ui/catalog/CategoryNav';
+import { useActiveSource } from '@/ui/hooks/useActiveSource';
+import { useFillHeight } from '@/ui/hooks/useFillHeight';
 import { DelayedLoading, PosterGridSkeleton, StateView, errorDetails } from '@/ui/state';
 import { ALL_CATEGORY_ID, categoryPath, type MovieCategory } from './categories';
 import { rememberBrowse } from './browseState';
-import { CategoryNav } from './CategoryNav';
 import { MovieGrid, type GridBand } from './MovieGrid';
 import { loadMoviesSource, type MoviesSourceState } from './moviesSource';
 import { MoviePageCache } from './pageCache';
@@ -28,8 +30,6 @@ import {
   type SortMode,
   type SortProjection,
 } from './sortIndex';
-import { useActiveSource } from './useActiveSource';
-import { useFillHeight } from './useFillHeight';
 
 /** Minimum height of the Movies layout (px); below it the page scrolls. */
 const MIN_HEIGHT = 360;
@@ -199,6 +199,8 @@ export function MoviesScreen() {
         categories={source.categories}
         selectedId={categoryId}
         variant={isTablet ? 'list' : 'chips'}
+        label={t.movies.categories}
+        pathFor={categoryPath}
         search={search}
       />
     );

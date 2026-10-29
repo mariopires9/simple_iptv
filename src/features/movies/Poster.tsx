@@ -3,8 +3,9 @@
 import Box from '@mui/material/Box';
 import { useTheme } from '@mui/material/styles';
 import { useState } from 'react';
+import { colorsForName } from '@/ui/colorHash';
+import { isLoadableImage } from '@/ui/images';
 import { avatarPalette, radii } from '@/ui/theme/tokens';
-import { isLoadableImage, toneFor } from './images';
 
 export interface PosterProps {
   title: string;
@@ -24,7 +25,7 @@ export function Poster({ title, url, width, progress, eager = false }: PosterPro
   const [failedUrl, setFailedUrl] = useState<string>();
   const failed = failedUrl !== undefined && failedUrl === url;
   const height = Math.round(width * 1.5);
-  const tone = toneFor(title, avatarPalette[theme.palette.mode]);
+  const tone = colorsForName(title, avatarPalette[theme.palette.mode]);
 
   return (
     <Box

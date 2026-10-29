@@ -10,7 +10,14 @@ import type { Channel, LiveFormat, Source } from '@/core/db';
 import { VaultKeyLostError, credentialVault, type CredentialVault } from '@/core/crypto';
 import { parseExternalUrl } from '@/core/net';
 import { getCapabilities, type Capabilities } from '@/core/platform';
-import type { StreamContainer, StreamDescriptor } from '@/player';
+import {
+  NATIVE_AUDIO_CONTAINER,
+  containerOfExtension,
+  declaredContainer,
+  type ContainerOrDash,
+  type StreamContainer,
+  type StreamDescriptor,
+} from '@/player';
 
 /**
  * Fields an M3U entry may carry (SRC-04, written by the M3U provider). Read defensively: older
@@ -49,42 +56,8 @@ function defaultCapabilities(): Pick<Capabilities, 'mse' | 'mms'> {
   return cachedCapabilities;
 }
 
-/**
- * Audio-only containers (radio). The player has no audio container kinds: the browser's own
- * element plays them, which is what the `mp4` container selects (native engine, no MSE).
- */
-const NATIVE_AUDIO: StreamContainer = 'mp4';
-const AUDIO_CONTAINERS = new Set(['mp3', 'aac', 'm4a', 'ogg', 'oga', 'opus', 'flac', 'wav']);
-
-const EXTENSION_CONTAINERS: Readonly<Record<string, StreamContainer | 'dash'>> = {
-  m3u8: 'hls',
-  m3u: 'hls',
-  ts: 'ts',
-  mpegts: 'ts',
-  mp4: 'mp4',
-  m4v: 'mp4',
-  mkv: 'mkv',
-  webm: 'webm',
-  mov: 'mov',
-  flv: 'flv',
-  avi: 'avi',
-  mpd: 'dash',
-  ...Object.fromEntries([...AUDIO_CONTAINERS].map((ext) => [ext, NATIVE_AUDIO])),
-};
-
-/**
- * `container` as declared by the entry — any player container, `dash`, or an audio container
- * (`mp3`, `aac`, `ogg`, `flac`… → native audio) — if recognisable.
- */
-function declaredContainer(value: unknown): StreamContainer | 'dash' | undefined {
-  if (typeof value !== 'string') return undefined;
-  const v = value.trim().toLowerCase();
-  if (v === 'hls' || v === 'dash') return v;
-  return EXTENSION_CONTAINERS[v];
-}
-
 export interface InferredContainer {
-  container: StreamContainer | 'dash';
+  container: ContainerOrDash;
   /** No (recognised) extension: a best guess, so the other live engine is a fallback. */
   guessed: boolean;
 }
@@ -96,11 +69,11 @@ export interface InferredContainer {
  */
 export function inferContainer(url: URL, audioOnly = false): InferredContainer {
   const match = /\.([a-z0-9]{2,6})$/i.exec(url.pathname);
-  const known = match?.[1] !== undefined ? EXTENSION_CONTAINERS[match[1].toLowerCase()] : undefined;
+  const known = containerOfExtension(match?.[1]);
   if (known !== undefined && !(audioOnly && known === 'ts')) {
     return { container: known, guessed: false };
   }
-  return { container: audioOnly ? NATIVE_AUDIO : 'ts', guessed: !audioOnly };
+  return { container: audioOnly ? NATIVE_AUDIO_CONTAINER : 'ts', guessed: !audioOnly };
 }
 
 function hasHeaders(value: unknown): boolean {

@@ -1,29 +1,37 @@
-import { act, render } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ThemeModeProvider } from '@/ui/theme';
-import { buildCategories } from './categories';
-import { CategoryNav } from './CategoryNav';
+import { CategoryNav, type NavCategory } from './CategoryNav';
 
-const categories = buildCategories(
-  Array.from({ length: 12 }, (_, i) => ({
-    key: `s:live:cat:${i}`,
-    sourceId: 's',
-    type: 'live' as const,
-    externalId: String(i),
+const categories: NavCategory[] = [
+  { kind: 'favorites', id: '~favorites', name: 'Favourites' },
+  ...Array.from({ length: 12 }, (_, i) => ({
+    kind: 'source',
+    id: String(i),
     name: `Category ${i}`,
-    order: i,
   })),
-);
+];
 
-function Nav({ variant }: { variant: 'chips' | 'list' }) {
+const pathFor = (id: string) => `/live/category/${encodeURIComponent(id)}`;
+
+function Nav({ variant, search }: { variant: 'chips' | 'list'; search?: string }) {
   const { categoryId = '' } = useParams();
-  return <CategoryNav categories={categories} selectedId={categoryId} variant={variant} />;
+  return (
+    <CategoryNav
+      categories={categories}
+      selectedId={categoryId}
+      variant={variant}
+      label="Categories"
+      pathFor={pathFor}
+      {...(search !== undefined && { search })}
+    />
+  );
 }
 
-function renderNav(selectedId: string, variant: 'chips' | 'list') {
+function renderNav(selectedId: string, variant: 'chips' | 'list', search?: string) {
   const router = createMemoryRouter(
-    [{ path: '/live/category/:categoryId', element: <Nav variant={variant} /> }],
+    [{ path: '/live/category/:categoryId', element: <Nav variant={variant} search={search} /> }],
     { initialEntries: [`/live/category/${selectedId}`] },
   );
   const view = render(
@@ -66,4 +74,20 @@ describe('CategoryNav', () => {
     renderNav('9', 'list');
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it.each(['chips', 'list'] as const)(
+    'links each category to its feature path, keeps the query and marks the selection (%s)',
+    (variant) => {
+      renderNav('3', variant, '?channel=k');
+      const nav = screen.getByRole('navigation', { name: 'Categories' });
+      const links = within(nav).getAllByRole('link');
+      expect(links).toHaveLength(13);
+      expect(links[4]).toHaveAttribute('href', '/live/category/3?channel=k');
+      expect(links[4]).toHaveAttribute('aria-current', 'page');
+      expect(links[0]).not.toHaveAttribute('aria-current');
+      // Only the favourites category has an icon.
+      expect(links[0]?.querySelector('svg')).not.toBeNull();
+      expect(links[1]?.querySelector('svg')).toBeNull();
+    },
+  );
 });

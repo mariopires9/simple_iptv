@@ -1,7 +1,6 @@
-// Copied from features/live/useFillHeight.ts (features cannot import each other; candidate for a
-// shared extraction into src/ui).
-// Height that makes an element fill the rest of the page's main area (LIV-01 review): the Live
-// screen scrolls inside its list, never the page.
+// Height that makes an element fill the rest of the page's main area (LIV-01 review): the
+// catalogue screens (Live, Movies) scroll inside their list or grid, never the page. Shared since
+// TEC-02.
 //
 // The app shell is a `min-height: 100dvh` flex column (top bar · nav rail + <main> · sticky
 // bottom bar in normal flow), so <main> is stretched to the free space but that height is not

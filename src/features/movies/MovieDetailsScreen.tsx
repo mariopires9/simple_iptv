@@ -36,6 +36,8 @@ import {
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import type { VodInfo } from '@/providers/xtream';
+import { useActiveSource } from '@/ui/hooks/useActiveSource';
+import { isLoadableImage } from '@/ui/images';
 import {
   DelayedLoading,
   DetailHeaderSkeleton,
@@ -46,12 +48,10 @@ import {
 import { FROM_GRID, lastBrowseLocation } from './browseState';
 import { ALL_CATEGORY_ID, categoryPath } from './categories';
 import { formatClock, formatDuration, formatRating } from './format';
-import { isLoadableImage } from './images';
 import { loadMovieInfo } from './movieInfo';
 import { MoviePlayer } from './MoviePlayer';
 import { resolveActiveSource } from './moviesSource';
 import { Poster } from './Poster';
-import { useActiveSource } from './useActiveSource';
 
 type DetailsState =
   | { status: 'loading' }
