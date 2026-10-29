@@ -13,3 +13,4 @@ test-results/
 .claude
 graphify-out/
 .vitest/
+proxy/config.json
