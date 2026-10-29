@@ -3,7 +3,14 @@ import type Hls from 'hls.js';
 import type { ErrorData, HlsConfig } from 'hls.js';
 import { log } from '@/core/log';
 import { shortenUrl } from '@/core/net';
-import { errorName, isRecoverableHlsMediaError, mapHlsError, toPlaybackError } from '../errors';
+import {
+  errorName,
+  isHlsAudioCodecRejected,
+  isRecoverableHlsMediaError,
+  parseCodecs,
+  mapHlsError,
+  toPlaybackError,
+} from '../errors';
 import { PlaybackError } from '../types';
 import type { EngineDeps, PlayerEngine, StreamDescriptor } from '../types';
 import { createRewritingLoader } from './hlsLoader';
@@ -109,6 +116,15 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
 
       const recovery = createRecoveryPolicy();
       const onError = (_event: string, data: ErrorData) => {
+        if (isHlsAudioCodecRejected(data)) {
+          const codec = parseCodecs(data.mimeType);
+          log.warn('hls: audio codec not supported, playing without sound', { codec });
+          events.emit('notice', {
+            type: 'audio-unsupported',
+            ...(codec !== undefined ? { codec } : {}),
+          });
+          return;
+        }
         if (!data.fatal) {
           log.debug('hls: non-fatal error', { details: data.details, url: shortenUrl(stream.url) });
           return;

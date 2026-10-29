@@ -1,16 +1,25 @@
 // Player view (PLY-02, docs/UX_UI.md §4.5): owns the <video> element and one PlayerController,
 // starts playback (with the autoplay policy), and renders the controls overlay, the buffering
 // spinner, the playback error overlay and the screen-reader announcements.
+// PLY-03: fullscreen (Fullscreen API or the iPhone system player), landscape → fullscreen and
+// Picture-in-Picture. PLY-04: live reconnects with backoff, the error mapping and its actions,
+// and the "no sound" banner.
 import VolumeOffRounded from '@mui/icons-material/VolumeOffRounded';
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import { alpha } from '@mui/material/styles';
+import Typography from '@mui/material/Typography';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
+import { AUDIO_CHECK_DELAY_MS, audioMissing } from './audioCheck';
+import { formatCodecs } from './codecNames';
 import { describePlaybackError } from './describePlaybackError';
 import {
   isSilent,
@@ -21,9 +30,12 @@ import {
   setMediaVolume,
   startPlayback,
 } from './media';
+import { detectPlayerPlatform, type PlayerPlatform } from './platform';
 import { PlayerControls, type SeekWindow } from './PlayerControls';
 import { useAutoHide } from './useAutoHide';
+import { useFullscreen } from './useFullscreen';
 import { useMediaState } from './useMediaState';
+import { usePictureInPicture } from './usePictureInPicture';
 import { usePlayerController, type ControllerFactory } from './usePlayerController';
 import { useShortcuts } from './useShortcuts';
 
@@ -31,6 +43,22 @@ import { useShortcuts } from './useShortcuts';
 export const DVR_MIN_WINDOW_S = 30;
 /** The buffering spinner only appears after this long, so short stalls do not flash. */
 export const BUFFERING_SPINNER_DELAY_MS = 500;
+/**
+ * Live: delays of the automatic reconnects after a transient network error (PLY-04 AC1). The
+ * error overlay appears only when all of them failed; a load that reaches playback resets them.
+ */
+export const LIVE_RECONNECT_DELAYS_MS: readonly number[] = [1000, 2000, 4000];
+/**
+ * Where the overlay's "Connection diagnostics" action leads (SRC-09 will add its own page).
+ * The action is a router link: PlayerView is always rendered inside the app's router.
+ */
+export const DIAGNOSTICS_PATH = '/settings/sources';
+
+/**
+ * Failures worth reconnecting automatically: network errors only. Blocked (CORS/mixed content),
+ * auth and format errors would fail the same way again.
+ */
+const isTransient = (error: PlaybackError) => error.kind === 'network';
 
 export interface PlayerViewProps {
   descriptor: StreamDescriptor;
@@ -42,14 +70,24 @@ export interface PlayerViewProps {
   startAt?: number;
   /** ↑ / previous-channel button (live). */
   onPrevious?: () => void;
-  /** ↓ / next-channel button (live). */
+  /** ↓ / next-channel button (live); also "Next channel" on the error overlay. */
   onNext?: () => void;
   /** `L` / channel-list button (live). */
   onToggleChannelList?: () => void;
-  /** `Esc` / back button. */
+  /** `Esc` / back button. `Esc` leaves fullscreen first. */
   onClose?: () => void;
-  /** `F` / fullscreen button. TODO(PLY-03): fullscreen and PiP are implemented there. */
-  onToggleFullscreen?: () => void;
+  /**
+   * Rotating the device to landscape during playback enters fullscreen (and back to portrait
+   * leaves it). Default: on for mobile devices. The setting itself belongs to UX-04.
+   */
+  fullscreenOnLandscape?: boolean;
+  /**
+   * The entry declares headers (Referer/User-Agent…) the browser cannot send: a 401/403 is then
+   * explained as a provider restriction (PLY-04 AC8).
+   */
+  requiredHeaders?: boolean;
+  /** Device capabilities (tests inject a profile). Default: detected once. */
+  platform?: PlayerPlatform;
   /** Focus the player region on mount so the shortcuts work right away. Default true. */
   autoFocus?: boolean;
   /** Controller factory (tests inject a fake). Default: `createPlayerController`. */
@@ -65,10 +103,13 @@ export function PlayerView({
   onNext,
   onToggleChannelList,
   onClose,
-  onToggleFullscreen,
+  fullscreenOnLandscape,
+  requiredHeaders = false,
+  platform: platformProp,
   autoFocus = true,
   createController,
 }: PlayerViewProps) {
+  const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
   const { videoRef, bound } = usePlayerController(createController);
   const video = bound?.video ?? null;
   const controller = bound?.controller;
@@ -76,17 +117,18 @@ export function PlayerView({
   const [region, setRegion] = useState<HTMLDivElement | null>(null);
   const [controls, setControls] = useState<HTMLDivElement | null>(null);
 
-  // One "load" per descriptor/startAt/retry; errors and readiness are tied to the load they
+  // One "load" per descriptor/startAt/reload; errors and readiness are tied to the load they
   // belong to, so a new load starts clean without resetting state inside an effect.
   // The descriptor is compared by value: a parent re-creating an equal object must not reload.
   const [stream, setStream] = useState(descriptor);
   if (stream !== descriptor && JSON.stringify(stream) !== JSON.stringify(descriptor)) {
     setStream(descriptor);
   }
-  const [retries, setRetries] = useState(0);
+  // Bumped by "Try again" and by every automatic reconnect: each is a new load.
+  const [reloads, setReloads] = useState(0);
   const load = useMemo(
-    () => ({ descriptor: stream, startAt, retries }),
-    [stream, startAt, retries],
+    () => ({ descriptor: stream, startAt, reloads }),
+    [stream, startAt, reloads],
   );
   const [failure, setFailure] = useState<{ load: object; error: PlaybackError }>();
   const [readyFor, setReadyFor] = useState<object>();
@@ -95,19 +137,65 @@ export function PlayerView({
   const error = failure?.load === load ? failure.error : undefined;
   const loading = readyFor !== load && error === undefined;
 
+  // Live reconnects (PLY-04 AC1). Kept in the view rather than in the controller: "success"
+  // means the stream actually plays (media events), which only the view observes — the
+  // controller never calls video.play() — and the view shows the "Reconnecting…" state.
+  const reconnects = useRef({ stream, count: 0 });
+  const isLiveRef = useRef(kind === 'live');
+  useEffect(() => {
+    isLiveRef.current = kind === 'live';
+  });
+  /** The reconnect whose delay is running, tied to the load that failed. */
+  const [reconnectingFor, setReconnectingFor] = useState<object>();
+  const waitingReconnect = reconnectingFor === load;
+  /** "Reconnecting… (n of 3)" from the delay through the reconnect's own loading. */
+  const [reconnectLabel, setReconnectLabel] = useState<{ stream: object; attempt: number }>();
+
+  // "No sound" banner (PLY-04 AC3): from an engine notice or the decoder counters.
+  const [noAudio, setNoAudio] = useState<{
+    load: object;
+    codec?: string;
+    dismissed?: boolean;
+  }>();
+
   useEffect(() => {
     if (!controller || !video) return undefined;
     let current = true;
     let failed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (reconnects.current.stream !== load.descriptor) {
+      reconnects.current = { stream: load.descriptor, count: 0 };
+    }
     const offError = controller.on('error', (e) => {
       if (!current) return;
       failed = true;
+      const r = reconnects.current;
+      const delay = LIVE_RECONNECT_DELAYS_MS[r.count];
+      if (isLiveRef.current && isTransient(e) && delay !== undefined) {
+        r.count += 1;
+        log.info('player: reconnecting', { attempt: r.count, delayMs: delay, kind: e.kind });
+        setReconnectingFor(load);
+        setReconnectLabel({ stream: load.descriptor, attempt: r.count });
+        timer = setTimeout(() => {
+          timer = undefined;
+          if (current) setReloads((n) => n + 1);
+        }, delay);
+        return;
+      }
       setFailure({ load, error: e });
+    });
+    const offNotice = controller.on('notice', (notice) => {
+      if (!current || notice.type !== 'audio-unsupported') return;
+      setNoAudio({ load, ...(notice.codec !== undefined ? { codec: notice.codec } : {}) });
     });
     // Readiness listeners are attached only once controller.play() resolved: by then the
     // previous stream has been torn down, so its late events cannot mark this load ready.
     const markReady = () => {
-      if (current) setReadyFor(load);
+      if (!current) return;
+      setReadyFor(load);
+      // Playing again: the next network failure gets the full set of reconnects.
+      reconnects.current.count = 0;
+      setReconnectLabel(undefined);
     };
     const READY = ['loadeddata', 'canplay', 'playing'] as const;
     let listening = false;
@@ -132,13 +220,46 @@ export function PlayerView({
 
     return () => {
       current = false;
+      if (timer !== undefined) clearTimeout(timer);
       offError();
+      offNotice();
       if (listening) for (const type of READY) video.removeEventListener(type, markReady);
     };
   }, [controller, video, load]);
 
+  // Decoder counters, read after a few seconds of real playback of a ready load.
+  const ready = readyFor === load;
+  useEffect(() => {
+    if (!video || !ready) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const disarm = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+    };
+    const arm = () => {
+      disarm();
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (video.paused || !audioMissing(video)) return;
+        log.info('player: no audio decoded');
+        setNoAudio((prev) => (prev?.load === load ? prev : { load }));
+      }, AUDIO_CHECK_DELAY_MS);
+    };
+    const ARM = ['playing'] as const;
+    const DISARM = ['pause', 'waiting', 'emptied'] as const;
+    if (!video.paused) arm();
+    for (const type of ARM) video.addEventListener(type, arm);
+    for (const type of DISARM) video.addEventListener(type, disarm);
+    return () => {
+      disarm();
+      for (const type of ARM) video.removeEventListener(type, arm);
+      for (const type of DISARM) video.removeEventListener(type, disarm);
+    };
+  }, [video, ready, load]);
+
   // --- announcements (polite live region) -------------------------------------------------
-  const buffering = (loading || (media.waiting && !media.paused)) && error === undefined;
+  const buffering =
+    (loading || waitingReconnect || (media.waiting && !media.paused)) && error === undefined;
   const showSpinner = useDelayedFlag(buffering, BUFFERING_SPINNER_DELAY_MS);
   // Volume 0 is presented (icon, label, announcement) exactly like muted.
   const silent = media.muted || media.volume === 0;
@@ -211,18 +332,34 @@ export function PlayerView({
     seekMedia(video, edge, media.seekableStart, media.seekableEnd);
     if (video.paused) playMedia(video);
   };
-  const retry = () => setRetries((n) => n + 1);
+  const retry = () => {
+    reconnects.current.count = 0;
+    setReconnectLabel(undefined);
+    setReloads((n) => n + 1);
+  };
 
   const isLive = kind === 'live';
+  const fullscreen = useFullscreen({
+    region,
+    video,
+    fullscreenApi: platform.fullscreenApi,
+    lockLandscape: platform.mobile,
+    autoOnLandscape: fullscreenOnLandscape ?? platform.mobile,
+    playing: !media.paused && error === undefined,
+  });
+  const pip = usePictureInPicture(video, platform.pip);
+  const toggleFullscreen = fullscreen.mode !== 'none' ? fullscreen.toggle : undefined;
+
   useShortcuts(region, {
     togglePlay,
-    toggleFullscreen: onToggleFullscreen,
+    toggleFullscreen,
     toggleMute,
     seekBy: seek ? seekBy : undefined,
     previous: isLive ? onPrevious : undefined,
     next: isLive ? onNext : undefined,
     toggleChannelList: isLive ? onToggleChannelList : undefined,
-    close: onClose,
+    // Esc leaves fullscreen first; only then does it close the player.
+    close: fullscreen.active && fullscreen.mode === 'element' ? fullscreen.exit : onClose,
   });
 
   const visible = useAutoHide({
@@ -237,8 +374,16 @@ export function PlayerView({
     }
   }, [autoFocus, region]);
 
-  const errorText = error ? describePlaybackError(error) : undefined;
+  const errorText = error ? describePlaybackError(error, { kind, requiredHeaders }) : undefined;
   const showUnmute = autoplayMuted && silent && error === undefined;
+  const audioWarning =
+    noAudio?.load === load && noAudio.dismissed !== true && error === undefined
+      ? noAudio
+      : undefined;
+  const reconnectAttempt =
+    reconnectLabel?.stream === stream && (loading || waitingReconnect) && error === undefined
+      ? reconnectLabel.attempt
+      : undefined;
 
   return (
     <Box
@@ -286,6 +431,29 @@ export function PlayerView({
         </Box>
       )}
 
+      {reconnectAttempt !== undefined && (
+        <Typography
+          role="status"
+          data-testid="player-reconnecting"
+          variant="body2"
+          sx={{
+            position: 'absolute',
+            left: '50%',
+            bottom: '20%',
+            transform: 'translateX(-50%)',
+            maxWidth: 'calc(100% - 32px)',
+            px: 1.5,
+            py: 0.5,
+            borderRadius: 999,
+            textAlign: 'center',
+            pointerEvents: 'none',
+            bgcolor: (theme) => alpha(theme.palette.common.black, 0.55),
+          }}
+        >
+          {t.player.reconnecting(reconnectAttempt, LIVE_RECONNECT_DELAYS_MS.length)}
+        </Typography>
+      )}
+
       <PlayerControls
         title={title}
         kind={kind}
@@ -306,7 +474,10 @@ export function PlayerView({
         onPrevious={onPrevious}
         onNext={onNext}
         onToggleChannelList={onToggleChannelList}
-        onToggleFullscreen={onToggleFullscreen}
+        onToggleFullscreen={toggleFullscreen}
+        fullscreen={fullscreen.active}
+        onTogglePictureInPicture={pip.supported ? pip.toggle : undefined}
+        pictureInPicture={pip.active}
         onClose={onClose}
       />
 
@@ -320,6 +491,48 @@ export function PlayerView({
         >
           {t.player.controls.unmute}
         </Button>
+      )}
+
+      {(audioWarning || fullscreen.nativeNote) && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 64,
+            left: 16,
+            right: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 1,
+            pointerEvents: 'none',
+            '& > *': { pointerEvents: 'auto', maxWidth: 560 },
+          }}
+        >
+          {audioWarning && (
+            <Alert
+              severity="warning"
+              role="status"
+              data-testid="player-no-audio"
+              closeText={t.player.dismiss}
+              onClose={() => setNoAudio({ ...audioWarning, dismissed: true })}
+            >
+              {audioWarning.codec !== undefined
+                ? t.player.noAudio.codec(formatCodecs(audioWarning.codec))
+                : t.player.noAudio.unknown}
+            </Alert>
+          )}
+          {fullscreen.nativeNote && (
+            <Alert
+              severity="info"
+              role="status"
+              data-testid="player-native-fullscreen-note"
+              closeText={t.player.dismiss}
+              onClose={fullscreen.dismissNativeNote}
+            >
+              {t.player.nativeFullscreenNote}
+            </Alert>
+          )}
+        </Box>
       )}
 
       {error && errorText && (
@@ -337,16 +550,27 @@ export function PlayerView({
             color: 'text.primary',
           }}
         >
-          {/* TODO(PLY-04): full error mapping, live retry backoff and "Next channel". */}
           <StateView
             variant="error"
             title={errorText.title}
             message={errorText.message}
             details={error.message}
             actions={
-              <Button variant="contained" onClick={retry}>
-                {t.state.actions.retry}
-              </Button>
+              <>
+                <Button variant="contained" onClick={retry}>
+                  {t.state.actions.retry}
+                </Button>
+                {isLive && onNext && (
+                  <Button variant="outlined" onClick={onNext}>
+                    {t.player.controls.nextChannel}
+                  </Button>
+                )}
+                {errorText.action === 'diagnostics' && (
+                  <Button variant="text" component={Link} to={DIAGNOSTICS_PATH}>
+                    {t.player.errors.actions.diagnostics}
+                  </Button>
+                )}
+              </>
             }
           />
         </Box>

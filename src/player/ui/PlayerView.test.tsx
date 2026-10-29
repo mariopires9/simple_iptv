@@ -19,6 +19,8 @@ const LIVE: StreamDescriptor = {
   container: 'hls',
 };
 const theme = createAppTheme('dark');
+/** jsdom-like desktop: no Fullscreen API, no PiP (the display tests inject their own). */
+const NO_DISPLAY_APIS = { fullscreenApi: false, pip: false, mobile: false };
 
 /** Lets pending promises (controller.play → video.play) settle inside act(). */
 async function flush() {
@@ -37,7 +39,14 @@ function setup(props: Partial<PlayerViewProps> = {}, beforePlay?: (media: FakeMe
   });
   const ui = (p: Partial<PlayerViewProps>) => (
     <ThemeProvider theme={theme}>
-      <PlayerView descriptor={VOD} title="Big Movie" createController={factory} {...props} {...p} />
+      <PlayerView
+        descriptor={VOD}
+        title="Big Movie"
+        createController={factory}
+        platform={NO_DISPLAY_APIS}
+        {...props}
+        {...p}
+      />
     </ThemeProvider>
   );
   const view = render(ui({}));
@@ -249,9 +258,8 @@ describe('PlayerView — shortcuts', () => {
     expect(t.media.seeks.at(-1)).toBe(100);
   });
 
-  it('F, ↑/↓, L and Esc call the callbacks (live)', async () => {
+  it('↑/↓, L and Esc call the callbacks (live)', async () => {
     const handlers = {
-      onToggleFullscreen: vi.fn(),
       onPrevious: vi.fn(),
       onNext: vi.fn(),
       onToggleChannelList: vi.fn(),
@@ -259,7 +267,6 @@ describe('PlayerView — shortcuts', () => {
     };
     const t = setup({ descriptor: LIVE, ...handlers });
     await flush();
-    key(t.region(), 'f');
     key(t.region(), 'ArrowUp');
     key(t.region(), 'ArrowDown');
     key(t.region(), 'l');
@@ -481,7 +488,7 @@ describe('PlayerView — playback errors', () => {
     );
     await flush();
     expect(media?.play).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('Format not supported');
+    expect(screen.getByRole('alert')).toHaveTextContent('Format or codec not supported');
   });
 });
 
@@ -501,14 +508,20 @@ describe('PlayerView — announcements', () => {
   });
 
   it('every control button has an accessible name', async () => {
-    setup({
-      descriptor: LIVE,
-      onPrevious: vi.fn(),
-      onNext: vi.fn(),
-      onToggleChannelList: vi.fn(),
-      onToggleFullscreen: vi.fn(),
-      onClose: vi.fn(),
-    });
+    setup(
+      {
+        descriptor: LIVE,
+        onPrevious: vi.fn(),
+        onNext: vi.fn(),
+        onToggleChannelList: vi.fn(),
+        onClose: vi.fn(),
+        platform: { fullscreenApi: true, pip: true, mobile: false },
+      },
+      (media) => {
+        Object.assign(media.video, { requestPictureInPicture: vi.fn() });
+        Object.assign(document, { pictureInPictureEnabled: true });
+      },
+    );
     await flush();
     const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
     expect(names).toEqual(
@@ -519,6 +532,7 @@ describe('PlayerView — announcements', () => {
         'Next channel',
         'Mute',
         'Channel list',
+        'Picture-in-picture',
         'Fullscreen',
       ]),
     );

@@ -3,9 +3,11 @@
 // keyboard focus can reach them and reveal the overlay.
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import Forward10Rounded from '@mui/icons-material/Forward10Rounded';
+import FullscreenExitRounded from '@mui/icons-material/FullscreenExitRounded';
 import FullscreenRounded from '@mui/icons-material/FullscreenRounded';
 import ListRounded from '@mui/icons-material/ListRounded';
 import PauseRounded from '@mui/icons-material/PauseRounded';
+import PictureInPictureAltRounded from '@mui/icons-material/PictureInPictureAltRounded';
 import PlayArrowRounded from '@mui/icons-material/PlayArrowRounded';
 import Replay10Rounded from '@mui/icons-material/Replay10Rounded';
 import SkipNextRounded from '@mui/icons-material/SkipNextRounded';
@@ -55,7 +57,13 @@ export interface PlayerControlsProps {
   onPrevious?: (() => void) | undefined;
   onNext?: (() => void) | undefined;
   onToggleChannelList?: (() => void) | undefined;
+  /** Fullscreen button; omitted where the platform has no fullscreen at all. */
   onToggleFullscreen?: (() => void) | undefined;
+  /** Currently fullscreen (button label/icon: "Exit fullscreen"). */
+  fullscreen?: boolean;
+  /** Picture-in-Picture button; omitted where PiP is not supported (PLY-03 AC4). */
+  onTogglePictureInPicture?: (() => void) | undefined;
+  pictureInPicture?: boolean;
   onClose?: (() => void) | undefined;
 }
 
@@ -143,6 +151,9 @@ export function PlayerControls({
   onNext,
   onToggleChannelList,
   onToggleFullscreen,
+  fullscreen = false,
+  onTogglePictureInPicture,
+  pictureInPicture = false,
   onClose,
 }: PlayerControlsProps) {
   const c = t.player.controls;
@@ -271,9 +282,20 @@ export function PlayerControls({
                   <ListRounded />
                 </Control>
               )}
+              {onTogglePictureInPicture && (
+                <Control
+                  label={pictureInPicture ? c.exitPictureInPicture : c.pictureInPicture}
+                  onClick={onTogglePictureInPicture}
+                >
+                  <PictureInPictureAltRounded />
+                </Control>
+              )}
               {onToggleFullscreen && (
-                <Control label={c.fullscreen} onClick={onToggleFullscreen}>
-                  <FullscreenRounded />
+                <Control
+                  label={fullscreen ? c.exitFullscreen : c.fullscreen}
+                  onClick={onToggleFullscreen}
+                >
+                  {fullscreen ? <FullscreenExitRounded /> : <FullscreenRounded />}
                 </Control>
               )}
             </Box>

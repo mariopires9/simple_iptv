@@ -117,7 +117,14 @@ export class FakeHls extends Emitter {
   }
 
   /** Fires `Hls.Events.ERROR` like hls.js does: `(event, data)`. */
-  error(data: { type: string; details: string; fatal: boolean; response?: { code?: number } }) {
+  error(data: {
+    type: string;
+    details: string;
+    fatal: boolean;
+    response?: { code?: number };
+    mimeType?: string;
+    sourceBufferName?: string;
+  }) {
     this.fire(FakeHls.Events.ERROR, FakeHls.Events.ERROR, data);
   }
 

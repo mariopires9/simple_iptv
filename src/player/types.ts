@@ -38,6 +38,11 @@ export interface PlaybackErrorInit {
   detail?: string;
   status?: number;
   hint?: 'mixed-content' | 'cors';
+  /**
+   * Codec(s) the browser refused, as RFC 6381 strings (e.g. `ac-3`, `avc1.64001f, mp4a.40.2`),
+   * when the engine knows them (PLY-04 AC2).
+   */
+  codec?: string;
   /** Stream URL. Never stored: only the shortened, redacted form (`target`). */
   url?: string;
 }
@@ -60,12 +65,19 @@ export class PlaybackError extends Error {
   readonly detail?: string;
   readonly status?: number;
   readonly hint?: 'mixed-content' | 'cors';
+  readonly codec?: string;
   /** Shortened, redacted URL (see `shortenUrl`). */
   readonly target?: string;
 
-  constructor({ kind, engine, detail, status, hint, url }: PlaybackErrorInit) {
+  constructor({ kind, engine, detail, status, hint, codec, url }: PlaybackErrorInit) {
     const target = url !== undefined ? shortenUrl(url) : undefined;
-    const extra = [engine, detail, status !== undefined ? `HTTP ${status}` : undefined, hint]
+    const extra = [
+      engine,
+      detail,
+      status !== undefined ? `HTTP ${status}` : undefined,
+      hint,
+      codec !== undefined ? `codec ${codec}` : undefined,
+    ]
       .filter((part) => part !== undefined)
       .join(', ');
     super(
@@ -76,6 +88,7 @@ export class PlaybackError extends Error {
     if (detail !== undefined) this.detail = detail;
     if (status !== undefined) this.status = status;
     if (hint !== undefined) this.hint = hint;
+    if (codec !== undefined) this.codec = codec;
     if (target !== undefined) this.target = target;
   }
 }
@@ -108,10 +121,14 @@ export interface PlayerEngine {
 }
 
 /**
- * Non-fatal information about the current playback. `resume-unsupported`: the requested
- * `startAt` is not seekable (common for MPEG-TS), so playback starts from the beginning.
+ * Non-fatal information about the current playback.
+ * - `resume-unsupported`: the requested `startAt` is not seekable (common for MPEG-TS), so
+ *   playback starts from the beginning.
+ * - `audio-unsupported`: the browser refused the audio track (e.g. AC-3 in Chrome); the video
+ *   keeps playing without sound (PLY-04 AC3). `codec` is the RFC 6381 string when known.
  */
-export type PlaybackNotice = { type: 'resume-unsupported'; startAt: number };
+export type PlaybackNotice =
+  { type: 'resume-unsupported'; startAt: number } | { type: 'audio-unsupported'; codec?: string };
 
 export interface EngineEvents {
   error: PlaybackError;

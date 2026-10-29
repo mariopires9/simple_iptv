@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isHlsAudioCodecRejected,
   isMixedContent,
   isRecoverableHlsMediaError,
   mapHlsError,
   mapMediaError,
   mapMpegtsError,
+  parseCodecs,
   toPlaybackError,
 } from './errors';
 import type { ErrorContext } from './errors';
@@ -204,5 +206,73 @@ describe('PlaybackError', () => {
     });
     expect(e.message).toBe('Stream access rejected (auth, hls, manifestLoadError, HTTP 401)');
     expect(e.name).toBe('PlaybackError');
+  });
+});
+
+describe('codec extraction (PLY-04 AC2)', () => {
+  it('parseCodecs reads the codecs parameter of a MIME type or a browser message', () => {
+    expect(parseCodecs('video/mp4;codecs="avc1.64001f,mp4a.40.2"')).toBe('avc1.64001f, mp4a.40.2');
+    expect(parseCodecs('audio/mp4;codecs=ac-3')).toBe('ac-3');
+    expect(
+      parseCodecs(
+        "Failed to execute 'addSourceBuffer' on 'MediaSource': The type provided ('audio/mp4;codecs=\"ec-3\"') is unsupported.",
+      ),
+    ).toBe('ec-3');
+    expect(parseCodecs('video/mp4')).toBeUndefined();
+    expect(parseCodecs(undefined)).toBeUndefined();
+    expect(parseCodecs(`video/mp4;codecs=${'a'.repeat(80)}`)).toBeUndefined();
+  });
+
+  it('never lets anything but codec tokens through (no URL)', () => {
+    expect(parseCodecs(`codecs=avc1 ${SECRET_URL}`)).toBe('avc1');
+  });
+
+  it('hls.js codec errors keep the codec from the MIME type', () => {
+    const e = mapHlsError(
+      {
+        type: 'mediaError',
+        details: 'bufferAddCodecError',
+        fatal: true,
+        mimeType: 'audio/mp4;codecs=ac-3',
+      },
+      https('hls'),
+    );
+    expect(e).toMatchObject({ kind: 'unsupported-codec', codec: 'ac-3' });
+    expect(e.message).toContain('codec ac-3');
+  });
+
+  it('isHlsAudioCodecRejected: only the non-fatal audio SourceBuffer case', () => {
+    const base = { type: 'mediaError', details: 'bufferAddCodecError' };
+    expect(isHlsAudioCodecRejected({ ...base, fatal: false, sourceBufferName: 'audio' })).toBe(
+      true,
+    );
+    expect(isHlsAudioCodecRejected({ ...base, fatal: true, sourceBufferName: 'audio' })).toBe(
+      false,
+    );
+    expect(isHlsAudioCodecRejected({ ...base, fatal: false, sourceBufferName: 'video' })).toBe(
+      false,
+    );
+  });
+
+  it('mpegts.js MediaMSEError quoting an unsupported type → unsupported-codec with the codec', () => {
+    const e = mapMpegtsError(
+      'MediaError',
+      'MediaMSEError',
+      {
+        code: 9,
+        msg: "Failed to execute 'addSourceBuffer' on 'MediaSource': The type provided ('audio/mp4;codecs=ac-3') is unsupported.",
+      },
+      https('mpegts'),
+    );
+    expect(e).toMatchObject({ kind: 'unsupported-codec', codec: 'ac-3' });
+    // Other MSE errors stay decode errors.
+    expect(
+      mapMpegtsError(
+        'MediaError',
+        'MediaMSEError',
+        { code: 0, msg: 'QuotaExceeded' },
+        https('mpegts'),
+      ),
+    ).toMatchObject({ kind: 'decode' });
   });
 });
