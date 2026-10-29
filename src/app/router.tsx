@@ -4,7 +4,7 @@
 import { createHashRouter, type RouteObject } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { log } from '@/core/log';
-import { favoritesRoutes } from '@/features/favorites';
+import { favoritesRoutes, homeRoute } from '@/features/favorites';
 import { liveRoutes } from '@/features/live';
 import { moviesRoutes } from '@/features/movies';
 import { onboardingRoutes, onboardingShellRoutes } from '@/features/onboarding';
@@ -12,7 +12,6 @@ import { searchRoutes } from '@/features/search';
 import { seriesRoutes } from '@/features/series';
 import { settingsRoutes } from '@/features/settings';
 import { sourcesOnboardingRoutes, sourcesRoutes } from '@/features/sources';
-import { lazyScreen } from '@/ui/lazyScreen';
 import { FullScreenLayout, RouteFallback, ShellLayout } from './routes/layouts';
 import { NotFoundScreen } from './routes/NotFoundScreen';
 import { RootErrorBoundary, RouteErrorBoundary } from './routes/RouteErrorBoundary';
@@ -23,11 +22,6 @@ type Router = ReturnType<typeof createHashRouter>;
 function screen(route: RouteObject): RouteObject {
   return { ...route, ErrorBoundary: RouteErrorBoundary, HydrateFallback: RouteFallback };
 }
-
-const homeRoute: RouteObject = {
-  index: true,
-  lazy: lazyScreen(() => import('./routes/HomeScreen'), 'HomeScreen', []),
-};
 
 /** The whole route tree; exported for tests (memory router). */
 export const appRoutes: RouteObject[] = [

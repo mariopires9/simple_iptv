@@ -297,6 +297,15 @@ export const catalogRepo = {
     return db.seriesDetails.get(seriesKey);
   },
 
+  /** Cached details of several series in one read, aligned with `seriesKeys` (missing → undefined). */
+  async getSeriesDetailsMany(
+    seriesKeys: readonly string[],
+  ): Promise<(SeriesDetails | undefined)[]> {
+    if (seriesKeys.length === 0) return [];
+    const db = await getDb();
+    return db.seriesDetails.bulkGet([...seriesKeys]);
+  },
+
   async putSeriesDetails(details: SeriesDetails): Promise<void> {
     const db = await getDb();
     await db.seriesDetails.put(details);

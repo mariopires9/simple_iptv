@@ -1,5 +1,5 @@
 // Favorites, history, settings and vault (FND-05 CA2).
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDatabase } from '../database';
 import { openFreshDatabase } from '../test-utils';
 import { catalogRepo } from './catalog';
@@ -158,6 +158,93 @@ describe('historyRepo', () => {
     expect(e).not.toHaveProperty('positionSec');
     await historyRepo.remove('s1:series:5');
     expect(await historyRepo.get('s1:series:5')).toBeUndefined();
+  });
+
+  it('listRecentPage pages a source+types by descending lastWatchedAt', async () => {
+    for (const [key, at] of [
+      ['s1:movie:1', 10],
+      ['s1:series:1', 30],
+      ['s1:live:1', 40],
+      ['s1:movie:2', 20],
+      ['s2:movie:9', 50],
+    ] as const) {
+      await historyRepo.upsert({ itemKey: key, lastWatchedAt: at });
+    }
+    const keys = async (offset: number, limit: number) =>
+      (await historyRepo.listRecentPage('s1', ['movie', 'series'], offset, limit)).map(
+        (h) => h.itemKey,
+      );
+    expect(await keys(0, 2)).toEqual(['s1:series:1', 's1:movie:2']);
+    expect(await keys(2, 2)).toEqual(['s1:movie:1']);
+    expect(await keys(3, 2)).toEqual([]);
+  });
+
+  describe('listRecentItems (FAV-02)', () => {
+    async function seedChannels(count: number) {
+      await catalogRepo.replaceForSource('s1', 'live', {
+        categories: [],
+        items: Array.from({ length: count }, (_, i) => ({
+          externalId: String(i + 1),
+          name: `C${i + 1}`,
+          streamPath: '',
+        })),
+      });
+    }
+
+    it('reads page by page until the limit of available items, skipping missing ones', async () => {
+      await seedChannels(5);
+      // Newest: 12 channels that left the list, then the 5 available ones.
+      for (let i = 1; i <= 12; i++) {
+        await historyRepo.upsert({ itemKey: `s1:live:gone${i}`, lastWatchedAt: 100 + i });
+      }
+      for (let i = 1; i <= 5; i++) {
+        await historyRepo.upsert({ itemKey: `s1:live:${i}`, lastWatchedAt: i });
+      }
+      const page = vi.spyOn(historyRepo, 'listRecentPage');
+      const result = await historyRepo.listRecentItems('s1', ['live'], { limit: 3, pageSize: 5 });
+      expect(result.items.map((r) => r.item.name)).toEqual(['C5', 'C4', 'C3']);
+      expect(result.scanned).toBe(15);
+      expect(page).toHaveBeenCalledTimes(3);
+    });
+
+    it('applies accept, and stops at maxScanned', async () => {
+      await seedChannels(5);
+      for (let i = 1; i <= 5; i++) {
+        await historyRepo.upsert({ itemKey: `s1:live:${i}`, lastWatchedAt: i });
+      }
+      const odd = await historyRepo.listRecentItems('s1', ['live'], {
+        limit: 10,
+        accept: (e) => Number(e.itemKey.split(':')[2]) % 2 === 1,
+      });
+      expect(odd.items.map((r) => r.item.name)).toEqual(['C5', 'C3', 'C1']);
+      const bounded = await historyRepo.listRecentItems('s1', ['live'], {
+        limit: 10,
+        pageSize: 2,
+        maxScanned: 3,
+      });
+      expect(bounded.items.map((r) => r.item.name)).toEqual(['C5', 'C4', 'C3']);
+      expect(bounded.scanned).toBe(3);
+    });
+
+    it('scanned is 0 without history', async () => {
+      expect(await historyRepo.listRecentItems('s1', ['live'], { limit: 3 })).toEqual({
+        items: [],
+        scanned: 0,
+      });
+    });
+  });
+
+  it('clearSource removes every type of that source only, and keeps the favorites (FAV-02 AC3)', async () => {
+    for (const key of ['s1:live:1', 's1:movie:1', 's1:series:1', 's2:live:1']) {
+      await historyRepo.upsert({ itemKey: key });
+    }
+    await favoritesRepo.add('s1:live:1');
+    expect(await historyRepo.clearSource('s1')).toBe(3);
+    for (const type of ['live', 'movie', 'series'] as const) {
+      expect(await historyRepo.listRecent('s1', type)).toEqual([]);
+    }
+    expect(await historyRepo.get('s2:live:1')).toBeDefined();
+    expect(await favoritesRepo.has('s1:live:1')).toBe(true);
   });
 });
 

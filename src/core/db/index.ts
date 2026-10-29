@@ -31,7 +31,12 @@ export {
   type ReplaceResult,
 } from './repos/catalog';
 export { favoritesRepo } from './repos/favorites';
-export { historyRepo } from './repos/history';
+export {
+  historyRepo,
+  type RecentItem,
+  type RecentItemsOptions,
+  type RecentItemsResult,
+} from './repos/history';
 export { settingsRepo } from './repos/settings';
 export { vaultStore } from './repos/vault';
 export * from './types';

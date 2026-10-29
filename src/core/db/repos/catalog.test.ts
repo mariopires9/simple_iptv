@@ -186,6 +186,23 @@ describe('catalogRepo.replaceForSource (CA3)', () => {
   }, 60_000);
 });
 
+describe('catalogRepo.getSeriesDetailsMany (FAV-02 review)', () => {
+  it('reads several series details at once, aligned with the keys', async () => {
+    const details = (seriesKey: string) => ({
+      seriesKey,
+      sourceId: 's1',
+      fetchedAt: 1,
+      seasons: [],
+    });
+    await catalogRepo.putSeriesDetails(details('s1:series:1'));
+    await catalogRepo.putSeriesDetails(details('s1:series:3'));
+    expect(
+      await catalogRepo.getSeriesDetailsMany(['s1:series:3', 's1:series:2', 's1:series:1']),
+    ).toEqual([details('s1:series:3'), undefined, details('s1:series:1')]);
+    expect(await catalogRepo.getSeriesDetailsMany([])).toEqual([]);
+  });
+});
+
 describe('catalogRepo — queries', () => {
   beforeEach(async () => {
     await catalogRepo.replaceForSource('s1', 'live', {

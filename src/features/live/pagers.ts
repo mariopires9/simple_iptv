@@ -28,8 +28,8 @@ async function indexIn(catKey: string, channel: Channel): Promise<number> {
   return row?.key === channel.key ? index : -1;
 }
 
-/** How many recently watched channels "Recent" shows. */
-export const RECENT_LIMIT = 50;
+/** How many recently watched channels "Recent" shows (FAV-02 AC1: at most 30). */
+export const RECENT_LIMIT = 30;
 
 /** A small list already in memory (favorites, recent). */
 function memoryPager(channels: readonly Channel[]): ChannelPager {
@@ -160,13 +160,11 @@ export async function createPager(
       );
     }
     case 'recent': {
-      const recent = await historyRepo.listRecent(sourceId, 'live', RECENT_LIMIT);
-      return memoryPager(
-        await catalogRepo.getMany(
-          'live',
-          recent.map((h) => h.itemKey),
-        ),
-      );
+      // Same rule as Home "Recent channels": the 30 most recent channels still in the list.
+      const { items } = await historyRepo.listRecentItems(sourceId, ['live'], {
+        limit: RECENT_LIMIT,
+      });
+      return memoryPager(items.map(({ item }) => item));
     }
   }
 }

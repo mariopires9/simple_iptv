@@ -11,7 +11,7 @@ import {
   type Category,
 } from '@/core/db';
 import { buildCategories, VIRTUAL_CATEGORY_IDS } from './categories';
-import { clearCountCache, concatPager, createPager } from './pagers';
+import { clearCountCache, concatPager, createPager, RECENT_LIMIT } from './pagers';
 
 const S = 'src';
 const cat = (id: string) => categoryKey(S, 'live', id);
@@ -194,5 +194,21 @@ describe('createPager', () => {
     await historyRepo.upsert({ itemKey: key(3), lastWatchedAt: 2 });
     const pager = await pagerFor(VIRTUAL_CATEGORY_IDS.recent);
     expect(names(await pager.load(0, 10))).toEqual(['a3', 'c2']);
+  });
+
+  it('"Recent" shows the 30 most recent channels still in the list (FAV-02 AC1)', async () => {
+    expect(RECENT_LIMIT).toBe(30);
+    // 35 newer entries whose channels left the list, then the 7 channels that exist.
+    for (let i = 1; i <= 35; i++) {
+      await historyRepo.upsert({ itemKey: itemKey(S, 'live', `gone${i}`), lastWatchedAt: 100 + i });
+    }
+    for (let n = 1; n <= 7; n++) await historyRepo.upsert({ itemKey: key(n), lastWatchedAt: n });
+    const pager = await pagerFor(VIRTUAL_CATEGORY_IDS.recent);
+    expect(pager.total).toBe(7);
+    expect(names(await pager.load(0, 10))).toEqual(['c7', 'a6', 'c5', 'c4', 'a3', 'c2', 'a1']);
+
+    const spy = vi.spyOn(historyRepo, 'listRecentItems');
+    await pagerFor(VIRTUAL_CATEGORY_IDS.recent);
+    expect(spy).toHaveBeenCalledWith(S, ['live'], { limit: 30 });
   });
 });
