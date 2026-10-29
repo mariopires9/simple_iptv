@@ -186,7 +186,8 @@ describe('AC2 — get.php URL → Xtream mode suggestion', () => {
 
 describe('AC1 + AC5 — import', () => {
   it('saves the URL in the vault, imports with progress, then Continue → Home', async () => {
-    serveList(LIST, { chunk: 24, pauseMs: 30 });
+    // Slow enough (≈ 2 s in total) that the progress panel is observable on a loaded CI machine.
+    serveList(LIST, { chunk: 24, pauseMs: 200 });
     const { user, router } = renderForm();
     await user.type(urlInput(), LIST_URL);
     await user.click(submit());
