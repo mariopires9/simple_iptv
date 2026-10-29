@@ -180,7 +180,7 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
   1. Given `#EXTINF` with `tvg-id`, `tvg-name`, `tvg-logo`, `group-title`, `tvg-chno`, `catchup*`, Then all attributes are extracted (single/double quotes, spaces, commas in the name).
   2. Given a `#EXTM3U url-tvg="..."` or `x-tvg-url` header, Then the EPG URL(s) are captured — the value may hold several comma-separated URLs (seen in real lists).
   3. Given `#EXTVLCOPT`/`#KODIPROP`/`#EXTGRP` lines, Then they are attached to the next entry (EXTGRP as the group if there is no group-title) or ignored without error.
-  4. Given a UTF-8 BOM, CRLF, empty lines, entries without `#EXTINF`, Then the parser is tolerant.
+  4. Given a UTF-8 BOM, CRLF, empty lines, entries without `#EXTINF`, Then the parser is tolerant. Lists without the `#EXTM3U` header are accepted when they start with `#EXTINF` entries (common in real lists); HTML/JSON/empty bodies are rejected.
   5. Given entries with a `javascript:`, `data:`, `file:` or invalid URL, Then they are discarded and counted as "skipped".
   6. Given a text stream of 50,000 entries, Then it processes in chunks, emits progress and does not hold the whole file twice in memory.
   7. Given entries, Then each is classified `live|movie|series` (VOD-04 heuristic — initially everything `live` except URLs with `/movie/` or `/series/`).
