@@ -13,13 +13,22 @@ import StarRounded from '@mui/icons-material/StarRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
   catalogRepo,
   favoritesRepo,
   historyRepo,
   itemKey,
+  parseCategoryKey,
   type HistoryEntry,
   type Movie,
   type Source,
@@ -34,6 +43,7 @@ import {
   errorDetails,
   visuallyHidden,
 } from '@/ui/state';
+import { FROM_GRID, lastBrowseLocation } from './browseState';
 import { ALL_CATEGORY_ID, categoryPath } from './categories';
 import { formatClock, formatDuration, formatRating } from './format';
 import { isLoadableImage } from './images';
@@ -61,6 +71,14 @@ type InfoState =
   | { status: 'ok'; info: VodInfo }
   | { status: 'failed' };
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
 /** Plots longer than this always get "More" (layout measurement is not available everywhere). */
 const LONG_PLOT = 240;
 
@@ -80,6 +98,14 @@ async function loadDetails(movieId: string): Promise<DetailsState> {
   ]);
   if (!movie) return { status: 'not-found' };
   return { status: 'ready', source, movie, history, favorite };
+}
+
+/** Fallback of "Back to movies": the movie's category (else the last one) with the last sort. */
+export function backTarget(movie: Movie | undefined): { pathname: string; search: string } {
+  const last = lastBrowseLocation();
+  const parsed = movie?.categoryKey ? parseCategoryKey(movie.categoryKey) : undefined;
+  const categoryId = parsed?.externalId ?? last?.categoryId ?? ALL_CATEGORY_ID;
+  return { pathname: categoryPath(categoryId), search: last?.search ?? '' };
 }
 
 /** Saved position to resume from, if any (VOD-03 writes it; here it is only read). */
@@ -125,10 +151,20 @@ export function MovieDetailsScreen() {
     navigate(categoryPath(ALL_CATEGORY_ID), { replace: true });
   }, [active.known, active.id, navigate]);
 
+  // Back: opened from the grid → history back (category, sort and scroll are restored there);
+  // otherwise (deep link, reload) → the movie's category with the last sort used.
+  const location = useLocation();
+  const fromGrid = (location.state as { from?: unknown } | null)?.from === FROM_GRID;
+  const backTo = backTarget(details.status === 'ready' ? details.movie : undefined);
   const back = (
     <Button
       component={Link}
-      to={categoryPath(ALL_CATEGORY_ID)}
+      to={backTo}
+      onClick={(event: MouseEvent) => {
+        if (!fromGrid) return;
+        event.preventDefault();
+        void navigate(-1);
+      }}
       startIcon={<ArrowBackRounded aria-hidden />}
       sx={{ alignSelf: 'flex-start', minHeight: 44 }}
     >
@@ -196,15 +232,24 @@ function MovieDetails({ source, movie, history, favorite: initialFavorite }: Mov
   const [info, setInfo] = useState<InfoState>(
     source.kind === 'xtream' ? { status: 'loading' } : { status: 'none' },
   );
+  // Settles with the details' container extension (or `undefined`) once `get_vod_info` answers or
+  // fails; Play waits on it (bounded) when the catalogue has no extension.
+  const [infoExt] = useState(() => deferred<string | undefined>());
   useEffect(() => {
-    if (source.kind !== 'xtream') return undefined;
-    let cancelled = false;
-    loadMovieInfo(source, movie).then(
+    if (source.kind !== 'xtream') {
+      infoExt.resolve(undefined);
+      return undefined;
+    }
+    const controller = new AbortController();
+    loadMovieInfo(source, movie, { signal: controller.signal }).then(
       (next) => {
-        if (!cancelled) setInfo({ status: 'ok', info: next });
+        infoExt.resolve(next.ext);
+        if (!controller.signal.aborted) setInfo({ status: 'ok', info: next });
       },
       (error: unknown) => {
-        if (cancelled) return;
+        // Unmounted (or a new movie): the request was aborted on purpose.
+        if (controller.signal.aborted) return;
+        infoExt.resolve(undefined);
         // Never the URL or the credentials: only the error's name.
         log.warn('movies: get_vod_info failed', {
           error: error instanceof Error ? error.name : 'unknown',
@@ -212,10 +257,9 @@ function MovieDetails({ source, movie, history, favorite: initialFavorite }: Mov
         setInfo({ status: 'failed' });
       },
     );
-    return () => {
-      cancelled = true;
-    };
-  }, [source, movie]);
+    return () => controller.abort();
+  }, [source, movie, infoExt]);
+  const getInfoExt = useCallback(() => infoExt.promise, [infoExt]);
 
   const extra = info.status === 'ok' ? info.info : undefined;
   const year = extra?.year ?? movie.year;
@@ -260,7 +304,8 @@ function MovieDetails({ source, movie, history, favorite: initialFavorite }: Mov
     const el = plotRef.current;
     if (el && !expanded) setOverflowing(el.scrollHeight > el.clientHeight + 1);
   }, [plot, expanded]);
-  const plotId = `movie-plot-${movie.key}`;
+  const plotId = useId();
+  const titleId = useId();
   const canExpand = plot !== undefined && (overflowing || plot.length > LONG_PLOT);
 
   const meta: string[] = [];
@@ -269,14 +314,14 @@ function MovieDetails({ source, movie, history, favorite: initialFavorite }: Mov
   if (genre !== undefined) meta.push(genre);
 
   return (
-    <Box component="article" aria-labelledby="movie-title" sx={{ position: 'relative' }}>
+    <Box component="article" aria-labelledby={titleId} sx={{ position: 'relative' }}>
       {playing && (
         <Box sx={{ mb: 2 }}>
           <MoviePlayer
             source={source}
             movie={movie}
             startAt={resumeAt}
-            infoExt={extra?.ext}
+            getInfoExt={getInfoExt}
             onClose={closePlayer}
           />
         </Box>
@@ -335,12 +380,7 @@ function MovieDetails({ source, movie, history, favorite: initialFavorite }: Mov
             <Poster title={movie.name} url={poster} width={200} eager />
           </Box>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, minWidth: 0 }}>
-            <Typography
-              id="movie-title"
-              variant="h3"
-              component="h1"
-              sx={{ wordBreak: 'break-word' }}
-            >
+            <Typography id={titleId} variant="h3" component="h1" sx={{ wordBreak: 'break-word' }}>
               {movie.name}
             </Typography>
             {(meta.length > 0 || rating !== undefined) && (

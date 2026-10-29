@@ -3,18 +3,17 @@
 // Panels answer with `{ info, movie_data }`; either may be an empty array when the movie is
 // unknown, fields may be numbers or strings, null or missing. Everything is validated with
 // tolerant Valibot schemas: an unusable field is simply omitted, never an error. Free text is
-// returned as plain text (the UI renders it as text, never as HTML) and clipped.
+// returned as plain text (the UI renders it as text, never as HTML) and clipped. Coercions are
+// shared with the catalogue mapping (catalog.ts), so a field means the same in both.
 //
 // The request URL embeds the credentials; it is built and used by the client only (never logged).
 import * as v from 'valibot';
 import { parseExternalUrl } from '@/core/net';
 import type { XtreamClient } from './client';
-import { toExternalId, toYear } from './catalog';
-import { toEpochMs, toInt, toNumber, toText } from './schemas';
+import { clip, toExtension, toRating, toYear } from './catalog';
+import { toInt, toText } from './schemas';
 
 export interface VodInfo {
-  /** Display name from the panel (`info.name`, else `movie_data.name`). */
-  name?: string;
   plot?: string;
   genre?: string;
   director?: string;
@@ -30,28 +29,11 @@ export interface VodInfo {
   backdrop?: string;
   /** Container extension from `movie_data` (`mp4`, `mkv`…). */
   ext?: string;
-  /** Stream id from `movie_data`. */
-  streamId?: string;
-  /** Added timestamp (epoch ms) from `movie_data`. */
-  addedAt?: number;
 }
-
-const MAX_TEXT = 4096;
 
 function text(value: unknown): string | undefined {
   const t = toText(value);
-  return t === undefined ? undefined : t.length > MAX_TEXT ? t.slice(0, MAX_TEXT) : t;
-}
-
-/** Ratings are 0–10 on Xtream panels; 0 means "not rated". */
-function toRating(value: unknown): number | undefined {
-  const n = toNumber(value);
-  return n !== undefined && n > 0 && n <= 10 ? Math.round(n * 10) / 10 : undefined;
-}
-
-function toExtension(value: unknown): string | undefined {
-  const t = toText(value)?.toLowerCase().replace(/^\./, '');
-  return t !== undefined && /^[a-z0-9]{1,5}$/.test(t) ? t : undefined;
+  return t === undefined ? undefined : clip(t);
 }
 
 /** `"01:42:05"`, `"1:42"` (h:mm) → seconds; anything else → undefined. */
@@ -96,7 +78,6 @@ export function parseVodInfo(body: unknown): VodInfo | undefined {
   const set = <K extends keyof VodInfo>(key: K, value: VodInfo[K] | undefined) => {
     if (value !== undefined) out[key] = value;
   };
-  set('name', text(info.name) ?? text(info.o_name) ?? text(data.name));
   set('plot', text(info.plot) ?? text(info.description));
   set('genre', text(info.genre));
   set('director', text(info.director));
@@ -107,8 +88,6 @@ export function parseVodInfo(body: unknown): VodInfo | undefined {
   set('poster', toImage(info.movie_image) ?? toImage(info.cover_big));
   set('backdrop', toImage(info.backdrop_path));
   set('ext', toExtension(data.container_extension));
-  set('streamId', toExternalId(data.stream_id));
-  set('addedAt', toEpochMs(data.added));
   return out;
 }
 

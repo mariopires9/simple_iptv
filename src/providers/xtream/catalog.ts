@@ -42,21 +42,21 @@ export function toYear(value: unknown): number | undefined {
 }
 
 /** Ratings are 0–10 on Xtream panels; 0 means "not rated". */
-function toRating(value: unknown): number | undefined {
+export function toRating(value: unknown): number | undefined {
   const n = toNumber(value);
   return n !== undefined && n > 0 && n <= 10 ? Math.round(n * 10) / 10 : undefined;
 }
 
 /** Container extension such as `mp4`/`mkv`, lowercased; anything odd → undefined. */
-function toExtension(value: unknown): string | undefined {
+export function toExtension(value: unknown): string | undefined {
   const text = toText(value)?.toLowerCase().replace(/^\./, '');
   return text !== undefined && /^[a-z0-9]{1,5}$/.test(text) ? text : undefined;
 }
 
-const MAX_TEXT = 4096;
+export const MAX_TEXT = 4096;
 
 /** Caps free text from the panel at {@link MAX_TEXT} characters. */
-function clip(text: string): string {
+export function clip(text: string): string {
   return text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) : text;
 }
 
@@ -231,3 +231,34 @@ export const XTREAM_CATALOG_ACTIONS: Record<ContentType, { categories: string; i
   movie: { categories: 'get_vod_categories', items: 'get_vod_streams' },
   series: { categories: 'get_series_categories', items: 'get_series' },
 };
+
+/**
+ * Category id of items whose `category_id` is missing or not among the panel's categories. Same
+ * convention as M3U lists (`UNCATEGORIZED_CATEGORY_ID` in providers/m3u, asserted equal in the
+ * tests): stored with an empty, language-neutral name and localised by the UI.
+ */
+export const UNCATEGORIZED_CATEGORY_ID = 'uncategorized';
+
+/**
+ * Gives every item a known category so it is reachable from "All" (which walks the categories):
+ * items without a (valid) category go to a synthetic {@link UNCATEGORIZED_CATEGORY_ID} category,
+ * appended after the panel's categories only when needed.
+ */
+export function withUncategorized<T extends { categoryExternalId?: string }>(
+  categories: readonly CategoryInput[],
+  items: readonly T[],
+): { categories: CategoryInput[]; items: T[] } {
+  const known = new Set(categories.map((c) => c.externalId));
+  let orphans = 0;
+  const placed = items.map((item) => {
+    const id = item.categoryExternalId;
+    if (id !== undefined && known.has(id)) return item;
+    orphans++;
+    return { ...item, categoryExternalId: UNCATEGORIZED_CATEGORY_ID };
+  });
+  const out = [...categories];
+  if (orphans > 0 && !known.has(UNCATEGORIZED_CATEGORY_ID)) {
+    out.push({ externalId: UNCATEGORIZED_CATEGORY_ID, name: '' });
+  }
+  return { categories: out, items: placed };
+}

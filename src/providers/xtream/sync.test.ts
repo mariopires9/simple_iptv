@@ -297,9 +297,13 @@ describe('syncXtreamSource — invalid items (AC2)', () => {
       ),
     );
     const result = await sync(undefined, ['live']);
-    expect(result.types.live).toMatchObject({ status: 'ok', items: 2, categories: 1, skipped: 12 });
+    // 'Valid two' has no category: it goes to the synthetic "uncategorized" one (VOD-01 review).
+    expect(result.types.live).toMatchObject({ status: 'ok', items: 2, categories: 2, skipped: 12 });
     const two = await catalogRepo.get('live', itemKey(SOURCE_ID, 'live', 4));
-    expect(two).toMatchObject({ name: 'Valid two' });
+    expect(two).toMatchObject({
+      name: 'Valid two',
+      categoryKey: `${SOURCE_ID}:live:cat:uncategorized`,
+    });
     expect(two?.logo).toBeUndefined();
     expect(two?.number).toBeUndefined();
     expect(await catalogRepo.count(SOURCE_ID, 'live')).toBe(2);
@@ -357,7 +361,11 @@ describe('syncXtreamSource — empty lists (review #2)', () => {
     await sync();
     server.use(onAction('get_vod_categories', () => HttpResponse.json([])));
     const result = await sync();
-    expect(result.types.movie).toMatchObject({ status: 'ok', items: 4, categories: 0 });
+    // Every movie lands in the synthetic "uncategorized" category, so "All" still lists them.
+    expect(result.types.movie).toMatchObject({ status: 'ok', items: 4, categories: 1 });
+    const [only] = await catalogRepo.listCategories(SOURCE_ID, 'movie');
+    expect(only).toMatchObject({ externalId: 'uncategorized', name: '' });
+    expect(await catalogRepo.countByCategory('movie', only?.key ?? '')).toBe(4);
   });
 });
 

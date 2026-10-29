@@ -25,6 +25,7 @@ import type { Movie } from '@/core/db';
 import { t } from '@/i18n';
 import { visuallyHidden } from '@/ui/state';
 import { focusRing, radii } from '@/ui/theme/tokens';
+import { FROM_GRID, gridPosition, saveGridPosition } from './browseState';
 import { moviePath } from './categories';
 import { formatPercent } from './format';
 import type { MoviePageCache } from './pageCache';
@@ -67,6 +68,11 @@ export interface MovieGridProps {
   progress: ReadonlyMap<string, number>;
   /** Loading a page failed. */
   onError?: (error: unknown) => void;
+  /**
+   * Remembers this grid's scroll position and active cell under this key (browseState.ts), and
+   * restores them on mount — e.g. after "Back to movies".
+   */
+  restoreKey?: string;
 }
 
 /** Width of the scroll container (ResizeObserver when available; jsdom has none). */
@@ -87,7 +93,7 @@ function useWidth(el: HTMLElement | null): number {
   return width;
 }
 
-export function MovieGrid({ cache, label, band, progress, onError }: MovieGridProps) {
+export function MovieGrid({ cache, label, band, progress, onError, restoreKey }: MovieGridProps) {
   const gridId = useId();
   const hintId = useId();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
@@ -103,7 +109,8 @@ export function MovieGrid({ cache, label, band, progress, onError }: MovieGridPr
   const total = cache.total;
   const rowCount = Math.ceil(total / columns);
 
-  const [selected, setActive] = useState(0);
+  const [saved] = useState(() => (restoreKey === undefined ? undefined : gridPosition(restoreKey)));
+  const [selected, setActive] = useState(saved?.active ?? 0);
   const active = Math.max(0, Math.min(total - 1, selected));
   const activeRow = Math.floor(active / columns);
   const [, pageArrived] = useReducer((n: number) => n + 1, 0);
@@ -140,10 +147,35 @@ export function MovieGrid({ cache, label, band, progress, onError }: MovieGridPr
   const firstItem = Math.max(0, (visible?.startIndex ?? 0) - OVERSCAN) * columns;
   const lastItem = visible ? (visible.endIndex + OVERSCAN + 1) * columns - 1 : -1;
 
+  // Scroll restoration: once the width (hence the columns and row height) is known and the
+  // content is tall enough (a browser clamps scrollTop to it), scroll to the remembered first
+  // row; from then on, remember where the grid is. Rows have a fixed height, so the offset is
+  // simply row × rowHeight.
+  const restored = useRef(saved === undefined || saved.topItem <= 0);
+  const topItem = (visible?.startIndex ?? 0) * columns;
+  const totalSize = virtualizer.getTotalSize();
   useEffect(() => {
-    if (active < total) cache.ensure(active, active);
-    if (lastItem >= 0) cache.ensure(firstItem, Math.min(total - 1, lastItem));
-  }, [cache, firstItem, lastItem, active, total]);
+    if (width <= 0) return;
+    if (!restored.current) {
+      const offset = Math.floor((saved?.topItem ?? 0) / columns) * rowHeight;
+      const el = scrollRef.current;
+      if (!el || totalSize < offset) return;
+      restored.current = true;
+      el.scrollTo({ top: offset });
+      return;
+    }
+    if (restoreKey !== undefined) saveGridPosition(restoreKey, { topItem, active });
+  }, [width, columns, rowHeight, totalSize, topItem, active, restoreKey, saved]);
+
+  // The active cell's page is pinned (read once, never evicted); the viewport alone decides
+  // which other pages are read and kept.
+  useEffect(() => {
+    cache.pin(active < total ? active : undefined);
+  }, [cache, active, total]);
+  useEffect(() => () => cache.pin(undefined), [cache]);
+  useEffect(() => {
+    if (lastItem >= 0) cache.setViewport(firstItem, Math.min(total - 1, lastItem));
+  }, [cache, firstItem, lastItem, total]);
 
   // Focus follows keyboard moves once the target cell is rendered.
   const pendingFocus = useRef<number | undefined>(undefined);
@@ -329,6 +361,7 @@ function PosterCard({ index, movie, width, tabbable, progress, onFocus }: Poster
     <Box
       component={Link}
       to={moviePath(movie.externalId)}
+      state={{ from: FROM_GRID }}
       data-index={index}
       tabIndex={tabbable ? 0 : -1}
       onFocus={() => onFocus(index)}

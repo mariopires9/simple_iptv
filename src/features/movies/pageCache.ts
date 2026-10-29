@@ -20,6 +20,8 @@ export class MoviePageCache {
     onError: ((error: unknown) => void) | undefined;
   }>();
   private center = 0;
+  /** Page of the active cell: never evicted. */
+  private pinned: number | undefined;
 
   constructor(
     readonly keys: readonly string[],
@@ -50,15 +52,42 @@ export class MoviePageCache {
     };
   }
 
-  /** Loads every missing page that covers items `[start, end]`. */
-  ensure(start: number, end: number): void {
-    if (this.total === 0) return;
+  /**
+   * The items `[start, end]` are in the viewport: loads their missing pages, and eviction keeps
+   * the pages closest to this range. Only the viewport moves the eviction centre.
+   */
+  setViewport(start: number, end: number): void {
+    const range = this.pageRange(start, end);
+    if (!range) return;
+    this.center = (range.first + range.last) / 2;
+    this.loadPages(range.first, range.last);
+  }
+
+  /**
+   * Keeps the page of item `index` (the grid's active cell) loaded and never evicted, however far
+   * the viewport moves; `undefined` unpins. A pinned page is read once, not on every scroll.
+   */
+  pin(index: number | undefined): void {
+    if (index === undefined || index < 0 || index >= this.total) {
+      this.pinned = undefined;
+      return;
+    }
+    this.pinned = Math.floor(index / this.pageSize);
+    this.loadPages(this.pinned, this.pinned);
+  }
+
+  private pageRange(start: number, end: number): { first: number; last: number } | undefined {
+    if (this.total === 0) return undefined;
     const first = Math.max(0, Math.floor(start / this.pageSize));
     const last = Math.min(
       Math.floor((this.total - 1) / this.pageSize),
       Math.floor(Math.max(start, end) / this.pageSize),
     );
-    this.center = (first + last) / 2;
+    return first <= last ? { first, last } : undefined;
+  }
+
+  /** Starts reading every page in `[first, last]` that is neither cached nor in flight. */
+  private loadPages(first: number, last: number): void {
     for (let page = first; page <= last; page++) {
       if (this.pages.has(page) || this.pending.has(page)) continue;
       this.pending.add(page);
@@ -92,6 +121,7 @@ export class MoviePageCache {
       let farthest = -1;
       let distance = -1;
       for (const page of this.pages.keys()) {
+        if (page === this.pinned) continue;
         const d = Math.abs(page - this.center);
         if (d > distance) {
           distance = d;

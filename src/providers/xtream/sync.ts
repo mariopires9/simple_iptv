@@ -51,6 +51,7 @@ import {
   mapLiveStreams,
   mapSeries,
   mapVodStreams,
+  withUncategorized,
   type MapOptions,
   type Mapped,
 } from './catalog';
@@ -462,8 +463,8 @@ async function runSync(
         let written: Awaited<ReturnType<typeof catalogRepo.replaceForExistingSource>>;
         try {
           written = await catalogRepo.replaceForExistingSource(sourceId, type, {
-            categories: categories.items,
-            items: mapped.items,
+            // Items without a known category go to "uncategorized", so "All" reaches them.
+            ...withUncategorized(categories.items, mapped.items),
           });
         } catch {
           // The transaction rolled back: this type keeps its previous data.
