@@ -37,17 +37,17 @@ Allowed statuses (exactly one per story):
 | UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | Done |
 | SRC-03 | Add Xtream source (UI) | E1 | Must | 3 | SRC-01, SRC-02, FND-04, UX-02 | 3 | M1 | Done |
 | SRC-05 | Import M3U by URL | E1 | Must | 3 | SRC-04, SRC-01, FND-05 | 3 | M1 | Done |
-| SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | Backlog |
+| SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | In Progress |
 | SRC-07 | Sync Xtream catalog | E1 | Must | 5 | SRC-02, FND-05, FND-07 | 3 | M1 | Done |
 | VOD-04 | VOD/series classification in M3U | E5 | Must | 3 | SRC-04 | 3 | M2 | Done |
 | PLY-02 | Player UI | E3 | Must | 5 | PLY-01, FND-03 | 3 | M1 | Done |
 | PLY-04 | Playback errors | E3 | Must | 3 | PLY-01, FND-06 | 3 | M1 | Done |
 | PWA-03 | Predictable updates | E10 | Must | 2 | PWA-02 | 3 | M3 | Done |
-| PWA-04 | Offline and network errors | E10 | Must | 2 | UX-02 | 3 | M3 | Backlog |
+| PWA-04 | Offline and network errors | E10 | Must | 2 | UX-02 | 3 | M3 | In Progress |
 | QA-02 | Playwright E2E + axe | E13 | Must | 3 | FND-02, QA-01 | 3 | M1 | Backlog |
 | SRC-08 | "My lists" page | E1 | Must | 3 | SRC-03, SRC-05, SRC-07 | 4 | M2 | Done |
-| SRC-09 | Compatibility diagnostics | E1 | Must | 3 | SRC-02, PLY-01 | 4 | M1 | Backlog |
-| SRC-10 | Delete all data | E1 | Must | 2 | FND-05, SRC-01, PWA-02 | 4 | M3 | Backlog |
+| SRC-09 | Compatibility diagnostics | E1 | Must | 3 | SRC-02, PLY-01 | 4 | M1 | In Progress |
+| SRC-10 | Delete all data | E1 | Must | 2 | FND-05, SRC-01, PWA-02 | 4 | M3 | In Progress |
 | LIV-01 | Categories and channel list | E4 | Must | 5 | FND-04, FND-05, UX-02, SRC-07 | 4 | M1 | Done |
 | VOD-01 | Movie grid | E5 | Must | 3 | FND-04, FND-05, UX-02, SRC-07 | 4 | M2 | Done |
 | PLY-03 | Fullscreen and PiP | E3 | Must | 3 | PLY-02 | 4 | M1 | Done |
