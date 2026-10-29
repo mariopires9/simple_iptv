@@ -7,6 +7,12 @@ export const state = {
   cancel: 'Cancelar',
   cancelling: 'A cancelar…',
   dismiss: 'Fechar',
+  connection: {
+    offline:
+      'Sem ligação. Pode consultar as suas listas, mas não reproduzir, atualizar nem adicionar listas.',
+    unreachable: 'A rede não está a responder. Verifique a sua ligação.',
+    retry: 'Tentar novamente',
+  },
   progress: {
     count: (count: string) => `${count} processados`,
     countOf: (count: string, total: string) => `${count} de ${total}`,

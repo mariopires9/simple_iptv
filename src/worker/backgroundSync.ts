@@ -38,8 +38,11 @@ export interface BackgroundSyncOptions {
   maxAgeMs?: number;
   /** Default `navigator.onLine` (true when unknown). */
   isOnline?: () => boolean;
-  /** Runs one sync; default: the `syncXtream` worker task. */
-  run?: (sourceId: string, options: RunTaskOptions) => Promise<SyncXtreamResult>;
+  /**
+   * Runs one sync; default: the `syncXtream` worker task. Only `status` is read, so a caller can
+   * route the sync through its own tracker (e.g. "My lists" progress, SRC-07 AC5 indicator).
+   */
+  run?: (sourceId: string, options: RunTaskOptions) => Promise<Pick<SyncXtreamResult, 'status'>>;
   /** Progress of the sync currently running (for a discreet indicator). */
   onProgress?: RunTaskOptions['onProgress'];
   /** Cancels the remaining background syncs. */

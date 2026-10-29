@@ -7,6 +7,8 @@ export const lists = {
     noneLabel: 'Lists: no list yet',
     manage: 'Manage lists…',
     add: 'Add list',
+    /** SRC-07 AC5: discreet indicator while lists are being updated (links to My lists). */
+    syncing: 'Updating lists… Open My lists',
   },
   switchFailed: 'Could not change the active list.',
   chooser: {

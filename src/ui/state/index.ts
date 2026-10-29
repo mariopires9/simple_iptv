@@ -34,3 +34,5 @@ export {
   type SuggestedAction,
 } from './describeError';
 export { visuallyHidden } from './visuallyHidden';
+export { ConnectionBanner, type ConnectionBannerProps } from './ConnectionBanner';
+export { useConnectivity, useNetworkBlocked } from './useConnectivity';

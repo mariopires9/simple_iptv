@@ -1,6 +1,7 @@
 // HTTP helpers for external servers (SRC-02, docs/ARCHITECTURE.md §4 and §8, RESEARCH.md §6).
 // Every failure becomes a `NetError`; the raw URL is never logged or stored (only `shortenUrl`).
 import { MASK, log } from '@/core/log';
+import { connectivity } from './connectivity';
 import { NetError, shortenUrl, type NetErrorHint } from './errors';
 
 /** What a request is for; lets a `UrlRewriter` (e.g. a self-hosted proxy, ADR-010) route it. */
@@ -263,6 +264,8 @@ async function request<T>(
       fetchImpl ? fetchImpl(url, init) : fetch(url, init),
       aborted,
     ]);
+    // The server answered (whatever the status): the device's connection works (PWA-04).
+    connectivity.reportSuccess();
     if (response.status === 401 || response.status === 403) {
       await Promise.race([discardBody(response, controller.signal), aborted]);
       throw new NetError({ kind: 'auth', status: response.status, url });
@@ -284,6 +287,14 @@ async function request<T>(
       throw error.error;
     }
     const netError = classify(error, state);
+    // A timeout or a fetch failure may be the device's link (or just this provider): the store
+    // checks with a probe of the app's own origin (./connectivity). Mixed content is deterministic.
+    if (
+      netError.kind === 'timeout' ||
+      (netError.kind === 'blocked' && netError.hint !== 'mixed-content')
+    ) {
+      connectivity.reportFailure();
+    }
     log.warn('Network request failed', {
       kind: netError.kind,
       status: netError.status,

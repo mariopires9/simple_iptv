@@ -337,6 +337,8 @@ export const sources = {
       refresh: 'Refresh',
       edit: 'Edit',
       remove: 'Remove',
+      /** SRC-09: opens the compatibility diagnostics of the list. */
+      diagnostics: 'Diagnostics',
     },
     /** Sync progress phases (Xtream and M3U). */
     phases: {

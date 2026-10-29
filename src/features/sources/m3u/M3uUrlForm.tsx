@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { Source } from '@/core/db';
 import { log } from '@/core/log';
+import { NetError, isNetworkBlocked } from '@/core/net';
 import { t } from '@/i18n';
 import { detectXtreamPlaylistUrl } from '@/providers/m3u';
 import { StateView, useToast } from '@/ui/state';
@@ -114,6 +115,11 @@ export function M3uUrlForm({ doneTo, xtreamTo, fileTo, deps: depsOverride }: M3u
       return;
     }
     setUrlError(undefined);
+    // PWA-04: offline, the list would be saved without its channels — explain instead.
+    if (isNetworkBlocked()) {
+      job.setFailure(errorFailure(new NetError({ kind: 'offline' })));
+      return;
+    }
     job.setFailure(undefined);
     job.setStep('saving');
     let saved: Source;

@@ -44,6 +44,11 @@ export const player = {
       message:
         'Não foi possível restabelecer a ligação ao canal após várias tentativas. Verifique a sua ligação e tente novamente, ou mude de canal.',
     },
+    offline: {
+      title: 'Sem ligação',
+      message:
+        'A reprodução precisa de ligação à internet. Verifique a sua ligação e tente novamente.',
+    },
     blocked: {
       title: 'Emissão bloqueada pelo browser',
       message:

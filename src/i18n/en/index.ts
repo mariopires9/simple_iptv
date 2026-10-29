@@ -1,5 +1,6 @@
 import { app } from './app';
 import { db } from './db';
+import { diagnostics } from './diagnostics';
 import { favorites } from './favorites';
 import { install } from './install';
 import { lists } from './lists';
@@ -22,6 +23,7 @@ import { state } from './state';
 export const en = {
   app,
   db,
+  diagnostics,
   favorites,
   install,
   lists,

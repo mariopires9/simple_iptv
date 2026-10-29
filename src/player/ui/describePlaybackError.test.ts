@@ -16,6 +16,21 @@ describe('describePlaybackError', () => {
     expect(describePlaybackError(error, { kind: 'live' })).toEqual(e.networkLive);
   });
 
+  it('PWA-04: offline, network and blocked failures say "no connection"; codecs keep theirs', () => {
+    const context = { kind: 'live' as const, offline: true };
+    expect(describePlaybackError(new PlaybackError({ kind: 'network' }), context)).toEqual(
+      e.offline,
+    );
+    expect(describePlaybackError(new PlaybackError({ kind: 'blocked' }), context)).toEqual(
+      e.offline,
+    );
+    expect(
+      describePlaybackError(new PlaybackError({ kind: 'unsupported-codec' }), context),
+    ).toEqual(e['unsupported-codec']);
+    // Never promises offline playback.
+    expect(e.offline.message).toMatch(/needs an internet connection/);
+  });
+
   it('AC2: unsupported codec names the codec when known', () => {
     const known = describePlaybackError(
       new PlaybackError({ kind: 'unsupported-codec', codec: 'hvc1.1.6.L93.B0, ac-3' }),

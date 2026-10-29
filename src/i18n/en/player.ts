@@ -49,6 +49,11 @@ export const player = {
       message:
         'The channel could not be reconnected after several attempts. Check your connection and try again, or switch to another channel.',
     },
+    /** The browser reports no network (PWA-04). Never promises offline playback. */
+    offline: {
+      title: 'No connection',
+      message: 'Playing needs an internet connection. Check your connection and try again.',
+    },
     blocked: {
       title: 'Stream blocked by the browser',
       message:

@@ -16,7 +16,7 @@ import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'rea
 import { useNavigate } from 'react-router';
 import type { Source } from '@/core/db';
 import { log } from '@/core/log';
-import type { FetchImpl } from '@/core/net';
+import { NetError, isNetworkBlocked, type FetchImpl } from '@/core/net';
 import { intlDateTimeFormat, intlNumberFormat, t } from '@/i18n';
 import {
   normalizeServerUrl,
@@ -291,6 +291,11 @@ export function XtreamSourceForm({
       }
     }
 
+    // PWA-04: no connection test while the browser reports no network.
+    if (isNetworkBlocked()) {
+      setFailure(errorFailure(new NetError({ kind: 'offline' })));
+      return;
+    }
     const abort = new AbortController();
     controller.current = abort;
     setCancelling(false);

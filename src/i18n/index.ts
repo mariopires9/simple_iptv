@@ -64,6 +64,7 @@ function writeCachedLanguagePreference(value: LanguagePreference): void {
 
 /** Namespaces loaded with their feature (never in the initial bundle). */
 export type LazyNamespace =
+  | 'diagnostics'
   | 'favorites'
   | 'install'
   | 'live'
@@ -82,6 +83,10 @@ const eager: Record<Locale, EagerMessages> = { en: enEager, 'pt-PT': ptPTEager }
 
 // One small chunk per locale and namespace: never statically imported from here.
 const lazy: NamespaceLoaders<LazyMessages, Locale> = {
+  diagnostics: {
+    en: () => import('./en/diagnostics').then((m) => m.diagnostics),
+    'pt-PT': () => import('./pt-PT/diagnostics').then((m) => m.diagnostics),
+  },
   favorites: {
     en: () => import('./en/favorites').then((m) => m.favorites),
     'pt-PT': () => import('./pt-PT/favorites').then((m) => m.favorites),

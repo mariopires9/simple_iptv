@@ -30,6 +30,7 @@ import {
   hasSources,
   subscribeSourcesPresent,
 } from './sourcesPresence';
+import { SyncActivityIndicator } from './SyncActivityIndicator';
 
 export const MY_LISTS_PATH = '/settings/sources';
 
@@ -126,6 +127,7 @@ function SelectorMenu({
           {current?.name ?? text.none}
         </Box>
       </Button>
+      <SyncActivityIndicator />
       <Menu
         id={menuId}
         anchorEl={anchor}
