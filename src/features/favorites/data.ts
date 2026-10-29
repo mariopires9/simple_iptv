@@ -25,9 +25,6 @@ export const CONTINUE_WATCHING_LIMIT = 20;
 export const HOME_FAVORITES_LIMIT = 20;
 export const MIN_RESUME_SEC = 60;
 export const MAX_RESUME_FRACTION = 0.95;
-/** Upper bound of history entries read per type (one indexed read each). */
-const HISTORY_READ_LIMIT = 5_000;
-
 /**
  * Live route id of "All" (features/live `VIRTUAL_CATEGORY_IDS.all`; features cannot import each
  * other): the category used for a channel without one.
@@ -92,62 +89,59 @@ async function itemsByKey<T extends ContentType>(
   return new Map(items.map((item) => [item.key, item]));
 }
 
-/** Season/episode numbers of the episode to resume, when the series details are cached. */
-async function episodeOf(entry: HistoryEntry): Promise<CardItem['episode']> {
-  if (entry.episodeKey === undefined) return undefined;
-  const details = await catalogRepo.getSeriesDetails(entry.itemKey);
-  for (const season of details?.seasons ?? []) {
-    const episode = season.episodes.find((e) => e.key === entry.episodeKey);
-    if (episode) return { season: episode.season, number: episode.number };
-  }
-  return undefined;
+/** Season/episode numbers of each entry's episode, when its series details are cached (one read). */
+async function episodesOf(entries: readonly HistoryEntry[]): Promise<CardItem['episode'][]> {
+  const details = await catalogRepo.getSeriesDetailsMany(entries.map((e) => e.itemKey));
+  return entries.map((entry, i) => {
+    if (entry.episodeKey === undefined) return undefined;
+    for (const season of details[i]?.seasons ?? []) {
+      const episode = season.episodes.find((e) => e.key === entry.episodeKey);
+      if (episode) return { season: episode.season, number: episode.number };
+    }
+    return undefined;
+  });
 }
 
+/** A Home row built from the history, plus whether any history entry was read. */
+interface HistoryRow {
+  cards: CardItem[];
+  hasHistory: boolean;
+}
+
+async function recentChannelsRow(sourceId: string): Promise<HistoryRow> {
+  const { items, scanned } = await historyRepo.listRecentItems(sourceId, ['live'], {
+    limit: RECENT_CHANNELS_LIMIT,
+  });
+  return { cards: items.map(({ item }) => toCard(item)), hasHistory: scanned > 0 };
+}
+
+async function continueWatchingRow(sourceId: string): Promise<HistoryRow> {
+  const { items, scanned } = await historyRepo.listRecentItems(sourceId, ['movie', 'series'], {
+    limit: CONTINUE_WATCHING_LIMIT,
+    accept: (entry) => resumeFraction(entry) !== undefined,
+  });
+  const series = items.filter(({ entry }) => entry.type === 'series').map(({ entry }) => entry);
+  const found = await episodesOf(series);
+  const episodes = new Map(series.map((entry, i) => [entry.itemKey, found[i]]));
+  const cards = items.map(({ entry, item }) => ({
+    ...toCard(item),
+    progress: resumeFraction(entry),
+    episode: entry.type === 'series' ? episodes.get(entry.itemKey) : undefined,
+  }));
+  return { cards, hasHistory: scanned > 0 };
+}
+
+/**
+ * Recent channels: at most 30, most recent first, skipping channels no longer in the list (the
+ * same rule as Live "Recent", via `historyRepo.listRecentItems`).
+ */
 export async function loadRecentChannels(sourceId: string): Promise<CardItem[]> {
-  const recent = await historyRepo.listRecent(sourceId, 'live', HISTORY_READ_LIMIT);
-  const channels = await itemsByKey(
-    'live',
-    recent.map((h) => h.itemKey),
-  );
-  const cards: CardItem[] = [];
-  for (const entry of recent) {
-    const channel = channels.get(entry.itemKey);
-    if (channel) cards.push(toCard(channel));
-    if (cards.length === RECENT_CHANNELS_LIMIT) break;
-  }
-  return cards;
+  return (await recentChannelsRow(sourceId)).cards;
 }
 
+/** Continue watching: resumable movies and episodes, most recent first, at most 20. */
 export async function loadContinueWatching(sourceId: string): Promise<CardItem[]> {
-  const [movies, series] = await Promise.all([
-    historyRepo.listRecent(sourceId, 'movie', HISTORY_READ_LIMIT),
-    historyRepo.listRecent(sourceId, 'series', HISTORY_READ_LIMIT),
-  ]);
-  const resumable = [...movies, ...series]
-    .filter((entry) => resumeFraction(entry) !== undefined)
-    .sort((a, b) => b.lastWatchedAt - a.lastWatchedAt);
-  const [movieItems, seriesItems] = await Promise.all([
-    itemsByKey(
-      'movie',
-      resumable.filter((e) => e.type === 'movie').map((e) => e.itemKey),
-    ),
-    itemsByKey(
-      'series',
-      resumable.filter((e) => e.type === 'series').map((e) => e.itemKey),
-    ),
-  ]);
-  const shown: { entry: HistoryEntry; card: CardItem }[] = [];
-  for (const entry of resumable) {
-    const item =
-      entry.type === 'movie' ? movieItems.get(entry.itemKey) : seriesItems.get(entry.itemKey);
-    if (item) shown.push({ entry, card: { ...toCard(item), progress: resumeFraction(entry) } });
-    if (shown.length === CONTINUE_WATCHING_LIMIT) break;
-  }
-  return Promise.all(
-    shown.map(async ({ entry, card }) =>
-      entry.type === 'series' ? { ...card, episode: await episodeOf(entry) } : card,
-    ),
-  );
+  return (await continueWatchingRow(sourceId)).cards;
 }
 
 /** A favorite of the Favorites screen: the item, or `undefined` when it left the list. */
@@ -190,20 +184,17 @@ export interface HomeData {
 }
 
 export async function loadHome(sourceId: string): Promise<HomeData> {
-  const [continueWatching, recentChannels, favorites, hasHistory] = await Promise.all([
-    loadContinueWatching(sourceId),
-    loadRecentChannels(sourceId),
+  const [continueWatching, recentChannels, favorites] = await Promise.all([
+    continueWatchingRow(sourceId),
+    recentChannelsRow(sourceId),
     loadHomeFavorites(sourceId),
-    hasAnyHistory(sourceId),
   ]);
-  return { continueWatching, recentChannels, favorites, hasHistory };
-}
-
-async function hasAnyHistory(sourceId: string): Promise<boolean> {
-  const lists = await Promise.all(
-    (['live', 'movie', 'series'] as const).map((type) => historyRepo.listRecent(sourceId, type, 1)),
-  );
-  return lists.some((list) => list.length > 0);
+  return {
+    continueWatching: continueWatching.cards,
+    recentChannels: recentChannels.cards,
+    favorites,
+    hasHistory: continueWatching.hasHistory || recentChannels.hasHistory,
+  };
 }
 
 /** "Clear history" (FAV-02 AC3): the active list's history only; favorites are kept. */

@@ -23,34 +23,37 @@ import { useListData } from './useListData';
 const RECENT_CHANNELS_HREF = '/live/category/~recent';
 
 export function HomeScreen() {
-  const { state, reload } = useListData(loadHome);
+  const { state, reload, activeId } = useListData(loadHome);
   const text = t.favorites;
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const [confirming, setConfirming] = useState(false);
+  /** The list whose history the open dialog clears (captured when it opens). */
+  const [confirmFor, setConfirmFor] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   /** The button is gone after clearing: focus goes to the heading when the dialog has closed. */
   const cleared = useRef(false);
 
-  const sourceId = state.status === 'ready' ? state.sourceId : undefined;
+  // The active list changed while the dialog was open: it no longer applies, close it.
+  if (confirmFor !== undefined && !busy && confirmFor !== activeId) setConfirmFor(undefined);
+
   const confirmClear = useCallback(() => {
-    if (sourceId === undefined) return;
+    if (confirmFor === undefined) return;
     setBusy(true);
-    clearHistory(sourceId).then(
+    clearHistory(confirmFor).then(
       () => {
         cleared.current = true;
         setAnnouncement(text.clearHistory.done);
         setBusy(false);
-        setConfirming(false);
+        setConfirmFor(undefined);
         reload();
       },
       () => {
         setAnnouncement(text.clearHistory.failed);
         setBusy(false);
-        setConfirming(false);
+        setConfirmFor(undefined);
       },
     );
-  }, [sourceId, reload, text]);
+  }, [confirmFor, reload, text]);
 
   let body;
   if (state.status === 'loading') {
@@ -122,9 +125,9 @@ export function HomeScreen() {
             )}
           </>
         )}
-        {data?.hasHistory && (
+        {state.status === 'ready' && state.data.hasHistory && (
           <Box sx={{ mt: 2 }}>
-            <Button color="error" variant="outlined" onClick={() => setConfirming(true)}>
+            <Button color="error" variant="outlined" onClick={() => setConfirmFor(state.sourceId)}>
               {text.clearHistory.button}
             </Button>
           </Box>
@@ -146,9 +149,9 @@ export function HomeScreen() {
       </Typography>
       {body}
       <ClearHistoryDialog
-        open={confirming}
+        open={confirmFor !== undefined}
         busy={busy}
-        onCancel={() => setConfirming(false)}
+        onCancel={() => setConfirmFor(undefined)}
         onConfirm={confirmClear}
         onExited={() => {
           if (!cleared.current) return;

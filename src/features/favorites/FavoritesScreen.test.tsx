@@ -150,3 +150,23 @@ describe('Favorites — active list (FAV-01 AC3)', () => {
     );
   });
 });
+
+describe('Favorites — optimistic removals (review)', () => {
+  it('a removed favorite added again shows up on the next reload', async () => {
+    await favoritesRepo.add(itemKey(SOURCE, 'live', 'c9'), 0);
+    show();
+    const channels = await panelList('Channels');
+    const user = userEvent.setup();
+    await user.click(
+      within(channels).getByRole('button', { name: 'Remove Channel 4 from favorites' }),
+    );
+    await waitFor(() => expect(cardNames(channels)).toEqual(['Unavailable', 'Channel 9']));
+
+    // Marked again elsewhere (e.g. from Live), then another removal reloads the list.
+    await favoritesRepo.add(itemKey(SOURCE, 'live', 'c4'), 5);
+    await user.click(
+      within(channels).getByRole('button', { name: 'Remove Channel 9 from favorites' }),
+    );
+    await waitFor(() => expect(cardNames(channels)).toEqual(['Channel 4', 'Unavailable']));
+  });
+});

@@ -47,8 +47,15 @@ export function FavoritesScreen() {
   const text = t.favorites.screen;
   const baseId = useId();
   const [announcement, setAnnouncement] = useState('');
-  /** Removed keys, hidden at once (optimistic) until the reload confirms it. */
+  /** Removed keys, hidden at once (optimistic) until a reload no longer lists them. */
   const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
+  // Prune the keys the loaded data no longer has (the removal is confirmed): a favorite added
+  // again later must show up.
+  if (state.status === 'ready' && removed.size > 0) {
+    const listed = new Set(state.data.map((e) => e.favorite.itemKey));
+    const pending = [...removed].filter((key) => listed.has(key));
+    if (pending.length !== removed.size) setRemoved(new Set(pending));
+  }
 
   const selectTab = (next: ContentType) => {
     const param = TABS.find((tab) => tab.type === next)?.param ?? 'channels';

@@ -3,7 +3,7 @@
 import 'fake-indexeddb/auto';
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { favoritesRepo, historyRepo, itemKey, settingsRepo, wipeAll } from '@/core/db';
 import { forgetActiveSource, setActiveSource } from '@/core/session';
 import { OTHER, SOURCE, renderScreens, seedCatalog } from './test-utils';
@@ -20,6 +20,7 @@ afterEach(async () => {
   cleanup();
   media?.restore();
   media = undefined;
+  vi.restoreAllMocks();
   forgetActiveSource();
   await wipeAll();
 });
@@ -202,5 +203,67 @@ describe('Home — active list (FAV-01 AC3)', () => {
     await act(() => setActiveSource(OTHER));
     await waitFor(() => expect(sectionTitles()).toEqual(['Recent channels']));
     expect(names(within(row('Recent channels')).getAllByRole('link'))).toEqual(['Other channel']);
+  });
+});
+
+describe('Home — review fixes', () => {
+  it('Retry after a load error shows loading, then the new outcome', async () => {
+    await seedAll();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const real = historyRepo.listRecentItems.bind(historyRepo);
+    vi.spyOn(historyRepo, 'listRecentItems')
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockImplementation(async (...args) => {
+        await gate;
+        return real(...args);
+      });
+    show();
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load your content');
+    await userEvent.setup().click(retry);
+    // The old error is gone while the new attempt runs.
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    release();
+    await screen.findByRole('region', { name: 'Continue watching' });
+  });
+
+  it('the dialog clears the list it was opened for, and closes if the active list changes', async () => {
+    await seedAll();
+    await historyRepo.upsert({ itemKey: live('o1', OTHER) });
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Clear history' }));
+    expect(screen.getByRole('dialog', { name: 'Clear history?' })).toBeInTheDocument();
+
+    await act(() => setActiveSource(OTHER));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // Nothing was cleared.
+    expect(await historyRepo.listRecent(SOURCE, 'live')).toHaveLength(3);
+    expect(await historyRepo.listRecent(OTHER, 'live')).toHaveLength(1);
+
+    // Opened on the other list: clears that list only.
+    await waitFor(() => expect(sectionTitles()).toEqual(['Recent channels']));
+    await user.click(screen.getByRole('button', { name: 'Clear history' }));
+    const dialog = screen.getByRole('dialog', { name: 'Clear history?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Clear history' }));
+    await screen.findByRole('region', { name: 'Nothing to show yet' });
+    expect(await historyRepo.listRecent(OTHER, 'live')).toHaveLength(0);
+    expect(await historyRepo.listRecent(SOURCE, 'live')).toHaveLength(3);
+  });
+
+  it('reads the history in pages: a long history is not loaded whole', async () => {
+    for (let i = 1; i <= 300; i++) {
+      await historyRepo.upsert({ itemKey: live(`gone${i}`), lastWatchedAt: 1_000 + i });
+    }
+    await historyRepo.upsert({ itemKey: live('c1'), lastWatchedAt: 1 });
+    const page = vi.spyOn(historyRepo, 'listRecentPage');
+    const all = vi.spyOn(historyRepo, 'listRecent');
+    show();
+    await screen.findByRole('region', { name: 'Recent channels' });
+    expect(page).toHaveBeenCalled();
+    for (const [, , , limit] of page.mock.calls) expect(limit).toBeLessThanOrEqual(50);
+    expect(all).not.toHaveBeenCalled();
   });
 });

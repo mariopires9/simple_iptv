@@ -7,8 +7,9 @@ import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import { forwardRef, useState, type FocusEventHandler, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { activeLocale, t } from '@/i18n';
+import { t } from '@/i18n';
 import { colorsForName } from '@/ui/colorHash';
+import { formatPercent } from '@/ui/format';
 import { isLoadableImage } from '@/ui/images';
 import { visuallyHidden } from '@/ui/state';
 import { avatarPalette, radii } from '@/ui/theme/tokens';
@@ -16,14 +17,6 @@ import type { CardItem } from './data';
 
 /** Card widths (px) per breakpoint (xs / sm / md). */
 export const CARD_WIDTH = { xs: 112, sm: 144, md: 168 } as const;
-
-/** 0–1 as a whole percentage in the active locale ("40%", pt-PT "40 %"). */
-function formatPercent(fraction: number): string {
-  return new Intl.NumberFormat(activeLocale(), {
-    style: 'percent',
-    maximumFractionDigits: 0,
-  }).format(fraction);
-}
 
 /** Decorative artwork (the name is always rendered as text): square for channels, else 2:3. */
 export function Artwork({

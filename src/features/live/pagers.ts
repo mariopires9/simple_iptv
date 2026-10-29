@@ -160,13 +160,11 @@ export async function createPager(
       );
     }
     case 'recent': {
-      const recent = await historyRepo.listRecent(sourceId, 'live', RECENT_LIMIT);
-      return memoryPager(
-        await catalogRepo.getMany(
-          'live',
-          recent.map((h) => h.itemKey),
-        ),
-      );
+      // Same rule as Home "Recent channels": the 30 most recent channels still in the list.
+      const { items } = await historyRepo.listRecentItems(sourceId, ['live'], {
+        limit: RECENT_LIMIT,
+      });
+      return memoryPager(items.map(({ item }) => item));
     }
   }
 }
