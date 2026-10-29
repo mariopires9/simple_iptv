@@ -8,6 +8,7 @@ import { catalogRepo, settingsRepo, sourcesRepo, vaultStore, wipeAll } from '@/c
 import { clearLogBuffer, clearSecrets } from '@/core/log';
 import { WorkerTaskError } from '@/core/worker';
 import { t } from '@/i18n';
+import { formatBytes } from '@/ui/format';
 import { forgetActiveSource } from './activeSource';
 import { resetSourceSyncs } from './sourceSync';
 import { SourcesScreen } from './SourcesScreen';
@@ -17,7 +18,7 @@ import { DAY, HOUR, makeSource, renderRoutes, seedSource, setStoredActive } from
 
 interface PendingTask {
   name: string;
-  input: { sourceId: string };
+  input: { sourceId: string; file?: Blob };
   options: {
     signal?: AbortSignal;
     onProgress?: (p: { phase: string; done: number; total?: number }) => void;
@@ -156,8 +157,8 @@ describe('SRC-08 AC1 — list cards', () => {
     expect(file.getByText('Never updated')).toBeVisible();
     expect(file.getByText('Update failed: not an M3U list')).toBeVisible();
     expect(file.getByTestId('source-status')).toHaveAttribute('data-tone', 'error');
-    // A local file cannot be re-downloaded.
-    expect(file.queryByRole('button', { name: text.actions.refresh })).toBeNull();
+    // A local file cannot be re-downloaded: Refresh asks for the file (SRC-06 AC3).
+    expect(file.getByRole('button', { name: text.actions.refresh })).toBeEnabled();
 
     const partial = within(card('beta'));
     expect(partial.getByText('Xtream · 10 channels · 0 movies · 3 series')).toBeVisible();
@@ -253,6 +254,80 @@ describe('SRC-08 AC5 — refresh', () => {
     expect(
       within(card('sports')).getByRole('button', { name: text.actions.refresh }),
     ).toBeEnabled();
+  });
+});
+
+describe('SRC-06 AC3 — refresh of a local-file list asks for a new file', () => {
+  const fileInput = () => screen.getByTestId<HTMLInputElement>('m3u-file-input');
+
+  it('Refresh → dialog → picked file → syncM3uFile with that file, progress on the card', async () => {
+    await seedAll();
+    const { user } = show();
+    await user.click(
+      await within(await screen.findByTestId('source-card-laptop')).findByRole('button', {
+        name: text.actions.refresh,
+      }),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: text.refreshFile.title('Laptop list'),
+    });
+    expect(dialog).toHaveTextContent(text.refreshFile.message);
+    // Nothing runs before a file is chosen.
+    expect(tasks).toHaveLength(0);
+    expect(within(dialog).getByRole('button', { name: text.refreshFile.choose })).toBeEnabled();
+    expect(fileInput()).toHaveAttribute(
+      'accept',
+      '.m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl',
+    );
+
+    const file = new File(['#EXTM3U\n'], 'laptop-v2.m3u');
+    await user.upload(fileInput(), file);
+    await waitFor(() => expect(tasks).toHaveLength(1));
+    expect(tasks[0]?.name).toBe('syncM3uFile');
+    expect(tasks[0]?.input).toEqual({ sourceId: 'laptop', file });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    act(() => tasks[0]?.options.onProgress?.({ phase: 'read', done: 4, total: 8 }));
+    expect(within(card('laptop')).getByRole('group', { name: text.phases.read })).toBeVisible();
+    await act(async () => tasks[0]?.resolve({ status: 'ok' }));
+    expect(await screen.findAllByText(text.toasts.refreshed('Laptop list'))).not.toHaveLength(0);
+  });
+
+  it('a file over 50 MB asks for confirmation first (AC2); Cancel starts nothing', async () => {
+    await seedAll();
+    const { user } = show();
+    const openDialog = async () => {
+      await user.click(
+        await within(await screen.findByTestId('source-card-laptop')).findByRole('button', {
+          name: text.actions.refresh,
+        }),
+      );
+      return screen.findByRole('dialog', { name: text.refreshFile.title('Laptop list') });
+    };
+    const big = new File(['#EXTM3U\n'], 'big.m3u');
+    Object.defineProperty(big, 'size', { value: 80 * 1024 * 1024 });
+
+    await openDialog();
+    await user.upload(fileInput(), big);
+    // The shared large-file confirmation replaces the refresh dialog.
+    let large = await screen.findByRole('dialog', { name: t.sources.addM3uFile.largeFile.title });
+    expect(large).toHaveTextContent(t.sources.addM3uFile.largeFile.message(formatBytes(big.size)));
+    await user.click(within(large).getByRole('button', { name: t.state.cancel }));
+    // The list name stays while the dialogs close (never "Refresh “”").
+    expect(screen.queryByText(text.refreshFile.title(''))).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(tasks).toHaveLength(0);
+
+    // Reopened: back to choosing a file (nothing left waiting from before).
+    const dialog = await openDialog();
+    expect(within(dialog).getByRole('button', { name: text.refreshFile.choose })).toBeEnabled();
+    await user.upload(fileInput(), big);
+    large = await screen.findByRole('dialog', { name: t.sources.addM3uFile.largeFile.title });
+    await user.click(
+      within(large).getByRole('button', { name: t.sources.addM3uFile.largeFile.confirm }),
+    );
+    await waitFor(() => expect(tasks).toHaveLength(1));
+    expect(tasks[0]?.input).toEqual({ sourceId: 'laptop', file: big });
   });
 });
 
@@ -356,7 +431,7 @@ describe('SRC-08 AC3 — remove', () => {
 });
 
 describe('SRC-08 — "Add list" chooser', () => {
-  it('offers Xtream and M3U URL (M3U file: coming soon) and routes to the add screens', async () => {
+  it('offers Xtream, M3U URL and M3U file (SRC-06) and routes to the add screens', async () => {
     await seedAll();
     const { user, router } = show();
     await user.click(await screen.findByRole('button', { name: text.add }));
@@ -365,9 +440,9 @@ describe('SRC-08 — "Add list" chooser', () => {
       'href',
       '/settings/sources/add/xtream',
     );
-    expect(within(dialog).getByRole('button', { name: /Local M3U file/ })).toHaveAttribute(
-      'aria-disabled',
-      'true',
+    expect(within(dialog).getByRole('link', { name: /Local M3U file/ })).toHaveAttribute(
+      'href',
+      '/settings/sources/add/m3u-file',
     );
     await user.click(within(dialog).getByRole('link', { name: /M3U list \(URL\)/ }));
     await waitFor(() =>

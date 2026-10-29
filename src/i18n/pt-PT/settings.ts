@@ -69,6 +69,39 @@ export const settings = {
     },
     notSent:
       'Nada nos é enviado: a aplicação só comunica com os servidores das listas que adicionar. Para remover uma lista e os seus dados, use As minhas listas.',
+    deleteAll: {
+      title: 'Apagar todos os dados',
+      description:
+        'Remove deste dispositivo todas as listas, palavras-passe, canais, favoritos, histórico de visualização e definições. A aplicação continua instalada. Esta ação não pode ser anulada.',
+      action: 'Apagar todos os dados…',
+      dialog: {
+        title: 'Apagar todos os dados?',
+        message:
+          'Tudo o que esta aplicação guardou neste dispositivo é apagado e a aplicação recomeça do início. As suas subscrições não são afetadas.',
+        confirmWord: 'APAGAR',
+        confirmLabel: (word: string) => `Escreva ${word} para confirmar`,
+        confirm: 'Apagar tudo',
+        deleting: 'A apagar…',
+      },
+      failed: {
+        title: 'Não foi possível apagar alguns dados',
+        message:
+          'Tente novamente. Se continuar a falhar, feche primeiro esta aplicação noutros separadores ou janelas e tente de novo.',
+        partsTitle: 'Não apagado:',
+        parts: {
+          database: 'Listas, canais, favoritos e definições',
+          caches: 'Ficheiros em cache',
+          storage: 'Preferências guardadas pelo navegador (idioma, tema)',
+        },
+        deletedNote:
+          'As suas listas, canais e definições foram apagados. A aplicação recomeça do início quando continuar.',
+        pendingNote:
+          'A eliminação aguarda que esta aplicação seja fechada noutros separadores ou janelas. Termina sozinha assim que forem fechados.',
+        retry: 'Tentar novamente',
+        close: 'Fechar',
+        continue: 'Continuar',
+      },
+    },
   },
   about: {
     version: 'Versão',

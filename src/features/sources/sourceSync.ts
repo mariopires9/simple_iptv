@@ -1,5 +1,5 @@
 // Catalogue syncs started from the UI (SRC-08 AC5 "Refresh", and the initial sync after adding a
-// list): one per list at a time, with progress and cancellation, tracked here (module state) so a
+// list; a local-file list is refreshed with a newly picked file, SRC-06 AC3): one per list at a time, with progress and cancellation, tracked here (module state) so a
 // card shows its progress even after leaving and re-opening "My lists". The worker module is
 // loaded on demand so Comlink and the worker client stay out of the initial bundle.
 //
@@ -29,7 +29,7 @@ export type SyncOutcome =
  * - `started`: the worker task was dispatched (`done` settles when it ends; it never rejects);
  * - `busy`: a sync of this list is already running;
  * - `removing`: the list is being removed;
- * - `unsupported`: this kind of list cannot be refreshed (local M3U file);
+ * - `unsupported`: this list cannot be refreshed this way (a local M3U file without a new file);
  * - `unavailable`: the task could not be started (`error` says why).
  */
 export type SyncRun =
@@ -42,6 +42,11 @@ export interface SyncWorker {
   runTask(
     name: 'syncXtream' | 'syncM3u',
     input: { sourceId: string },
+    options: RunTaskOptions,
+  ): Promise<{ status: 'ok' | 'partial' | 'error' }>;
+  runTask(
+    name: 'syncM3uFile',
+    input: { sourceId: string; file: Blob },
     options: RunTaskOptions,
   ): Promise<{ status: 'ok' | 'partial' | 'error' }>;
   runTask(name: 'waitSyncIdle', input: { sourceId: string }): Promise<unknown>;
@@ -95,13 +100,23 @@ const isCancelled = (error: unknown) => (error as { kind?: unknown } | null)?.ki
 
 type Dispatch = { ok: true } | { ok: false; error: unknown };
 
-/** Starts the sync task that fits the kind of list (`syncXtream` / `syncM3u`). */
+export interface StartSyncOptions {
+  /** A local-file list (SRC-06 AC3): the newly picked file to read (there is no URL). */
+  file?: Blob;
+}
+
+/**
+ * Starts the sync task that fits the kind of list (`syncXtream` / `syncM3u`, or `syncM3uFile` with
+ * `options.file`).
+ */
 export async function startSourceSync(
   source: Pick<Source, 'id' | 'kind'>,
   worker: () => Promise<SyncWorker> = loadWorker,
+  options: StartSyncOptions = {},
 ): Promise<SyncRun> {
   const { id, kind } = source;
-  if (kind === 'm3u-file') return { dispatch: 'unsupported' };
+  const { file } = options;
+  if (kind === 'm3u-file' && file === undefined) return { dispatch: 'unsupported' };
   if (removing.has(id)) return { dispatch: 'removing' };
   if (entries.has(id)) return { dispatch: 'busy' };
 
@@ -120,15 +135,19 @@ export async function startSourceSync(
         reportDispatch({ ok: true });
         return { status: 'cancelled' };
       }
-      task = api.runTask(
-        kind === 'xtream' ? 'syncXtream' : 'syncM3u',
-        { sourceId: id },
-        {
-          signal: controller.signal,
-          onProgress: (p: TaskProgress) =>
-            update(id, entry, { phase: p.phase, done: p.done, total: p.total }),
-        },
-      );
+      const taskOptions: RunTaskOptions = {
+        signal: controller.signal,
+        onProgress: (p: TaskProgress) =>
+          update(id, entry, { phase: p.phase, done: p.done, total: p.total }),
+      };
+      task =
+        kind === 'm3u-file' && file !== undefined
+          ? api.runTask('syncM3uFile', { sourceId: id, file }, taskOptions)
+          : api.runTask(
+              kind === 'xtream' ? 'syncXtream' : 'syncM3u',
+              { sourceId: id },
+              taskOptions,
+            );
     } catch (error) {
       finish();
       reportDispatch({ ok: false, error });

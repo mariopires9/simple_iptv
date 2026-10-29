@@ -42,6 +42,8 @@ No sensitive permissions are requested. Used only: persistent storage (`storage.
 
 ## 7. Data deletion
 - "Delete all data" (SRC-10): IndexedDB (includes the vault key), data Cache Storage, `localStorage`/`sessionStorage` if used. The user can also uninstall the PWA or clear the site data in the browser.
+  - Implemented in `src/features/settings/privacy/deleteAllData.ts`: the data worker is terminated, the `simple-iptv` database is deleted (vault secrets and device key with it), this app's caches except the app-shell precache are deleted (the precache holds build files only and keeps the app starting offline; the service worker registration stays, AC2), only this app's Web Storage keys are removed (`simple-iptv:*`, React Router scroll positions — the origin may be shared with other apps on GitHub Pages); this tab's database is locked (no reopen until reload) and the other tabs are told on an app-scoped BroadcastChannel (they lock and restart); once the database is gone the log redactor's secrets and log buffer are cleared and the page reloads on onboarding (resetting every in-memory store).
+- Local M3U file (SRC-06): the picked `File` goes to the data worker by structured clone and is read as a stream; it is never stored — only the parsed catalogue is. A file source has nothing in the vault.
 - Removing a source deletes that source's data in cascade.
 
 ## 8. Legal limits and positioning

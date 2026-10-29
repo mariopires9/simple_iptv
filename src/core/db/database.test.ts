@@ -4,11 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closeDatabase,
   DatabaseClosedError,
+  DatabaseLockedError,
   DatabaseUnavailableError,
+  isDatabaseLocked,
+  lockDatabase,
   openDatabase,
+  unlockDatabase,
   wipeAll,
+  withTimeout,
 } from './database';
-import { SCHEMA_V1, type SimpleIptvDb } from './schema';
+import { DB_NAME, SCHEMA_V1, type SimpleIptvDb } from './schema';
 import { settingsRepo } from './repos/settings';
 import { openFreshDatabase } from './test-utils';
 
@@ -242,5 +247,60 @@ describe('wipeAll', () => {
     // Reopening on the same factory creates an empty database.
     await openDatabase({ indexedDB: factory, IDBKeyRange });
     await expect(settingsRepo.get('theme')).resolves.toBeUndefined();
+  });
+});
+
+describe('lock after "Delete all data" (SRC-10)', () => {
+  afterEach(() => unlockDatabase());
+
+  it('lockDatabase(): closes, refuses to reopen (repos fail) until unlocked; wipeAll still works', async () => {
+    const factory = new IDBFactory();
+    const db = await openDatabase({ indexedDB: factory, IDBKeyRange });
+    await settingsRepo.set('onboardingDone', true);
+    await lockDatabase();
+    expect(isDatabaseLocked()).toBe(true);
+    expect(db.isOpen()).toBe(false);
+    await expect(openDatabase({ indexedDB: factory, IDBKeyRange })).rejects.toBeInstanceOf(
+      DatabaseLockedError,
+    );
+    await expect(settingsRepo.set('theme', 'dark')).rejects.toBeInstanceOf(DatabaseLockedError);
+    await wipeAll();
+    expect((await factory.databases()).map((d) => d.name)).not.toContain(DB_NAME);
+
+    unlockDatabase();
+    await openDatabase({ indexedDB: factory, IDBKeyRange });
+    expect(await settingsRepo.get('onboardingDone')).toBeUndefined();
+  });
+
+  it('another tab deleting the database locks this one (no reopen that would recreate it)', async () => {
+    const factory = new IDBFactory();
+    const db = await openDatabase({ indexedDB: factory, IDBKeyRange });
+    // Another tab: its own connection deletes the database.
+    await new Dexie(DB_NAME, { indexedDB: factory, IDBKeyRange }).delete();
+    expect(db.isOpen()).toBe(false);
+    expect(isDatabaseLocked()).toBe(true);
+    await expect(openDatabase({ indexedDB: factory, IDBKeyRange })).rejects.toBeInstanceOf(
+      DatabaseLockedError,
+    );
+    expect((await factory.databases()).map((d) => d.name)).not.toContain(DB_NAME);
+  });
+
+  it("this context's own wipeAll racing a late open does not lock the database", async () => {
+    const factory = new IDBFactory();
+    await openDatabase({ indexedDB: factory, IDBKeyRange });
+    const wipe = wipeAll();
+    // A background write opens again while the deletion is under way.
+    const late = openDatabase({ indexedDB: factory, IDBKeyRange }).catch(() => undefined);
+    await wipe;
+    await late;
+    expect(isDatabaseLocked()).toBe(false);
+    await expect(openDatabase({ indexedDB: factory, IDBKeyRange })).resolves.toBeDefined();
+  });
+
+  it('withTimeout rejects with a timeout DatabaseUnavailableError', async () => {
+    await expect(withTimeout(new Promise(() => undefined), 10)).rejects.toMatchObject({
+      reason: 'timeout',
+    });
+    await expect(withTimeout(Promise.resolve(3), 10)).resolves.toBe(3);
   });
 });

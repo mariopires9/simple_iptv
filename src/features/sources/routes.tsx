@@ -18,6 +18,10 @@ export const sourcesRoutes: RouteObject[] = [
     lazy: lazyScreen(() => import('./AddM3uUrlScreen'), 'AddM3uUrlScreen', ['sources']),
   },
   {
+    path: 'settings/sources/add/m3u-file',
+    lazy: lazyScreen(() => import('./AddM3uFileScreen'), 'AddM3uFileScreen', ['sources']),
+  },
+  {
     path: 'settings/sources/:sourceId/edit',
     lazy: lazyScreen(() => import('./EditSourceScreen'), 'EditSourceScreen', ['sources']),
   },
@@ -35,6 +39,6 @@ export const sourcesOnboardingRoutes: RouteObject[] = [
   },
   {
     path: '/onboarding/m3u-file',
-    lazy: lazyScreen(() => import('./ComingSoonScreen'), 'M3uFileComingSoonScreen', ['sources']),
+    lazy: lazyScreen(() => import('./AddM3uFileScreen'), 'OnboardingM3uFileScreen', ['sources']),
   },
 ];

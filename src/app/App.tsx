@@ -9,6 +9,7 @@ import {
 import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installChunkReload } from './chunkReload';
+import { installDataDeletionWatch } from './dataDeletionWatch';
 import { DatabaseUnavailableScreen, useDatabaseCheck } from './DatabaseUnavailableScreen';
 import { UpdatePrompt } from './pwa/UpdatePrompt';
 import { AppRouter, getAppRouter } from './router';
@@ -49,6 +50,8 @@ export function App() {
   const languageRestored = useLanguageRestored();
   const locale = useSyncExternalStore(subscribeLocale, activeLocale);
   useEffect(() => installChunkReload(), []);
+  // SRC-10: another tab deleted all data → lock the database and restart on onboarding.
+  useEffect(() => installDataDeletionWatch(), []);
   useEffect(() => installLanguagePreference(), []);
 
   const routerReady = db.status === 'ready' && languageRestored;

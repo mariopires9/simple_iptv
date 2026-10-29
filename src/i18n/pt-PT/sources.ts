@@ -86,12 +86,62 @@ export const sources = {
         message: 'O armazenamento do dispositivo recusou os dados (pode estar cheio).',
       },
     },
-    localFileSoon: 'Adicionar um ficheiro local estará disponível em breve.',
+    localFile: {
+      message:
+        'Este browser não consegue descarregar a lista. Descarregue-a com outra aplicação e depois adicione o ficheiro.',
+      action: 'Adicionar um ficheiro local',
+    },
     retry: 'Tentar novamente',
     delete: 'Apagar esta lista',
     toasts: {
       imported: 'Lista importada.',
       deleted: 'Lista apagada.',
+    },
+  },
+  addM3uFile: {
+    title: 'Adicionar ficheiro M3U local',
+    intro:
+      'Escolha um ficheiro M3U ou M3U8 guardado neste dispositivo. É lido apenas neste dispositivo e só são guardados os canais que contém.',
+    back: 'Voltar',
+    fields: {
+      file: 'Ficheiro da lista',
+      choose: 'Escolher ficheiro',
+      change: 'Escolher outro ficheiro',
+      none: 'Nenhum ficheiro escolhido',
+      chosen: (name: string, size: string) => `${name} (${size})`,
+      fileHelp: 'Um ficheiro .m3u ou .m3u8.',
+      name: 'Nome (opcional)',
+      nameHelp: 'Se ficar vazio, é usado o nome do ficheiro.',
+      defaultName: 'Lista M3U',
+    },
+    validation: {
+      fileRequired: 'Escolha um ficheiro.',
+    },
+    submit: 'Importar',
+    steps: {
+      saving: 'A guardar…',
+      read: 'A ler o ficheiro…',
+      write: 'A guardar os canais…',
+    },
+    progress: {
+      readOf: (size: string, total: string) => `${size} de ${total} lidos`,
+    },
+    largeFile: {
+      title: 'Ficheiro grande',
+      message: (size: string) =>
+        `Este ficheiro tem ${size}. A leitura pode demorar vários minutos e usar muita memória e, em alguns dispositivos, pode não terminar.`,
+      confirm: 'Importar mesmo assim',
+    },
+    errors: {
+      'not-m3u': {
+        title: 'Não é uma lista M3U',
+        message: 'O ficheiro não é uma lista M3U.',
+      },
+      'file-unreadable': {
+        title: 'Não foi possível ler o ficheiro',
+        message:
+          'Não foi possível ler o ficheiro. Pode ter sido movido, apagado ou alterado. Escolha-o novamente.',
+      },
     },
   },
   fields: {
@@ -211,14 +261,6 @@ export const sources = {
     'use-local-file': 'Descarregue a lista M3U e adicione-a como ficheiro local.',
     'use-proxy': 'Use um proxy que sirva este servidor por HTTPS.',
   },
-  comingSoon: {
-    m3uFile: {
-      title: 'Ficheiro M3U local',
-      message: 'Adicionar um ficheiro M3U local estará disponível em breve.',
-    },
-    back: 'Voltar',
-  },
-
   myLists: {
     title: 'As minhas listas',
     add: 'Adicionar lista',
@@ -269,6 +311,7 @@ export const sources = {
       'empty-list': 'a lista não tem entradas utilizáveis',
       'too-large': 'a lista é demasiado grande',
       'invalid-url': 'endereço da lista inválido',
+      'file-unreadable': 'não foi possível ler o ficheiro — atualize-a com o ficheiro',
       unknown: 'erro desconhecido',
     },
     actions: {
@@ -287,6 +330,7 @@ export const sources = {
       'series-categories': 'A carregar categorias de séries…',
       series: 'A carregar séries…',
       download: 'A descarregar a lista…',
+      read: 'A ler o ficheiro…',
       parse: 'A ler a lista…',
       write: 'A guardar canais…',
       done: 'A terminar…',
@@ -300,6 +344,12 @@ export const sources = {
       refreshFailed: (name: string) => `Não foi possível atualizar «${name}».`,
       refreshUnavailable: 'Não foi possível iniciar a atualização.',
       updated: 'Lista atualizada.',
+    },
+    refreshFile: {
+      title: (name: string) => `Atualizar «${name}»`,
+      message:
+        'Esta lista foi adicionada a partir de um ficheiro, por isso não pode ser descarregada novamente. Escolha o ficheiro atualizado para a atualizar. Os favoritos e o histórico são mantidos.',
+      choose: 'Escolher ficheiro',
     },
     remove: {
       title: (name: string) => `Remover «${name}»?`,

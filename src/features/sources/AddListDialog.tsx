@@ -1,5 +1,5 @@
-// "Add list" chooser (SRC-08): Xtream / M3U URL / M3U file (coming soon), routing to the existing
-// add screens, which return to "My lists" once done.
+// "Add list" chooser (SRC-08): Xtream / M3U URL / M3U file (SRC-06), routing to the add screens,
+// which return to "My lists" once done.
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
@@ -16,6 +16,7 @@ import { t } from '@/i18n';
 
 export const ADD_XTREAM_PATH = '/settings/sources/add/xtream';
 export const ADD_M3U_URL_PATH = '/settings/sources/add/m3u-url';
+export const ADD_M3U_FILE_PATH = '/settings/sources/add/m3u-file';
 
 export interface AddListDialogProps {
   open: boolean;
@@ -28,6 +29,7 @@ export function AddListDialog({ open, onClose }: AddListDialogProps) {
   const options = [
     { key: 'xtream', to: ADD_XTREAM_PATH, ...text.xtream },
     { key: 'm3u-url', to: ADD_M3U_URL_PATH, ...text.m3uUrl },
+    { key: 'm3u-file', to: ADD_M3U_FILE_PATH, ...text.m3uFile },
   ];
   return (
     <Dialog open={open} onClose={onClose} aria-labelledby={titleId} fullWidth maxWidth="xs">
@@ -42,12 +44,6 @@ export function AddListDialog({ open, onClose }: AddListDialogProps) {
               </ListItemButton>
             </ListItem>
           ))}
-          <ListItem disablePadding>
-            {/* TODO(SRC-06): local M3U file. */}
-            <ListItemButton disabled>
-              <ListItemText primary={text.m3uFile.title} secondary={text.m3uFile.subtitle} />
-            </ListItemButton>
-          </ListItem>
         </List>
       </DialogContent>
       <DialogActions>

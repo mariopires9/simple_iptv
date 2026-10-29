@@ -10,8 +10,10 @@ import {
   type SyncXtreamResult,
 } from '@/providers/xtream';
 import {
+  syncM3uFileSource,
   syncM3uSource,
   waitForM3uSourceIdle,
+  type SyncM3uFileInput,
   type SyncM3uInput,
   type SyncM3uResult,
 } from '@/providers/m3u';
@@ -68,6 +70,15 @@ export function syncM3u(input: SyncM3uInput, ctx: TaskContext): Promise<SyncM3uR
 }
 
 /**
+ * SRC-06: reads (`file.stream()`), parses and stores a local M3U file picked by the user (the
+ * `File` arrives by structured clone; only the parsed catalogue is stored), then queues the
+ * source's search index rebuild (SCH-01). Also its refresh, with a newly picked file.
+ */
+export function syncM3uFile(input: SyncM3uFileInput, ctx: TaskContext): Promise<SyncM3uResult> {
+  return syncM3uFileSource(input, ctx, { afterSync: rebuildSearchIndexAfterSync });
+}
+
+/**
  * SCH-01: global search over the source's index (loaded from IndexedDB, or built if missing or
  * stale). Results grouped by type, at most `limit` per type.
  */
@@ -97,6 +108,7 @@ export const tasks = {
   selfTest,
   syncXtream,
   syncM3u,
+  syncM3uFile,
   waitSyncIdle,
   searchQuery,
   searchWarmup,

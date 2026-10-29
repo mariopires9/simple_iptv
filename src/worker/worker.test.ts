@@ -85,6 +85,7 @@ describe('registry and client', () => {
       'searchWarmup',
       'selfTest',
       'syncM3u',
+      'syncM3uFile',
       'syncXtream',
       'waitSyncIdle',
     ]);
@@ -238,6 +239,56 @@ describe('syncM3u through the worker API (SRC-04/SRC-05)', () => {
     await runTaskOn(api, 'waitSyncIdle', { sourceId: 'm1' });
     expect(isM3uSourceSyncing('m1')).toBe(false);
     await run;
+  });
+});
+
+describe('syncM3uFile through the worker API (SRC-06)', () => {
+  const LIST = [
+    '#EXTM3U',
+    '#EXTINF:-1 group-title="News",News One',
+    'https://streams.example.test/live/1.ts',
+    '#EXTINF:-1 group-title="Movies",A Movie (2020)',
+    'https://streams.example.test/movie/1.mp4',
+    '',
+  ].join('\n');
+  beforeEach(async () => {
+    await openFreshDatabase();
+    await sourcesRepo.put(
+      source('f1', {
+        kind: 'm3u-file',
+        serverUrl: undefined,
+        username: undefined,
+        secretRef: undefined,
+      }),
+    );
+  });
+  afterEach(async () => {
+    await closeDatabase();
+  });
+
+  it('the File crosses the boundary by structured clone and is read in the worker (AC1)', async () => {
+    const file = new File([LIST], 'my list.m3u', { type: 'audio/x-mpegurl' });
+    const seen: TaskProgress[] = [];
+    const result = await runTaskOn<SyncM3uResult>(
+      connect(),
+      'syncM3uFile',
+      { sourceId: 'f1', file },
+      { onProgress: (p) => seen.push(p) },
+    );
+    expect(result).toMatchObject({ sourceId: 'f1', status: 'ok', bytes: file.size });
+    expect(result.stats.live).toBe(1);
+    expect(result.stats.movies).toBe(1);
+    expect(seen.map((p) => p.phase)).toContain('read');
+    expect(seen.map((p) => p.phase)).not.toContain('download');
+    expect(await catalogRepo.count('f1', 'live')).toBe(1);
+  });
+
+  it('rejects an input without a file', async () => {
+    const err = await runTaskOn(connect(), 'syncM3uFile', {
+      sourceId: 'f1',
+      file: undefined as unknown as Blob,
+    }).catch((e: unknown) => e);
+    expect((err as WorkerTaskError).kind).toBe('failed');
   });
 });
 
