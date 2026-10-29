@@ -193,11 +193,71 @@ describe('resolveStream — M3U', () => {
   });
 
   it.each([
-    ['http://h/123', 'ts'],
-    ['http://h/a.TS', 'ts'],
-    ['http://h/a.mp4', 'mp4'],
-    ['http://h/a.php', 'unknown'],
-  ])('infers %s → %s', (url, container) => {
-    expect(inferContainer(new URL(url))).toBe(container);
+    ['http://h/123', false, { container: 'ts', guessed: true }],
+    ['http://h/a.TS', false, { container: 'ts', guessed: false }],
+    ['http://h/a.mp4', false, { container: 'mp4', guessed: false }],
+    ['http://h/a.php', false, { container: 'ts', guessed: true }],
+    ['http://h/a.mp3', false, { container: 'mp4', guessed: false }],
+    // Radio entries are never guessed as MPEG-TS.
+    ['http://h/radio', true, { container: 'mp4', guessed: false }],
+    ['http://h/radio.ts', true, { container: 'mp4', guessed: false }],
+    ['http://h/radio.m3u8', true, { container: 'hls', guessed: false }],
+  ] as const)('infers %s (audioOnly %s) → %o', (url, audioOnly, expected) => {
+    expect(inferContainer(new URL(url), audioOnly)).toEqual(expected);
+  });
+
+  it.each(['mp3', 'aac', 'ogg', 'flac', 'MP3'])(
+    'a declared audio container (%s) plays natively, whatever the URL says',
+    async (container) => {
+      const resolved = await resolveStream(
+        channel('https://radio.example/stream', { container, audioOnly: true }),
+        m3uSource,
+      );
+      expect(resolved.status === 'ok' && resolved.descriptor).toEqual({
+        url: 'https://radio.example/stream',
+        kind: 'live',
+        container: 'mp4',
+      });
+    },
+  );
+
+  it.each(['hls', 'ts', 'mp4', 'mkv', 'webm', 'flv', 'mov'])(
+    'honours any declared player container (%s), without a fallback',
+    async (container) => {
+      const resolved = await resolveStream(
+        channel('https://cdn.example/x', { container }),
+        m3uSource,
+      );
+      expect(resolved.status === 'ok' && resolved.descriptor).toEqual({
+        url: 'https://cdn.example/x',
+        kind: 'live',
+        container,
+      });
+    },
+  );
+
+  it('a radio entry without extension is native audio, not MPEG-TS', async () => {
+    const resolved = await resolveStream(
+      channel('https://radio.example/live', { audioOnly: true }),
+      m3uSource,
+    );
+    expect(resolved.status === 'ok' && resolved.descriptor).toEqual({
+      url: 'https://radio.example/live',
+      kind: 'live',
+      container: 'mp4',
+    });
+  });
+
+  it('a live URL without extension is TS first, with an HLS fallback on the same URL', async () => {
+    const resolved = await resolveStream(channel('http://iptv.example/u/p/123'), m3uSource);
+    expect(resolved.status === 'ok' && resolved.descriptor).toEqual({
+      url: 'http://iptv.example/u/p/123',
+      kind: 'live',
+      container: 'ts',
+      fallbacks: [{ url: 'http://iptv.example/u/p/123', kind: 'live', container: 'hls' }],
+    });
+    // A known extension is not a guess: no fallback.
+    const known = await resolveStream(channel('http://iptv.example/a.m3u8'), m3uSource);
+    expect(known.status === 'ok' && known.descriptor.fallbacks).toBeUndefined();
   });
 });

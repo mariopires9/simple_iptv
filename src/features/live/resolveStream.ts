@@ -49,6 +49,13 @@ function defaultCapabilities(): Pick<Capabilities, 'mse' | 'mms'> {
   return cachedCapabilities;
 }
 
+/**
+ * Audio-only containers (radio). The player has no audio container kinds: the browser's own
+ * element plays them, which is what the `mp4` container selects (native engine, no MSE).
+ */
+const NATIVE_AUDIO: StreamContainer = 'mp4';
+const AUDIO_CONTAINERS = new Set(['mp3', 'aac', 'm4a', 'ogg', 'oga', 'opus', 'flac', 'wav']);
+
 const EXTENSION_CONTAINERS: Readonly<Record<string, StreamContainer | 'dash'>> = {
   m3u8: 'hls',
   m3u: 'hls',
@@ -62,9 +69,13 @@ const EXTENSION_CONTAINERS: Readonly<Record<string, StreamContainer | 'dash'>> =
   flv: 'flv',
   avi: 'avi',
   mpd: 'dash',
+  ...Object.fromEntries([...AUDIO_CONTAINERS].map((ext) => [ext, NATIVE_AUDIO])),
 };
 
-/** `container` as declared by the entry (`hls`, `m3u8`, `dash`, `ts`…), if recognisable. */
+/**
+ * `container` as declared by the entry — any player container, `dash`, or an audio container
+ * (`mp3`, `aac`, `ogg`, `flac`… → native audio) — if recognisable.
+ */
 function declaredContainer(value: unknown): StreamContainer | 'dash' | undefined {
   if (typeof value !== 'string') return undefined;
   const v = value.trim().toLowerCase();
@@ -72,15 +83,24 @@ function declaredContainer(value: unknown): StreamContainer | 'dash' | undefined
   return EXTENSION_CONTAINERS[v];
 }
 
+export interface InferredContainer {
+  container: StreamContainer | 'dash';
+  /** No (recognised) extension: a best guess, so the other live engine is a fallback. */
+  guessed: boolean;
+}
+
 /**
- * Container from the URL path's extension. Live URLs without one (`http://host/123`) are almost
- * always raw MPEG-TS (the Xtream short form), so that is the guess for live entries.
+ * Container from the URL path's extension. Live URLs without a recognised one
+ * (`http://host/123`, `…/play.php`) are most often raw MPEG-TS (the Xtream short form), so that is
+ * the guess — with HLS as the fallback. Radio entries (`audioOnly`) are guessed as native audio.
  */
-export function inferContainer(url: URL): StreamContainer | 'dash' {
+export function inferContainer(url: URL, audioOnly = false): InferredContainer {
   const match = /\.([a-z0-9]{2,6})$/i.exec(url.pathname);
-  const ext = match?.[1]?.toLowerCase();
-  if (ext === undefined) return 'ts';
-  return EXTENSION_CONTAINERS[ext] ?? 'unknown';
+  const known = match?.[1] !== undefined ? EXTENSION_CONTAINERS[match[1].toLowerCase()] : undefined;
+  if (known !== undefined && !(audioOnly && known === 'ts')) {
+    return { container: known, guessed: false };
+  }
+  return { container: audioOnly ? NATIVE_AUDIO : 'ts', guessed: !audioOnly };
 }
 
 function hasHeaders(value: unknown): boolean {
@@ -97,11 +117,22 @@ function resolveM3u(channel: Channel): ResolvedStream {
   const raw = typeof fields.streamUrl === 'string' ? fields.streamUrl : channel.streamPath;
   const parsed = parseExternalUrl(raw, 'stream');
   if (!parsed.ok) return { status: 'unavailable' };
-  const container = declaredContainer(fields.container) ?? inferContainer(parsed.url);
+  const declared = declaredContainer(fields.container);
+  const { container, guessed } =
+    declared !== undefined
+      ? { container: declared, guessed: false }
+      : inferContainer(parsed.url, fields.audioOnly === true);
   if (container === 'dash') return { status: 'unsupported', reason: 'dash' };
+  const url = parsed.url.href;
+  const descriptor: StreamDescriptor = { url, kind: 'live', container };
+  if (guessed) {
+    // Same URL, other live engine: mpegts.js ↔ hls.js, tried if the guess fails.
+    const other: StreamContainer = container === 'hls' ? 'ts' : 'hls';
+    descriptor.fallbacks = [{ url, kind: 'live', container: other }];
+  }
   return {
     status: 'ok',
-    descriptor: { url: parsed.url.href, kind: 'live', container },
+    descriptor,
     requiredHeaders: hasHeaders(fields.requiredHeaders),
   };
 }

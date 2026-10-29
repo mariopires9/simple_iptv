@@ -134,7 +134,7 @@ describe('createPager', () => {
     expect((await createPager(all, S, keys, 1)).total).toBe(7);
   });
 
-  it('locate finds a channel by binary search in a category and in "All"', async () => {
+  it('locate finds a channel with an indexed count, in a category and in "All"', async () => {
     const list = await categories();
     const keys = list.flatMap((c) => (c.kind === 'source' ? [c.key] : []));
     const byId = (id: string) => list.find((c) => c.id === id);
@@ -155,6 +155,19 @@ describe('createPager', () => {
     }
     const ghost = { ...items[0], key: key(99), order: 99 } as (typeof items)[number];
     expect(await pagerAll.locate(ghost)).toBe(-1);
+
+    // Equivalent to the row order of `load`, with one indexed count and one row read per call.
+    const count = vi.spyOn(catalogRepo, 'indexInCategory');
+    const read = vi.spyOn(catalogRepo, 'listByCategory');
+    const rows = await pagerAll.load(0, pagerAll.total);
+    read.mockClear();
+    for (const [i, row] of rows.entries()) {
+      count.mockClear();
+      expect(await pagerAll.locate(row)).toBe(i);
+      expect(count).toHaveBeenCalledTimes(1);
+    }
+    expect(read).toHaveBeenCalledTimes(rows.length);
+    for (const [, , page] of read.mock.calls) expect(page?.limit).toBe(1);
   });
 
   it('"Favorites" lists favourite channels, most recent first, skipping removed ones', async () => {

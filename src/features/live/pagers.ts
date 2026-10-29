@@ -13,29 +13,15 @@ export interface ChannelPager {
 }
 
 /**
- * Binary search of `channel` among `count` rows sorted by `order` (one category, read through
- * its `[categoryKey+order]` index): ~log2(count) single-row reads instead of a scan.
+ * Position of `channel` in the category `catKey`: one count over the `[categoryKey+order]`
+ * index, then a one-row read to check it really is that channel (-1 otherwise, e.g. after a sync).
  */
-async function bisect(
-  count: number,
-  at: (index: number) => Promise<Channel | undefined>,
-  channel: Channel,
-): Promise<number> {
-  let lo = 0;
-  let hi = count - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >>> 1;
-    const row = await at(mid);
-    if (!row) return -1;
-    if (row.key === channel.key) return mid;
-    if (row.order < channel.order) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  return -1;
+async function indexIn(catKey: string, channel: Channel): Promise<number> {
+  if (channel.categoryKey !== catKey) return -1;
+  const index = await catalogRepo.indexInCategory('live', catKey, channel.order);
+  const [row] = await catalogRepo.listByCategory('live', catKey, { offset: index, limit: 1 });
+  return row?.key === channel.key ? index : -1;
 }
-
-const rowOf = (catKey: string) => async (index: number) =>
-  (await catalogRepo.listByCategory('live', catKey, { offset: index, limit: 1 }))[0];
 
 /** How many recently watched channels "Recent" shows. */
 export const RECENT_LIMIT = 50;
@@ -54,8 +40,7 @@ function categoryPager(key: string, total: number): ChannelPager {
   return {
     total,
     load: (offset, limit) => catalogRepo.listByCategory('live', key, { offset, limit }),
-    locate: (channel) =>
-      channel.categoryKey === key ? bisect(total, rowOf(key), channel) : Promise.resolve(-1),
+    locate: (channel) => indexIn(key, channel),
   };
 }
 
@@ -97,9 +82,10 @@ export function concatPager(segments: readonly { key: string; count: number }[])
       return (await Promise.all(reads)).flat();
     },
     async locate(channel) {
+      // `start` is the sum of the preceding categories' (memoised) counts.
       const segment = placed.find((s) => s.key === channel.categoryKey);
       if (!segment) return -1;
-      const local = await bisect(segment.count, rowOf(segment.key), channel);
+      const local = await indexIn(segment.key, channel);
       return local < 0 ? -1 : segment.start + local;
     },
   };

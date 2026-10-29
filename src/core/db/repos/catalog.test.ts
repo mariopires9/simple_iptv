@@ -214,6 +214,20 @@ describe('catalogRepo — queries', () => {
     expect(await catalogRepo.countByCategory('live', cat)).toBe(10);
   });
 
+  it('indexInCategory is the position of an item in its category (one indexed count)', async () => {
+    const cat = categoryKey('s1', 'live', 2);
+    const items = await catalogRepo.listByCategory('live', cat);
+    const db = await getDb();
+    const where = vi.spyOn(db.table('channels'), 'where');
+    for (const [i, item] of items.entries()) {
+      expect(await catalogRepo.indexInCategory('live', cat, item.order)).toBe(i);
+    }
+    expect(where).toHaveBeenCalledWith('[categoryKey+order]');
+    expect(await catalogRepo.indexInCategory('live', cat, Number.MAX_SAFE_INTEGER)).toBe(10);
+    expect(await catalogRepo.indexInCategory('live', 'garbage', 3)).toBe(0);
+    expect(await catalogRepo.indexInCategory('movie', cat, 3)).toBe(0);
+  });
+
   it('pagination uses the [categoryKey+order] index and only reads the requested page', async () => {
     const db = await getDb();
     const table = db.table('channels');

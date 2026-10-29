@@ -245,4 +245,19 @@ export const catalogRepo = {
     const db = await getDb();
     await db.searchIndex.put(entry);
   },
+
+  /**
+   * Position (0-based) an item with `order` has in its category: the number of items of the
+   * category before it in the original order. One count over the `[categoryKey+order]` index
+   * (LIV-02: locating the playing channel for zapping), never a scan.
+   */
+  async indexInCategory(type: ContentType, catKey: string, order: number): Promise<number> {
+    const parsed = parseCategoryKey(catKey);
+    if (!parsed || parsed.type !== type) return 0;
+    const db = await getDb();
+    return itemTable(db, type)
+      .where('[categoryKey+order]')
+      .between([catKey, Dexie.minKey], [catKey, order], true, false)
+      .count();
+  },
 };

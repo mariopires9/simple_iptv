@@ -3,6 +3,10 @@
 // are evicted), so memory stays bounded however far the user scrolls. The page of the active
 // (keyboard-selected) row is pinned: it is never evicted, so Enter/F keep working on it and it is
 // not re-read every time the viewport moves away from it.
+//
+// Several lists may share one cache (the main list and the "Channels" panel over the player,
+// LIV-02): each subscribes and pins its own active row; the cache stops storing results only
+// once the last subscriber has gone.
 import type { Channel } from '@/core/db';
 import type { ChannelPager } from './pagers';
 
@@ -12,11 +16,13 @@ export const MAX_PAGES = 8;
 export class PageCache {
   private readonly pages = new Map<number, Channel[]>();
   private readonly pending = new Set<number>();
-  private listener: (() => void) | undefined;
-  private errorListener: ((error: unknown) => void) | undefined;
+  private readonly subscribers = new Set<{
+    onChange: () => void;
+    onError: ((error: unknown) => void) | undefined;
+  }>();
   private center = 0;
-  private pinnedPage: number | undefined;
-  private disposed = false;
+  /** Pinned page per owner (each list pins its active row). */
+  private readonly pinned = new Map<object, number>();
 
   constructor(
     readonly pager: ChannelPager,
@@ -38,15 +44,15 @@ export class PageCache {
     return this.pages.get(Math.floor(index / this.pageSize))?.[index % this.pageSize];
   }
 
-  /** Called after a page arrives; returns the unsubscribe function (which disposes the cache). */
+  /**
+   * `onChange` is called after a page arrives. Returns the unsubscribe function; with no
+   * subscriber left, pages still in flight are dropped.
+   */
   subscribe(onChange: () => void, onError?: (error: unknown) => void): () => void {
-    this.disposed = false;
-    this.listener = onChange;
-    this.errorListener = onError;
+    const subscriber = { onChange, onError };
+    this.subscribers.add(subscriber);
     return () => {
-      this.disposed = true;
-      this.listener = undefined;
-      this.errorListener = undefined;
+      this.subscribers.delete(subscriber);
     };
   }
 
@@ -59,9 +65,10 @@ export class PageCache {
     return -1;
   }
 
-  /** Keeps the page of row `index` cached (the active row); `undefined` unpins. */
-  pin(index: number | undefined): void {
-    this.pinnedPage = index === undefined ? undefined : Math.floor(index / this.pageSize);
+  /** Keeps the page of row `index` cached for `owner` (its active row); `undefined` unpins. */
+  pin(index: number | undefined, owner: object = this): void {
+    if (index === undefined) this.pinned.delete(owner);
+    else this.pinned.set(owner, Math.floor(index / this.pageSize));
   }
 
   /** Loads every missing page that covers rows `[start, end]`. */
@@ -79,14 +86,14 @@ export class PageCache {
       this.pager.load(page * this.pageSize, this.pageSize).then(
         (rows) => {
           this.pending.delete(page);
-          if (this.disposed) return;
+          if (this.subscribers.size === 0) return;
           this.pages.set(page, rows);
           this.evict();
-          this.listener?.();
+          for (const s of [...this.subscribers]) s.onChange();
         },
         (error: unknown) => {
           this.pending.delete(page);
-          if (!this.disposed) this.errorListener?.(error);
+          for (const s of [...this.subscribers]) s.onError?.(error);
         },
       );
     }
@@ -96,8 +103,9 @@ export class PageCache {
     while (this.pages.size > this.maxPages) {
       let farthest = -1;
       let distance = -1;
+      const pinned = new Set(this.pinned.values());
       for (const page of this.pages.keys()) {
-        if (page === this.pinnedPage) continue;
+        if (pinned.has(page)) continue;
         const d = Math.abs(page - this.center);
         if (d > distance) {
           distance = d;

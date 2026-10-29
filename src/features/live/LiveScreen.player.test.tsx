@@ -35,11 +35,20 @@ const lastView = () => {
   return props;
 };
 
+// Like the real PlayerView (autoFocus), the region takes focus once, when it mounts.
+const focused = new WeakSet<HTMLElement>();
+const focusOnMount = (el: HTMLElement | null) => {
+  if (el && !focused.has(el)) {
+    focused.add(el);
+    el.focus();
+  }
+};
+
 vi.mock('@/player/ui', () => ({
   PlayerView: (props: PlayerViewProps) => {
     views.push(props);
     return (
-      <div role="region" aria-label={`Player: ${props.title}`} tabIndex={-1}>
+      <div ref={focusOnMount} role="region" aria-label={`Player: ${props.title}`} tabIndex={-1}>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- test double */}
         <video data-testid="mock-video" />
         <span data-testid="mock-title">{props.title}</span>
@@ -49,19 +58,32 @@ vi.mock('@/player/ui', () => ({
 }));
 
 type ErrorListener = (e: PlayerEvents['error']) => void;
+type AttemptListener = (e: PlayerEvents['attempt']) => void;
 const errorListeners: ErrorListener[] = [];
+const attemptListeners: AttemptListener[] = [];
 vi.mock('@/player', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/player')>();
   return {
     ...actual,
     createPlayerController: vi.fn(() => ({
-      on: (evt: string, cb: ErrorListener) => {
+      on: (evt: string, cb: ErrorListener & AttemptListener) => {
         if (evt === 'error') errorListeners.push(cb);
+        if (evt === 'attempt') attemptListeners.push(cb);
         return () => {};
       },
     })),
   };
 });
+const emitError = (status: number) =>
+  act(() => {
+    for (const cb of errorListeners) cb(new PlaybackError({ kind: 'auth', status }));
+  });
+const emitAttempt = (url: string) =>
+  act(() => {
+    for (const cb of attemptListeners) {
+      cb({ engine: 'mpegts', attempt: 0, descriptor: { url, kind: 'live', container: 'ts' } });
+    }
+  });
 
 vi.mock('./resolveStream', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./resolveStream')>();
@@ -169,6 +191,7 @@ beforeEach(async () => {
   restoreScroll = installScrollMetrics();
   views.length = 0;
   errorListeners.length = 0;
+  attemptListeners.length = 0;
   // Back to the real resolveStream (a test may have replaced the implementation).
   resolveMock.mockReset();
   clearLogBuffer();
@@ -194,6 +217,11 @@ function show(path: string, width?: number) {
 
 const channelParam = (router: { state: { location: { search: string } } }) =>
   new URLSearchParams(router.state.location.search).get('channel');
+
+const activeOf = (list: HTMLElement) => {
+  const id = list.getAttribute('aria-activedescendant');
+  return id === null ? null : document.getElementById(id);
+};
 
 const listbox = (name: string | RegExp = /^Channels in/) =>
   screen.findByRole('listbox', { name }, { timeout: 5000 });
@@ -369,6 +397,8 @@ describe('LIV-02 AC4 — "Channels" panel over the player', () => {
     await waitFor(() => expect(within(panel).getByRole('listbox')).toHaveFocus());
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
+    // Focus is back on the player region (its shortcuts work again).
+    expect(screen.getByRole('region', { name: 'Player: Channel 2' })).toHaveFocus();
     act(() => lastView().onToggleChannelList?.());
     await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', {
@@ -376,7 +406,36 @@ describe('LIV-02 AC4 — "Channels" panel over the player', () => {
       }),
     );
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Player: Channel 2' })).toHaveFocus();
     expect(lastView().title).toBe('Channel 2');
+  });
+
+  it("reuses the main list's page cache: opening the panel reads nothing again", async () => {
+    await openFrom('/live/category/1', 'Channel 2', 1400);
+    await playerShows(2);
+    const read = vi.spyOn(catalogRepo, 'listByCategory');
+    for (let i = 0; i < 2; i++) {
+      act(() => lastView().onToggleChannelList?.());
+      const panel = await screen.findByRole('dialog', { name: 'Channels' });
+      expect(await within(panel).findByText('Channel 3')).toBeInTheDocument();
+      act(() => lastView().onToggleChannelList?.());
+      expect(screen.queryByRole('dialog')).toBeNull();
+    }
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('a new category (pager) resets the panel list to its first row', async () => {
+    await openFrom('/live/category/1', 'Channel 3', 1400);
+    await playerShows(3);
+    act(() => lastView().onToggleChannelList?.());
+    let panel = await screen.findByRole('dialog', { name: 'Channels' });
+    const news = within(panel).getByRole('listbox', { name: 'Channels in News' });
+    await waitFor(() => expect(activeOf(news)).toHaveAttribute('aria-posinset', '3'));
+    await userEvent.click(screen.getByRole('link', { name: 'Sports' }));
+    panel = await screen.findByRole('dialog', { name: 'Channels' });
+    const sports = await within(panel).findByRole('listbox', { name: 'Channels in Sports' });
+    await waitFor(() => expect(activeOf(sports)).toHaveAttribute('aria-posinset', '1'));
+    expect(sports.querySelector('[aria-setsize]')).toHaveAttribute('aria-setsize', '2');
   });
 });
 
@@ -485,12 +544,61 @@ describe('LIV-02 — stream resolution in the player area', () => {
     if (!factory) throw new Error('no controller factory');
     factory(document.createElement('video'));
     expect(screen.queryByRole('alert')).toBeNull();
-    act(() => {
-      for (const cb of errorListeners) cb(new PlaybackError({ kind: 'auth', status: 403 }));
-    });
+    emitError(403);
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The provider restricts playback to its own app/site',
     );
+  });
+
+  it('the restricted warning only reflects the current attempt (retry, zap away and back)', async () => {
+    await settingsRepo.set('activeSourceId', M3U);
+    await openFrom('/live', 'Referer channel', 1400);
+    await waitFor(() => expect(lastView().descriptor.url).toBe('https://cdn.example/hdr.ts'));
+    lastView().createController?.(document.createElement('video'));
+    emitError(403);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    // PlayerView's "Try again" starts a new play(): the old failure no longer applies.
+    emitAttempt('https://cdn.example/hdr.ts');
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    emitError(401);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    // Zap away (the controller starts the new stream)…
+    act(() => lastView().onNext?.());
+    await waitFor(() => expect(lastView().descriptor.url).toBe('https://cdn.example/ok.m3u8'), {
+      timeout: 3000,
+    });
+    emitAttempt('https://cdn.example/ok.m3u8');
+    expect(screen.queryByRole('alert')).toBeNull();
+    // …and back: the new attempt starts clean until it fails itself.
+    act(() => lastView().onPrevious?.());
+    await waitFor(() => expect(lastView().descriptor.url).toBe('https://cdn.example/hdr.ts'), {
+      timeout: 3000,
+    });
+    emitAttempt('https://cdn.example/hdr.ts');
+    expect(screen.queryByRole('alert')).toBeNull();
+    emitError(403);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+  });
+
+  it('retrying after a resolve error shows progress, then the new result', async () => {
+    let release: (value: string) => void = () => {};
+    vi.spyOn(credentialVault, 'get')
+      .mockRejectedValueOnce(new Error('database closed'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            release = resolve;
+          }),
+      );
+    await openFrom('/live/category/1', 'Channel 1', 1400);
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    expect(screen.queryByRole('heading', { name: "Couldn't start this channel" })).toBeNull();
+    expect(screen.getByTestId('player-pending')).toHaveTextContent('Loading Channel 1');
+    await act(async () => {
+      release(PASS);
+    });
+    await playerShows(1);
   });
 
   it('the same failure on an entry without required headers keeps the player message only', async () => {
