@@ -12,6 +12,7 @@ import { player } from './player';
 import { routes } from './routes';
 import { search } from './search';
 import { series } from './series';
+import { settings } from './settings';
 import { sources } from './sources';
 import { state } from './state';
 
@@ -28,6 +29,7 @@ export const ptPT = {
   routes,
   search,
   series,
+  settings,
   sources,
   state,
 } satisfies MessageShape<Messages>;

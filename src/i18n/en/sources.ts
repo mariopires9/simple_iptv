@@ -50,11 +50,6 @@ export const sources = {
       downloadedOf: (size: string, total: string) => `${size} of ${total} downloaded`,
       entries: (count: string) => `${count} entries read`,
     },
-    /** Byte sizes; the argument is already formatted. */
-    units: {
-      kb: (n: string) => `${n} KB`,
-      mb: (n: string) => `${n} MB`,
-    },
     result: {
       title: 'List imported',
       live: (n: string) => `Channels: ${n}`,

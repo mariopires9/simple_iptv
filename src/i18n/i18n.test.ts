@@ -98,7 +98,20 @@ describe('completeness check (type-level)', () => {
       // @ts-expect-error — the eager pt-PT catalog must match the eager en one too.
       state: missingNested,
     } satisfies MessageShape<typeof enEager>;
-    expect([completeCatalog, incompleteLive, incompleteState, incompleteEager]).toHaveLength(4);
+    // UX-06 AC4: the settings namespace (language names included) is checked the same way.
+    const missingNames: Omit<typeof ptPT.settings.language, 'names'> = ptPT.settings.language;
+    const incompleteSettings = {
+      ...ptPT,
+      // @ts-expect-error — `settings.language.names` is missing.
+      settings: { ...ptPT.settings, language: missingNames },
+    } satisfies MessageShape<Messages>;
+    expect([
+      completeCatalog,
+      incompleteLive,
+      incompleteState,
+      incompleteEager,
+      incompleteSettings,
+    ]).toHaveLength(5);
   });
 });
 

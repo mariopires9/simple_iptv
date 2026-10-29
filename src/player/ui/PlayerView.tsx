@@ -15,7 +15,7 @@ import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { log } from '@/core/log';
-import { t } from '@/i18n';
+import { holdLocaleSwitch, t } from '@/i18n';
 import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
@@ -35,6 +35,7 @@ import { detectPlayerPlatform, type PlayerPlatform } from './platform';
 import { PlayerControls, type SeekWindow } from './PlayerControls';
 import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
+import { useFullscreenOnLandscapeSetting } from './useFullscreenOnLandscapeSetting';
 import { useMediaState } from './useMediaState';
 import { usePictureInPicture } from './usePictureInPicture';
 import { usePlayerController, type ControllerFactory } from './usePlayerController';
@@ -87,7 +88,7 @@ export interface PlayerViewProps {
   /**
    * Rotating the device to landscape during playback offers fullscreen ("Tap for fullscreen":
    * browsers require a gesture); back to portrait leaves a fullscreen entered that way.
-   * Default: on for mobile devices. The setting itself belongs to UX-04.
+   * Default: the stored setting (Settings › Playback, UX-04), else on for mobile devices.
    */
   fullscreenOnLandscape?: boolean;
   /**
@@ -137,6 +138,13 @@ export function PlayerView({
   onVideoElement,
 }: PlayerViewProps) {
   const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
+  // Only read when it can matter: no explicit prop, and a phone or tablet.
+  const storedFullscreenOnLandscape = useFullscreenOnLandscapeSetting(
+    fullscreenOnLandscape === undefined && platform.mobile,
+  );
+  // A browser language change waits until this player is gone (UX-06): switching the locale
+  // re-mounts the screen and would stop playback.
+  useEffect(() => holdLocaleSwitch(), []);
   const { videoRef, bound } = usePlayerController(createController);
   const video = bound?.video ?? null;
   const controller = bound?.controller;
@@ -427,7 +435,8 @@ export function PlayerView({
     video,
     fullscreenApi: platform.fullscreenApi,
     lockLandscape: platform.mobile,
-    autoOnLandscape: fullscreenOnLandscape ?? platform.mobile,
+    autoOnLandscape:
+      fullscreenOnLandscape ?? (platform.mobile && storedFullscreenOnLandscape !== false),
     playing: !media.paused && error === undefined,
   });
   const pip = usePictureInPicture(video, platform.pip);

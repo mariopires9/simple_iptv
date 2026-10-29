@@ -6,6 +6,7 @@ import { credentialVault } from '@/core/crypto';
 import { settingsRepo, sourcesRepo, type Source, type SyncStatus } from '@/core/db';
 import { log } from '@/core/log';
 import { refreshActiveSource } from '../activeSource';
+import { requestPersistentStorageForFirstList } from '../persistStorage';
 import { sourceName } from '../sourceName';
 import { setSourcesPresent } from '../sourcesPresence';
 import { reloadSourcesIfLoaded } from '../sourcesList';
@@ -64,6 +65,8 @@ export async function saveXtreamSource(input: SaveXtreamSourceInput): Promise<So
   try {
     if ((await settingsRepo.get('activeSourceId')) === undefined) {
       await settingsRepo.set('activeSourceId', id);
+      // The first list: ask the browser to keep the data (PWA-05 AC1).
+      void requestPersistentStorageForFirstList();
     }
     await settingsRepo.set('onboardingDone', true);
   } catch (error) {

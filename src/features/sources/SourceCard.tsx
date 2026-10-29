@@ -13,7 +13,7 @@ import Typography from '@mui/material/Typography';
 import { useId, type Ref } from 'react';
 import { Link } from 'react-router';
 import type { Source } from '@/core/db';
-import { detectLocale, t, type Locale } from '@/i18n';
+import { activeLocale, t, type Locale } from '@/i18n';
 import { ProgressPanel } from '@/ui/state';
 import {
   describeContents,
@@ -72,7 +72,7 @@ export function SourceCard({
   onCancelRefresh,
   onRemove,
   headingRef,
-  locale = detectLocale(),
+  locale = activeLocale(),
 }: SourceCardProps) {
   const text = t.sources.myLists;
   const headingId = useId();

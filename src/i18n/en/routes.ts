@@ -10,14 +10,7 @@ export const routes = {
     seriesDetails: { title: 'Series details', empty: 'Seasons and episodes will appear here.' },
     favorites: { title: 'Favorites' },
     search: { title: 'Search', empty: 'Search channels, movies and series.' },
-    settings: {
-      title: 'Settings',
-      empty: 'Settings will appear here.',
-      myLists: 'My lists',
-      myListsHint: 'Add, switch, refresh or remove your IPTV lists',
-      privacy: 'Privacy and data',
-      privacyHint: 'What is stored on this device',
-    },
+    settings: { title: 'Settings' },
     sources: { title: 'My lists', empty: 'Your IPTV lists will appear here.' },
   },
   /** Labels for the route parameter shown by the placeholder screens. */

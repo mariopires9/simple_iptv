@@ -69,7 +69,7 @@ describe('UX-01 AC1 — redirect without sources', () => {
 
   it.each([
     ['/settings', t.routes.screens.settings.title],
-    ['/settings/privacy', t.onboarding.privacy.title],
+    ['/settings/privacy', t.settings.privacy.title],
     ['/settings/sources', t.routes.screens.sources.title],
     ['/Settings/Sources', t.routes.screens.sources.title],
     ['/settings/sources/add/xtream', t.sources.addXtream.title],
@@ -124,7 +124,7 @@ describe('UX-01 AC2 — onboarding screen', () => {
     expect(screen.getByText(t.onboarding.legal)).toBeInTheDocument();
 
     await user.click(screen.getByRole('link', { name: t.onboarding.learnMore }));
-    await heading(t.onboarding.privacy.title);
+    await heading(t.settings.privacy.title);
     expect(router.state.location.pathname).toBe('/settings/privacy');
   });
 
