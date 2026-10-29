@@ -1,7 +1,7 @@
 // Watch history and progress repository ("Continue watching").
 import { getDb } from '../database';
 import { parseItemKey } from '../keys';
-import type { ContentType, HistoryEntry, HistoryUpsert } from '../types';
+import { CONTENT_TYPES, type ContentType, type HistoryEntry, type HistoryUpsert } from '../types';
 
 export const historyRepo = {
   /**
@@ -38,6 +38,18 @@ export const historyRepo = {
   async remove(itemKey: string): Promise<void> {
     const db = await getDb();
     await db.history.delete(itemKey);
+  },
+
+  /**
+   * Removes every history entry (recent channels and progress) of a source (FAV-02 AC3).
+   * Favorites live in another table and are kept. Returns how many entries were removed.
+   */
+  async clearSource(sourceId: string): Promise<number> {
+    const db = await getDb();
+    return db.history
+      .where('[sourceId+type]')
+      .anyOf(CONTENT_TYPES.map((type) => [sourceId, type]))
+      .delete();
   },
 
   /** Entries of a source+type by descending `lastWatchedAt`. */

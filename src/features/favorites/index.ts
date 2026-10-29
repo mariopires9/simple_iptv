@@ -1,2 +1,2 @@
-// Module features/favorites — see docs/ARCHITECTURE.md §3. Filled in by the corresponding stories.
-export { favoritesRoutes } from './routes';
+// Module features/favorites — see docs/ARCHITECTURE.md §3: Home and Favorites (FAV-01..03).
+export { favoritesRoutes, homeRoute } from './routes';

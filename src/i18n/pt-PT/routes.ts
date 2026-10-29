@@ -3,10 +3,7 @@ import type { MessageShape } from '../types';
 
 export const routes = {
   screens: {
-    home: {
-      title: 'Início',
-      empty: 'Continuar a ver, canais recentes e favoritos vão aparecer aqui.',
-    },
+    home: { title: 'Início' },
     live: { title: 'TV em direto', empty: 'Os canais em direto vão aparecer aqui.' },
     movies: { title: 'Filmes', empty: 'Os filmes vão aparecer aqui.' },
     movieDetails: { title: 'Detalhes do filme', empty: 'Os detalhes do filme vão aparecer aqui.' },
@@ -15,10 +12,7 @@ export const routes = {
       title: 'Detalhes da série',
       empty: 'As temporadas e os episódios vão aparecer aqui.',
     },
-    favorites: {
-      title: 'Favoritos',
-      empty: 'Os seus canais, filmes e séries favoritos vão aparecer aqui.',
-    },
+    favorites: { title: 'Favoritos' },
     search: { title: 'Pesquisar', empty: 'Pesquise canais, filmes e séries.' },
     settings: {
       title: 'Definições',

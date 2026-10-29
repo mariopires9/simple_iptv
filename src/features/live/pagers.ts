@@ -28,8 +28,8 @@ async function indexIn(catKey: string, channel: Channel): Promise<number> {
   return row?.key === channel.key ? index : -1;
 }
 
-/** How many recently watched channels "Recent" shows. */
-export const RECENT_LIMIT = 50;
+/** How many recently watched channels "Recent" shows (FAV-02 AC1: at most 30). */
+export const RECENT_LIMIT = 30;
 
 /** A small list already in memory (favorites, recent). */
 function memoryPager(channels: readonly Channel[]): ChannelPager {

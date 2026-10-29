@@ -19,7 +19,7 @@ export type { Locale } from './types';
 export const LOCALES: readonly Locale[] = ['en', 'pt-PT'];
 
 /** Namespaces loaded with their feature (never in the initial bundle). */
-export type LazyNamespace = 'live' | 'movies' | 'onboarding' | 'player' | 'sources';
+export type LazyNamespace = 'favorites' | 'live' | 'movies' | 'onboarding' | 'player' | 'sources';
 type EagerNamespace = Exclude<keyof Messages, LazyNamespace>;
 type EagerMessages = Pick<Messages, EagerNamespace>;
 type LazyMessages = Pick<Messages, LazyNamespace>;
@@ -28,6 +28,10 @@ const eager: Record<Locale, EagerMessages> = { en: enEager, 'pt-PT': ptPTEager }
 
 // One small chunk per locale and namespace: never statically imported from here.
 const lazy: NamespaceLoaders<LazyMessages, Locale> = {
+  favorites: {
+    en: () => import('./en/favorites').then((m) => m.favorites),
+    'pt-PT': () => import('./pt-PT/favorites').then((m) => m.favorites),
+  },
   live: {
     en: () => import('./en/live').then((m) => m.live),
     'pt-PT': () => import('./pt-PT/live').then((m) => m.live),

@@ -2,19 +2,13 @@
 // message. Generic titles and action labels (retry, reload) live in `state` (UX-02).
 export const routes = {
   screens: {
-    home: {
-      title: 'Home',
-      empty: 'Continue watching, recent channels and favorites will appear here.',
-    },
+    home: { title: 'Home' },
     live: { title: 'Live TV', empty: 'Live channels will appear here.' },
     movies: { title: 'Movies', empty: 'Movies will appear here.' },
     movieDetails: { title: 'Movie details', empty: 'Movie details will appear here.' },
     series: { title: 'Series', empty: 'Series will appear here.' },
     seriesDetails: { title: 'Series details', empty: 'Seasons and episodes will appear here.' },
-    favorites: {
-      title: 'Favorites',
-      empty: 'Your favorite channels, movies and series will appear here.',
-    },
+    favorites: { title: 'Favorites' },
     search: { title: 'Search', empty: 'Search channels, movies and series.' },
     settings: {
       title: 'Settings',

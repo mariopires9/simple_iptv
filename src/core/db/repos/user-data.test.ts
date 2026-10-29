@@ -159,6 +159,19 @@ describe('historyRepo', () => {
     await historyRepo.remove('s1:series:5');
     expect(await historyRepo.get('s1:series:5')).toBeUndefined();
   });
+
+  it('clearSource removes every type of that source only, and keeps the favorites (FAV-02 AC3)', async () => {
+    for (const key of ['s1:live:1', 's1:movie:1', 's1:series:1', 's2:live:1']) {
+      await historyRepo.upsert({ itemKey: key });
+    }
+    await favoritesRepo.add('s1:live:1');
+    expect(await historyRepo.clearSource('s1')).toBe(3);
+    for (const type of ['live', 'movie', 'series'] as const) {
+      expect(await historyRepo.listRecent('s1', type)).toEqual([]);
+    }
+    expect(await historyRepo.get('s2:live:1')).toBeDefined();
+    expect(await favoritesRepo.has('s1:live:1')).toBe(true);
+  });
 });
 
 describe('settingsRepo', () => {

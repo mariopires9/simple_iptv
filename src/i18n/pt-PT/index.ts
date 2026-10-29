@@ -2,6 +2,7 @@ import type { Messages } from '../en';
 import type { MessageShape } from '../types';
 import { app } from './app';
 import { db } from './db';
+import { favorites } from './favorites';
 import { lists } from './lists';
 import { live } from './live';
 import { movies } from './movies';
@@ -15,6 +16,7 @@ import { state } from './state';
 export const ptPT = {
   app,
   db,
+  favorites,
   lists,
   live,
   movies,

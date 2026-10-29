@@ -11,7 +11,7 @@ import {
   type Category,
 } from '@/core/db';
 import { buildCategories, VIRTUAL_CATEGORY_IDS } from './categories';
-import { clearCountCache, concatPager, createPager } from './pagers';
+import { clearCountCache, concatPager, createPager, RECENT_LIMIT } from './pagers';
 
 const S = 'src';
 const cat = (id: string) => categoryKey(S, 'live', id);
@@ -194,5 +194,12 @@ describe('createPager', () => {
     await historyRepo.upsert({ itemKey: key(3), lastWatchedAt: 2 });
     const pager = await pagerFor(VIRTUAL_CATEGORY_IDS.recent);
     expect(names(await pager.load(0, 10))).toEqual(['a3', 'c2']);
+  });
+
+  it('"Recent" reads at most RECENT_LIMIT (30) entries (FAV-02 AC1)', async () => {
+    expect(RECENT_LIMIT).toBe(30);
+    const list = vi.spyOn(historyRepo, 'listRecent');
+    await pagerFor(VIRTUAL_CATEGORY_IDS.recent);
+    expect(list).toHaveBeenCalledWith(S, 'live', 30);
   });
 });
