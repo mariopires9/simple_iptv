@@ -2,7 +2,7 @@
 // in flight is aborted or asked twice), a range change cancels only the rows that left it, and
 // the "now" line follows programme boundaries (one timer), asking again once the cache runs out.
 import { act, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Channel } from '@/core/db';
 import { CHANNEL_ROW_HEIGHT } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
@@ -84,7 +84,10 @@ let restore: () => void;
 beforeEach(() => {
   restore = installScrollMetrics({ scrollHeight: true });
 });
-afterEach(() => restore());
+afterEach(() => {
+  vi.useRealTimers();
+  restore();
+});
 
 function show(cache: PageCache, epg: EpgService) {
   render(
@@ -140,6 +143,9 @@ describe('ChannelList — EPG of the visible rows', () => {
     const list = show(cache, service);
     release(0);
     await waitFor(() => expect(loads.length).toBeGreaterThan(0));
+    // From here the clock only moves when told (TEC-03: real 400 ms boundaries were flaky under
+    // load). Only the clock and timeouts are faked: Testing Library's polling stays real.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     const now = Date.now();
     const first = loads.find((l) => l.key === 's:live:1') as Load;
     act(() =>
@@ -152,14 +158,14 @@ describe('ChannelList — EPG of the visible rows', () => {
       within(list)
         .getAllByRole('option')
         .find((o) => o.getAttribute('aria-posinset') === '1') as HTMLElement;
-    await waitFor(() => expect(within(row()).getByTestId('row-now')).toHaveTextContent('First'));
-    await waitFor(() => expect(within(row()).getByTestId('row-now')).toHaveTextContent('Second'), {
-      timeout: 2_000,
-    });
+    expect(within(row()).getByTestId('row-now')).toHaveTextContent('First');
+
+    await act(() => vi.advanceTimersByTimeAsync(400)); // the boundary timer fires
+    expect(within(row()).getByTestId('row-now')).toHaveTextContent('Second');
+
     // Both programmes over: the row is asked for again.
-    await waitFor(() => expect(loads.filter((l) => l.key === 's:live:1')).toHaveLength(2), {
-      timeout: 2_000,
-    });
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    expect(loads.filter((l) => l.key === 's:live:1')).toHaveLength(2);
     expect(within(row()).queryByTestId('row-now')).toBeNull();
   });
 });

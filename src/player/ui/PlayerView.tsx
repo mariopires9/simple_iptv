@@ -15,7 +15,7 @@ import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { log } from '@/core/log';
-import { holdLocaleSwitch, t } from '@/i18n';
+import { t } from '@/i18n';
 import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
@@ -142,9 +142,6 @@ export function PlayerView({
   const storedFullscreenOnLandscape = useFullscreenOnLandscapeSetting(
     fullscreenOnLandscape === undefined && platform.mobile,
   );
-  // A browser language change waits until this player is gone (UX-06): switching the locale
-  // re-mounts the screen and would stop playback.
-  useEffect(() => holdLocaleSwitch(), []);
   const { videoRef, bound } = usePlayerController(createController);
   const video = bound?.video ?? null;
   const controller = bound?.controller;

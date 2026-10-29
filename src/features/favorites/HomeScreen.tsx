@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography';
 import { useCallback, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { t } from '@/i18n';
+import { LIVE_VIRTUAL_CATEGORY_IDS, liveCategoryPath } from '@/ui/routes/live';
 import {
   DelayedLoading,
   PosterGridSkeleton,
@@ -19,8 +20,8 @@ import { clearHistory, loadHome } from './data';
 import { Shelf } from './Shelf';
 import { useListData } from './useListData';
 
-/** "See all" of the recent channels: the Live "Recent" category (features/live virtual id). */
-const RECENT_CHANNELS_HREF = '/live/category/~recent';
+/** "See all" of the recent channels: the Live "Recent" category. */
+const RECENT_CHANNELS_HREF = liveCategoryPath(LIVE_VIRTUAL_CATEGORY_IDS.recent);
 
 export function HomeScreen() {
   const { state, reload, activeId } = useListData(loadHome);

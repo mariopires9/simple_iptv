@@ -10,8 +10,9 @@ import {
   wipeAll,
   type Category,
 } from '@/core/db';
-import { buildCategories, VIRTUAL_CATEGORY_IDS } from './categories';
-import { clearCountCache, concatPager, createPager, RECENT_LIMIT } from './pagers';
+import { LIVE_RECENT_LIMIT, LIVE_VIRTUAL_CATEGORY_IDS } from '@/ui/routes/live';
+import { buildCategories } from './categories';
+import { clearCountCache, concatPager, createPager } from './pagers';
 
 const S = 'src';
 const cat = (id: string) => categoryKey(S, 'live', id);
@@ -59,11 +60,23 @@ describe('buildCategories', () => {
       { key: cat('1'), externalId: '1', name: 'First', order: 0 },
     ] as Category[];
     expect(buildCategories(source).map((c) => [c.kind, c.id, c.name])).toEqual([
-      ['favorites', VIRTUAL_CATEGORY_IDS.favorites, 'Favorites'],
-      ['recent', VIRTUAL_CATEGORY_IDS.recent, 'Recent'],
-      ['all', VIRTUAL_CATEGORY_IDS.all, 'All'],
+      ['favorites', LIVE_VIRTUAL_CATEGORY_IDS.favorites, 'Favorites'],
+      ['recent', LIVE_VIRTUAL_CATEGORY_IDS.recent, 'Recent'],
+      ['all', LIVE_VIRTUAL_CATEGORY_IDS.all, 'All'],
       ['source', '1', 'First'],
       ['source', '2', 'Second'],
+    ]);
+  });
+
+  it('marks only "Favorites" for the star icon of the category navigation (TEC-03)', () => {
+    const source = [{ key: cat('1'), externalId: '1', name: 'First', order: 0 }] as Category[];
+    expect(
+      buildCategories(source).map((c) => [c.id, 'favorite' in c ? c.favorite : undefined]),
+    ).toEqual([
+      [LIVE_VIRTUAL_CATEGORY_IDS.favorites, true],
+      [LIVE_VIRTUAL_CATEGORY_IDS.recent, false],
+      [LIVE_VIRTUAL_CATEGORY_IDS.all, false],
+      ['1', undefined],
     ]);
   });
 });
@@ -116,7 +129,7 @@ describe('createPager', () => {
   });
 
   it('"All" counts every categorised channel', async () => {
-    expect((await pagerFor(VIRTUAL_CATEGORY_IDS.all)).total).toBe(7);
+    expect((await pagerFor(LIVE_VIRTUAL_CATEGORY_IDS.all)).total).toBe(7);
   });
 
   it('"All" memoises the category counts per source sync, recounting after a new sync', async () => {
@@ -150,7 +163,7 @@ describe('createPager', () => {
     const byId = (id: string) => list.find((c) => c.id === id);
     const items = await catalogRepo.getMany('live', [1, 2, 3, 4, 5, 6, 7].map(key));
     const c = byId('c');
-    const all = byId(VIRTUAL_CATEGORY_IDS.all);
+    const all = byId(LIVE_VIRTUAL_CATEGORY_IDS.all);
     if (!c || !all) throw new Error('categories');
     const pagerC = await createPager(c, S, keys);
     const pagerAll = await createPager(all, S, keys);
@@ -184,7 +197,7 @@ describe('createPager', () => {
     await favoritesRepo.add(key(1), 1);
     await favoritesRepo.add(key(4), 2);
     await favoritesRepo.add(itemKey(S, 'live', 'gone'), 3);
-    const pager = await pagerFor(VIRTUAL_CATEGORY_IDS.favorites);
+    const pager = await pagerFor(LIVE_VIRTUAL_CATEGORY_IDS.favorites);
     expect(pager.total).toBe(2);
     expect(names(await pager.load(0, 10))).toEqual(['c4', 'a1']);
   });
@@ -192,23 +205,23 @@ describe('createPager', () => {
   it('"Recent" lists watched channels, most recent first', async () => {
     await historyRepo.upsert({ itemKey: key(2), lastWatchedAt: 1 });
     await historyRepo.upsert({ itemKey: key(3), lastWatchedAt: 2 });
-    const pager = await pagerFor(VIRTUAL_CATEGORY_IDS.recent);
+    const pager = await pagerFor(LIVE_VIRTUAL_CATEGORY_IDS.recent);
     expect(names(await pager.load(0, 10))).toEqual(['a3', 'c2']);
   });
 
   it('"Recent" shows the 30 most recent channels still in the list (FAV-02 AC1)', async () => {
-    expect(RECENT_LIMIT).toBe(30);
+    expect(LIVE_RECENT_LIMIT).toBe(30);
     // 35 newer entries whose channels left the list, then the 7 channels that exist.
     for (let i = 1; i <= 35; i++) {
       await historyRepo.upsert({ itemKey: itemKey(S, 'live', `gone${i}`), lastWatchedAt: 100 + i });
     }
     for (let n = 1; n <= 7; n++) await historyRepo.upsert({ itemKey: key(n), lastWatchedAt: n });
-    const pager = await pagerFor(VIRTUAL_CATEGORY_IDS.recent);
+    const pager = await pagerFor(LIVE_VIRTUAL_CATEGORY_IDS.recent);
     expect(pager.total).toBe(7);
     expect(names(await pager.load(0, 10))).toEqual(['c7', 'a6', 'c5', 'c4', 'a3', 'c2', 'a1']);
 
     const spy = vi.spyOn(historyRepo, 'listRecentItems');
-    await pagerFor(VIRTUAL_CATEGORY_IDS.recent);
+    await pagerFor(LIVE_VIRTUAL_CATEGORY_IDS.recent);
     expect(spy).toHaveBeenCalledWith(S, ['live'], { limit: 30 });
   });
 });

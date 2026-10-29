@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COMPLETED_FRACTION,
   RESUME_MIN_SEC,
+  continueWatchingProgress,
   isCompleted,
   progressSnapshot,
   resumePosition,
@@ -59,5 +60,36 @@ describe('watchedFraction', () => {
     expect(watchedFraction({ positionSec: 30, completed: false })).toBeUndefined();
     expect(watchedFraction({ positionSec: 0, durationSec: 120, completed: false })).toBeUndefined();
     expect(watchedFraction(undefined)).toBeUndefined();
+  });
+});
+
+// TEC-03: one rule for Home's "Continue watching" row and the Movies grid's progress bars.
+describe('continueWatchingProgress', () => {
+  it.each([
+    ['nothing saved', undefined, undefined],
+    [
+      '30 s (below the resume minimum)',
+      { positionSec: 30, durationSec: 1500, completed: false },
+      undefined,
+    ],
+    ['mid-way', { positionSec: 600, durationSec: 1500, completed: false }, { fraction: 0.4 }],
+    [
+      'unknown duration: listed, no bar',
+      { positionSec: 600, completed: false },
+      { fraction: undefined },
+    ],
+    ['beyond 95 %', { positionSec: 1450, durationSec: 1500, completed: false }, undefined],
+    ['completed', { positionSec: 600, durationSec: 1500, completed: true }, undefined],
+  ] as const)('%s', (_, entry, expected) => {
+    expect(continueWatchingProgress(entry)).toEqual(expected);
+  });
+
+  it('is in progress exactly when resumable', () => {
+    for (const positionSec of [0, 59, 60, 61, 900, 1425, 1426, 1500]) {
+      const entry = { positionSec, durationSec: 1500, completed: false };
+      expect(continueWatchingProgress(entry) !== undefined).toBe(
+        resumePosition(entry) !== undefined,
+      );
+    }
   });
 });

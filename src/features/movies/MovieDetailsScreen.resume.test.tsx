@@ -1,7 +1,7 @@
 // VOD-03: resume buttons on the movie details and position saving while a movie plays (the player
 // UI is mocked and hands a controllable fake <video> to the screen).
 import 'fake-indexeddb/auto';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useState } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -79,6 +79,9 @@ beforeAll(async () => {
 });
 let media: { restore(): void } | undefined;
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   media?.restore();
   views.length = 0;
   current = undefined;

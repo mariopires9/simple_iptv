@@ -3,7 +3,7 @@
 // Xtream panel and fake-indexeddb. The player UI is mocked: it renders its overlay and hands a
 // controllable fake <video> to the screen.
 import 'fake-indexeddb/auto';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { useEffect, useState } from 'react';
@@ -161,6 +161,9 @@ beforeAll(async () => {
 }, 30_000);
 
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   server.resetHandlers();
   requests.length = 0;
   views.length = 0;

@@ -2,7 +2,7 @@
 // recent channels and "Continue watching", resolved against the catalogue into display cards.
 //
 // - Recent channels (FAV-02 AC1): the history keeps one entry per channel (no duplicates); the
-//   most recent first, at most `RECENT_CHANNELS_LIMIT`. Channels that left the list are skipped.
+//   most recent first, at most `LIVE_RECENT_LIMIT` (`@/ui/routes/live`, as Live "Recent"). Channels that left the list are skipped.
 // - Continue watching (FAV-02 AC2), most recent first, at most `CONTINUE_WATCHING_LIMIT`, with the
 //   VOD-03 rules (`@/ui/vod/resume`): movies with a resumable position (1 min to 95 %, not
 //   completed); series whose entry points at an episode to watch (`episodeKey`: the one in
@@ -21,17 +21,17 @@ import {
   type Favorite,
   type HistoryEntry,
 } from '@/core/db';
-import { RESUME_MIN_SEC, resumePosition, watchedFraction } from '@/ui/vod/resume';
+import { LIVE_RECENT_LIMIT, liveChannelPath } from '@/ui/routes/live';
+import {
+  RESUME_MIN_SEC,
+  continueWatchingProgress,
+  watchedFraction,
+  type ContinueWatchingProgress,
+} from '@/ui/vod/resume';
 
-export const RECENT_CHANNELS_LIMIT = 30;
 export const CONTINUE_WATCHING_LIMIT = 20;
 /** Favorites shown on Home (all types, most recently added first); the rest via "See all". */
 export const HOME_FAVORITES_LIMIT = 20;
-/**
- * Live route id of "All" (features/live `VIRTUAL_CATEGORY_IDS.all`; features cannot import each
- * other): the category used for a channel without one.
- */
-const LIVE_ALL_CATEGORY_ID = '~all';
 
 /** One item as the screens show it. */
 export interface CardItem {
@@ -51,8 +51,7 @@ export interface CardItem {
 export function channelHref(channel: CatalogItemByType['live']): string {
   const category =
     channel.categoryKey === undefined ? undefined : parseCategoryKey(channel.categoryKey);
-  const categoryId = category?.externalId ?? LIVE_ALL_CATEGORY_ID;
-  return `/live/category/${encodeURIComponent(categoryId)}?channel=${encodeURIComponent(channel.key)}`;
+  return liveChannelPath(category?.externalId, channel.key);
 }
 
 export function itemHref(item: CatalogItemByType[ContentType]): string {
@@ -71,22 +70,20 @@ export function toCard(item: CatalogItemByType[ContentType]): CardItem {
   return { key: item.key, type: item.type, name: item.name, image, href: itemHref(item) };
 }
 
-/** A "Continue watching" entry and its progress bar (`fraction` undefined: no bar). */
-export interface ContinueWatching {
-  fraction: number | undefined;
-}
-
-/** Whether the entry belongs in "Continue watching" (FAV-02 AC2, VOD-03 rules), else undefined. */
-export function continueWatching(entry: HistoryEntry): ContinueWatching | undefined {
+/**
+ * Whether the entry belongs in "Continue watching" (FAV-02 AC2), else undefined. Movies follow the
+ * shared rule (`continueWatchingProgress`: worth resuming). A series' own entry points at the
+ * episode to watch: shown at position 0 (the next episode after a finished one, SER-03, no bar)
+ * or once the episode in progress reaches the VOD-03 minimum (1 min) — not dropped above 95 %
+ * while the series is not finished (the episode's own completion moves the pointer on).
+ */
+export function continueWatching(entry: HistoryEntry): ContinueWatchingProgress | undefined {
   if (entry.completed) return undefined;
   switch (entry.type) {
     case 'movie':
-      return resumePosition(entry) === undefined ? undefined : { fraction: watchedFraction(entry) };
+      return continueWatchingProgress(entry);
     case 'series':
       if (isEpisodeItemKey(entry.itemKey) || entry.episodeKey === undefined) return undefined;
-      // Position 0: the series moved on to the next episode after a finished one (SER-03), so
-      // it is shown. Otherwise the episode in progress follows the VOD-03 minimum (1 min): a few
-      // seconds of an episode are not "watching" the series yet.
       if (entry.positionSec !== 0 && !((entry.positionSec ?? 0) >= RESUME_MIN_SEC)) {
         return undefined;
       }
@@ -127,7 +124,7 @@ interface HistoryRow {
 
 async function recentChannelsRow(sourceId: string): Promise<HistoryRow> {
   const { items, scanned } = await historyRepo.listRecentItems(sourceId, ['live'], {
-    limit: RECENT_CHANNELS_LIMIT,
+    limit: LIVE_RECENT_LIMIT,
   });
   return { cards: items.map(({ item }) => toCard(item)), hasHistory: scanned > 0 };
 }

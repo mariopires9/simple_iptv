@@ -6,7 +6,14 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { favoritesRepo, itemKey, settingsRepo, wipeAll } from '@/core/db';
 import { forgetActiveSource, setActiveSource } from '@/core/session';
+import { loadFavorites } from './data';
 import { OTHER, SOURCE, renderScreens, seedCatalog } from './test-utils';
+
+// The real loader, observed: a test can wait until a reload has delivered its data.
+vi.mock('./data', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./data')>();
+  return { ...actual, loadFavorites: vi.fn(actual.loadFavorites) };
+});
 
 let media: { restore(): void } | undefined;
 
@@ -157,10 +164,16 @@ describe('Favorites — optimistic removals (review)', () => {
     show();
     const channels = await panelList('Channels');
     const user = userEvent.setup();
+    const loads = vi.mocked(loadFavorites).mock;
+    const before = loads.calls.length;
     await user.click(
       within(channels).getByRole('button', { name: 'Remove Channel 4 from favorites' }),
     );
     await waitFor(() => expect(cardNames(channels)).toEqual(['Unavailable', 'Channel 9']));
+    // The optimistic removal shows at once; wait for the reload after it to deliver (and prune
+    // the removal), or adding it back below races that reload's read.
+    await waitFor(() => expect(loads.calls.length).toBeGreaterThan(before));
+    await act(() => loads.results[before]?.value);
 
     // Marked again elsewhere (e.g. from Live), then another removal reloads the list.
     await favoritesRepo.add(itemKey(SOURCE, 'live', 'c4'), 5);

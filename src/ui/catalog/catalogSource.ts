@@ -19,7 +19,7 @@ export type CatalogSourceState =
       categories: CatalogCategory[];
       /** Keys of the source categories in display order (the segments of "All"). */
       sourceCategoryKeys: string[];
-      /** Watched fraction (0–1, exclusive) per item key with a saved position. */
+      /** Watched fraction (0–1, exclusive) per started, not completed item key. */
       progress: ReadonlyMap<string, number>;
     };
 
@@ -53,6 +53,8 @@ export async function loadCatalogSource(
   const categories = buildCatalogCategories(sourceCategories, options.names);
   const progress = new Map<string, number>();
   for (const entry of history) {
+    // Grid bars show any started, not completed item (VOD-01 AC4); Home's "Continue watching"
+    // lists only those worth resuming (`continueWatchingProgress`, `@/ui/vod/resume`).
     const fraction = watchedFraction(entry);
     if (fraction !== undefined) progress.set(entry.itemKey, fraction);
   }

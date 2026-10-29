@@ -6,6 +6,7 @@ import {
   restoreLanguagePreference,
   subscribeLocale,
 } from '@/i18n';
+import { isPlaybackActive, subscribePlayback } from '@/core/session';
 import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installChunkReload } from './chunkReload';
@@ -52,7 +53,8 @@ export function App() {
   useEffect(() => installChunkReload(), []);
   // SRC-10: another tab deleted all data → lock the database and restart on onboarding.
   useEffect(() => installDataDeletionWatch(), []);
-  useEffect(() => installLanguagePreference(), []);
+  // One "player open" signal (TEC-03): the one that also holds app updates (PWA-03).
+  useEffect(() => installLanguagePreference(isPlaybackActive, subscribePlayback), []);
 
   const routerReady = db.status === 'ready' && languageRestored;
   useEffect(() => {

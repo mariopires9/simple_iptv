@@ -313,27 +313,18 @@ export async function restoreLanguagePreference(): Promise<void> {
 // ---------------------------------------------------------------------------------------------
 // Browser language changes while on `system` are not the user's doing: switching then would
 // re-mount the screen (src/app/App.tsx) and tear down playback or a half-filled form. They wait
-// for a safe point: the next navigation (`applyPendingLocale`) with no player holding the locale,
-// or the end of playback.
+// for a safe point: the next navigation (`applyPendingLocale`) with no player open, or the end of
+// playback. "Player open" is the one PWA-03 signal (`@/core/session/playback`: `claimPlayback`,
+// held by every mounted PlayerView), also used to hold app updates (TEC-03). The app passes it to
+// `installLanguagePreference`; importing it here would move it into a shared chunk (measured:
+// +36 B gzip of initial JS).
 // ---------------------------------------------------------------------------------------------
 
 let pendingSystemChange = false;
-let localeHolds = 0;
-
-/**
- * Keeps a browser-driven locale switch from happening while held (a mounted player). Returns the
- * release; the last release applies a pending switch (playback ended).
- */
-export function holdLocaleSwitch(): () => void {
-  localeHolds++;
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    localeHolds--;
-    applyPendingLocale();
-  };
-}
+/** The installed "player open" signal; none (never open) until the app installs one. */
+let playerOpen: (() => boolean) | undefined;
+/** Cleanup of the last installation (tests reset through it). */
+let uninstall: (() => void) | undefined;
 
 /** Whether a browser language change is waiting for a safe point. */
 export function hasPendingLocale(): boolean {
@@ -342,29 +333,45 @@ export function hasPendingLocale(): boolean {
 
 /** A safe point (navigation, playback ended): applies a pending browser language change. */
 export function applyPendingLocale(): void {
-  if (!pendingSystemChange || localeHolds > 0) return;
+  if (!pendingSystemChange || playerOpen?.()) return;
   pendingSystemChange = false;
   if (preference === 'system') void applyPreference('system');
 }
 
 /**
- * App start-up (src/app/App.tsx): while the preference is `system`, a browser language change is
- * recorded and applied at the next safe point. Returns the cleanup.
+ * App start-up (src/app/App.tsx, which passes `@/core/session`'s `isPlaybackActive` and
+ * `subscribePlayback`): while the preference is `system`, a browser language change is recorded
+ * and applied at the next safe point. Returns the cleanup, which also uninstalls the signal.
  */
-export function installLanguagePreference(): () => void {
+export function installLanguagePreference(
+  /** Whether a player is open (`isPlaybackActive`). */
+  isPlayerOpen: () => boolean,
+  /** Notified when a player opens or closes (`subscribePlayback`). */
+  subscribePlayer: (listener: () => void) => () => void,
+): () => void {
+  playerOpen = isPlayerOpen;
   const onLanguageChange = () => {
     if (preference !== 'system') return;
     pendingSystemChange = detectLocale('system') !== activeLocale();
   };
   globalThis.addEventListener?.('languagechange', onLanguageChange);
-  return () => globalThis.removeEventListener?.('languagechange', onLanguageChange);
+  // The end of playback is a safe point (`applyPendingLocale` waits while a player is open).
+  const unsubscribe = subscribePlayer(applyPendingLocale);
+  return (uninstall = () => {
+    globalThis.removeEventListener?.('languagechange', onLanguageChange);
+    unsubscribe();
+    playerOpen = undefined;
+  });
 }
 
-/** Tests only: back to the start-up state (`system`, nothing chosen, cached, pending or held). */
+/**
+ * Tests only: back to the start-up state (`system`, nothing chosen, cached or pending, no player
+ * signal installed).
+ */
 export function resetLanguagePreferenceForTests(): void {
+  uninstall?.();
   userChoseLanguage = false;
   pendingSystemChange = false;
-  localeHolds = 0;
   writeCachedLanguagePreference('system');
   preference = 'system';
 }

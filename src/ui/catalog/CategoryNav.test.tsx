@@ -5,9 +5,8 @@ import { ThemeModeProvider } from '@/ui/theme';
 import { CategoryNav, type NavCategory } from './CategoryNav';
 
 const categories: NavCategory[] = [
-  { kind: 'favorites', id: '~favorites', name: 'Favourites' },
+  { id: '~favorites', name: 'Favourites', favorite: true },
   ...Array.from({ length: 12 }, (_, i) => ({
-    kind: 'source',
     id: String(i),
     name: `Category ${i}`,
   })),

@@ -3,12 +3,17 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { settingsRepo, wipeAll } from '@/core/db';
+import {
+  claimPlayback,
+  isPlaybackActive,
+  resetPlaybackForTests,
+  subscribePlayback,
+} from '@/core/session/playback';
 import { messages } from './catalogs';
 import {
   activeLocale,
   applyPendingLocale,
   hasPendingLocale,
-  holdLocaleSwitch,
   installLanguagePreference,
   intlDateTimeFormat,
   intlNumberFormat,
@@ -23,6 +28,9 @@ import {
   t,
 } from './index';
 
+/** The app's "player open" signal (src/app/App.tsx). */
+const PLAYER = [isPlaybackActive, subscribePlayback] as const;
+
 function browserLanguages(...languages: string[]) {
   return vi.spyOn(navigator, 'languages', 'get').mockReturnValue(languages);
 }
@@ -30,6 +38,7 @@ function browserLanguages(...languages: string[]) {
 afterEach(async () => {
   vi.restoreAllMocks();
   resetLanguagePreferenceForTests();
+  resetPlaybackForTests();
   await setLocale('en');
   document.documentElement.lang = 'en';
   await wipeAll();
@@ -165,7 +174,7 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
 
   it('with System, a browser language change waits for a safe point (navigation)', async () => {
     const languages = browserLanguages('en-US');
-    const cleanup = installLanguagePreference();
+    const cleanup = installLanguagePreference(...PLAYER);
     languages.mockReturnValue(['pt-PT']);
     window.dispatchEvent(new Event('languagechange'));
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -177,11 +186,11 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
     cleanup();
   });
 
-  it('a held locale (player mounted) defers the switch until the last release', async () => {
+  it('an open player (the PWA-03 playback claim) defers the switch until the last release', async () => {
     const languages = browserLanguages('en-US');
-    const cleanup = installLanguagePreference();
-    const releaseA = holdLocaleSwitch();
-    const releaseB = holdLocaleSwitch();
+    const cleanup = installLanguagePreference(...PLAYER);
+    const releaseA = claimPlayback();
+    const releaseB = claimPlayback();
     languages.mockReturnValue(['pt-PT']);
     window.dispatchEvent(new Event('languagechange'));
     applyPendingLocale(); // a navigation during playback
@@ -194,9 +203,22 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
     cleanup();
   });
 
+  it('after cleanup, the end of playback no longer applies anything', async () => {
+    const languages = browserLanguages('en-US');
+    const cleanup = installLanguagePreference(...PLAYER);
+    const release = claimPlayback();
+    languages.mockReturnValue(['pt-PT']);
+    window.dispatchEvent(new Event('languagechange'));
+    cleanup();
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(activeLocale()).toBe('en');
+    expect(hasPendingLocale()).toBe(true); // still waiting for a navigation
+  });
+
   it('a browser change back to the active language leaves nothing pending', async () => {
     const languages = browserLanguages('en-US');
-    const cleanup = installLanguagePreference();
+    const cleanup = installLanguagePreference(...PLAYER);
     languages.mockReturnValue(['pt-PT']);
     window.dispatchEvent(new Event('languagechange'));
     languages.mockReturnValue(['en-GB']);
@@ -207,7 +229,7 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
 
   it('an explicit choice resolves with the outcome and drops a pending browser change', async () => {
     const languages = browserLanguages('en-US');
-    const cleanup = installLanguagePreference();
+    const cleanup = installLanguagePreference(...PLAYER);
     languages.mockReturnValue(['pt-PT']);
     window.dispatchEvent(new Event('languagechange'));
     expect(await setLanguagePreference('en')).toBe('unchanged');
@@ -219,7 +241,7 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
   it('with an explicit choice, a browser language change is ignored', async () => {
     const languages = browserLanguages('en-US');
     await setLanguagePreference('en');
-    const cleanup = installLanguagePreference();
+    const cleanup = installLanguagePreference(...PLAYER);
     languages.mockReturnValue(['pt-PT']);
     window.dispatchEvent(new Event('languagechange'));
     expect(hasPendingLocale()).toBe(false);

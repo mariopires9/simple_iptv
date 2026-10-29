@@ -2,9 +2,10 @@
 // fake-indexeddb: validation, test steps, saving (vault + source row), failures, mixed content,
 // cancellation and the password field's accessibility.
 import 'fake-indexeddb/auto';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider, useLocation } from 'react-router';
+import { http } from 'msw';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { settingsRepo, sourcesRepo, vaultStore, wipeAll } from '@/core/db';
 import { credentialVault } from '@/core/crypto';
@@ -20,6 +21,9 @@ import { XtreamSourceForm, type XtreamSourceFormDeps } from './XtreamSourceForm'
 const server = createMswServer(...xtreamHandlers());
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   server.resetHandlers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -122,13 +126,24 @@ describe('SRC-03 AC1 — validation', () => {
 
 describe('SRC-03 AC2 + UX-01 AC3 — test and save', () => {
   it('shows the steps, saves (vault + source), sets onboardingDone, starts the sync, goes Home', async () => {
-    server.use(...xtreamHandlers({ delayMs: 50 }));
+    // The panel answers only once the test has seen the first step: "Contacting" lasts until the
+    // first response, so a fixed delay raced the assertion under load (TEC-03).
+    let answer!: () => void;
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    server.use(
+      // Returns nothing: the request then goes on to the panel's handlers.
+      http.all('*', async () => {
+        await answered;
+      }),
+      ...xtreamHandlers(),
+    );
     const { user, router, startInitialSync } = renderForm();
     await fill(user, { server: 'panel.example.test:8080/', username: USER, password: PASS });
     await user.click(submit());
 
     // Test steps in a progress panel (live region announces the phase).
     expect(await screen.findByRole('group', { name: text.steps.contacting })).toBeInTheDocument();
+    answer();
     // Focus moves in an effect after the panel renders: wait for it rather than racing it.
     const resultTitle = await screen.findByRole('heading', { name: text.result.title });
     await waitFor(() => expect(resultTitle).toHaveFocus());

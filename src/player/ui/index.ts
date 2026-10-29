@@ -18,7 +18,10 @@ ensureMessages('player').catch(() => undefined);
 
 /** `PlayerView` once the `player` strings are loaded; a failed load goes to the error boundary. */
 export function PlayerView(props: PlayerViewProps) {
-  // PWA-03: while a player is open, an app update is never applied (no reload under playback).
+  // The one "player open" signal (TEC-03), held here so it also covers the strings loading (and a
+  // failed load): while held, an app update is never applied (no reload under playback, PWA-03
+  // AC2) and a browser language change waits (the locale switch re-mounts the screen, UX-06). The
+  // inner view does not claim: one claim per player.
   useEffect(() => claimPlayback(), []);
   const [ready, setReady] = useState(() => isMessagesLoaded('player'));
   const [error, setError] = useState<{ error: unknown }>();

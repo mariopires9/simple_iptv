@@ -1,7 +1,7 @@
 // UX-04 AC1 — Settings › Playback: fullscreen in landscape, play the last channel, preferred live
 // format of the active (Xtream) list. Every change is saved where its consumer reads it.
 import 'fake-indexeddb/auto';
-import { screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { settingsRepo, sourcesRepo, wipeAll, type Source } from '@/core/db';
@@ -28,6 +28,9 @@ beforeEach(() => {
   media = installMatchMedia({ width: 1200 });
 });
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   vi.restoreAllMocks();
   media.restore();
   forgetActiveSource();
@@ -70,7 +73,11 @@ describe('PlaybackSection (UX-04 AC1)', () => {
     const playLast = await screen.findByRole('switch', { name: text.playLastChannel });
     vi.spyOn(settingsRepo, 'set').mockRejectedValueOnce(new Error('quota'));
     await user.click(playLast);
-    expect(await screen.findByText(text.saveError)).toBeInTheDocument();
+    // The error toast is both visible and announced (assertive live region): check the live
+    // region, the one element that holds it once (`findByText` would see two matches).
+    await waitFor(() =>
+      expect(screen.getByTestId('toast-assertive')).toHaveTextContent(text.saveError),
+    );
     expect(playLast).not.toBeChecked();
   });
 

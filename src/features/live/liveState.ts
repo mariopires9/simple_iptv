@@ -12,7 +12,7 @@ import { parseItemKey, settingsRepo, sourcesRepo } from '@/core/db';
 import { log } from '@/core/log';
 
 export interface SavedLiveView {
-  /** Route id of the category (`VIRTUAL_CATEGORY_IDS` or a source category's external id). */
+  /** Route id of the category (`LIVE_VIRTUAL_CATEGORY_IDS` or a source category's external id). */
   categoryId: string;
   /** Key of the selected row's channel, when its page was loaded. */
   selectedKey?: string;

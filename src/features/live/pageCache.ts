@@ -11,14 +11,17 @@ export const PAGE_SIZE = 200;
 export const MAX_PAGES = 8;
 
 export class PageCache extends CatalogPageCache<Channel> {
+  /** The pager given to the constructor (type-only narrowing of the base class's field). */
+  declare protected readonly source: ChannelPager;
   private filter: Promise<FilterIndex> | undefined;
 
-  constructor(
-    readonly pager: ChannelPager,
-    pageSize = PAGE_SIZE,
-    maxPages = MAX_PAGES,
-  ) {
+  constructor(pager: ChannelPager, pageSize = PAGE_SIZE, maxPages = MAX_PAGES) {
     super(pager, pageSize, maxPages);
+  }
+
+  /** The category's pager (zapping and `locate` beyond the cached pages): the cache's source. */
+  get pager(): ChannelPager {
+    return this.source;
   }
 
   /**

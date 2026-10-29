@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { wipeAll } from '@/core/db';
 import { renderLive } from './test-utils';
@@ -7,6 +7,9 @@ import { renderLive } from './test-utils';
 let media: { restore(): void } | undefined;
 
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   media?.restore();
   await wipeAll();
 });

@@ -53,7 +53,8 @@ export class CatalogPageCache<T extends { key: string }> {
   private readonly pinned = new Map<object, number>();
 
   constructor(
-    private readonly source: PageSource<T>,
+    /** Protected: a subclass may narrow its type (`declare`) instead of keeping a second copy. */
+    protected readonly source: PageSource<T>,
     private readonly pageSize: number,
     private readonly maxPages: number,
   ) {}

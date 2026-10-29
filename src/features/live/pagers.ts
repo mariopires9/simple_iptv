@@ -1,6 +1,7 @@
 // Paged access to the channels of a Live category (LIV-01 AC2). The list never holds a whole
 // 20 000-channel category in memory: it asks a pager for the rows around the viewport.
 import { catalogRepo, favoritesRepo, historyRepo, type Channel } from '@/core/db';
+import { LIVE_RECENT_LIMIT } from '@/ui/routes/live';
 import type { LiveCategory } from './categories';
 
 export interface ChannelPager {
@@ -27,9 +28,6 @@ async function indexIn(catKey: string, channel: Channel): Promise<number> {
   const [row] = await catalogRepo.listByCategory('live', catKey, { offset: index, limit: 1 });
   return row?.key === channel.key ? index : -1;
 }
-
-/** How many recently watched channels "Recent" shows (FAV-02 AC1: at most 30). */
-export const RECENT_LIMIT = 30;
 
 /** A small list already in memory (favorites, recent). */
 function memoryPager(channels: readonly Channel[]): ChannelPager {
@@ -160,9 +158,9 @@ export async function createPager(
       );
     }
     case 'recent': {
-      // Same rule as Home "Recent channels": the 30 most recent channels still in the list.
+      // Same rule and limit as Home "Recent channels": the most recent channels still in the list.
       const { items } = await historyRepo.listRecentItems(sourceId, ['live'], {
-        limit: RECENT_LIMIT,
+        limit: LIVE_RECENT_LIMIT,
       });
       return memoryPager(items.map(({ item }) => item));
     }

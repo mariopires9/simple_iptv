@@ -25,18 +25,19 @@ import { CategoryNav } from '@/ui/catalog/CategoryNav';
 import { useActiveSource } from '@/ui/hooks/useActiveSource';
 import { useFillHeight } from '@/ui/hooks/useFillHeight';
 import {
+  LIVE_VIRTUAL_CATEGORY_IDS,
+  liveCategoryPath,
+  liveChannelPath,
+  liveChannelSearch,
+} from '@/ui/routes/live';
+import {
   ChannelListSkeleton,
   DelayedLoading,
   StateView,
   errorDetails,
   visuallyHidden,
 } from '@/ui/state';
-import {
-  DEFAULT_CATEGORY_ID,
-  VIRTUAL_CATEGORY_IDS,
-  categoryPath,
-  type LiveCategory,
-} from './categories';
+import { DEFAULT_CATEGORY_ID, type LiveCategory } from './categories';
 import { keysPager } from './channelFilter';
 import { ChannelFilterField } from './ChannelFilterField';
 import { ChannelList, type ChannelListView } from './ChannelList';
@@ -261,8 +262,8 @@ export function LiveScreen() {
         channelKey === undefined && saved.playLastChannelOnOpen ? saved.lastChannelKey : undefined;
       if (target !== undefined || play !== undefined) {
         const keep = play ?? channelKey;
-        entry = `${target !== undefined ? categoryPath(target) : '/live'}${
-          keep !== undefined ? `?channel=${encodeURIComponent(keep)}` : ''
+        entry = `${target !== undefined ? liveCategoryPath(target) : '/live'}${
+          keep !== undefined ? liveChannelSearch(keep) : ''
         }`;
       }
     }
@@ -430,9 +431,7 @@ export function LiveScreen() {
       setSelection(next);
       setAnnouncement(t.live.player.watching(channel.name));
       // Replace: picking or zapping channels must not stack one history entry per channel.
-      navigate(`${categoryPath(categoryId)}?channel=${encodeURIComponent(channel.key)}`, {
-        replace: true,
-      });
+      navigate(liveChannelPath(categoryId, channel.key), { replace: true });
     },
     [navigate, categoryId],
   );
@@ -453,7 +452,7 @@ export function LiveScreen() {
     selectionRef.current = undefined;
     setSelection(undefined);
     setChannelsOpen(false);
-    navigate(categoryPath(categoryId), { replace: true });
+    navigate(liveCategoryPath(categoryId), { replace: true });
   }, [navigate, categoryId]);
 
   // SRC-08 AC4: another list became active → close the player, leave a category of the previous
@@ -468,9 +467,9 @@ export function LiveScreen() {
     selectionRef.current = undefined;
     setSelection(undefined);
     setChannelsOpen(false);
-    const virtual = Object.values(VIRTUAL_CATEGORY_IDS).includes(categoryId);
+    const virtual = Object.values(LIVE_VIRTUAL_CATEGORY_IDS).includes(categoryId);
     if (!virtual || channelKey !== undefined) {
-      navigate(categoryPath(virtual ? categoryId : DEFAULT_CATEGORY_ID), { replace: true });
+      navigate(liveCategoryPath(virtual ? categoryId : DEFAULT_CATEGORY_ID), { replace: true });
     }
     setSource({ status: 'loading' });
     setAttempt((n) => n + 1);
@@ -676,9 +675,9 @@ export function LiveScreen() {
         selectedId={categoryId}
         variant={chips ? 'chips' : 'list'}
         label={t.live.categories}
-        pathFor={categoryPath}
+        pathFor={liveCategoryPath}
         // Browsing categories keeps the channel playing.
-        search={channelKey !== undefined ? `?channel=${encodeURIComponent(channelKey)}` : ''}
+        search={channelKey !== undefined ? liveChannelSearch(channelKey) : ''}
       />
     );
     const showFilter =
@@ -828,7 +827,11 @@ function ChannelPane({
   onRetry,
 }: ChannelPaneProps) {
   const showAll = (
-    <Button variant="contained" component={Link} to={categoryPath(VIRTUAL_CATEGORY_IDS.all)}>
+    <Button
+      variant="contained"
+      component={Link}
+      to={liveCategoryPath(LIVE_VIRTUAL_CATEGORY_IDS.all)}
+    >
       {t.live.emptyCategory.showAll}
     </Button>
   );

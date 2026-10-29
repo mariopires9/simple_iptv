@@ -4,7 +4,11 @@
 //   duration;
 // - beyond 95 % (or on `ended`) the item counts as watched: `completed`, no resume, no progress
 //   bar ("Continue watching" drops it);
-// - Home "Continue watching" (FAV-02, features/favorites) applies the same rules.
+// - progress bars (`watchedFraction`): any started, not completed item with a known duration —
+//   the poster grids (VOD-01 AC4) show what was started;
+// - Home "Continue watching" (`continueWatchingProgress`, FAV-02, features/favorites) lists what
+//   is worth resuming: resumable (1 min to 95 %, not completed). Intended difference (TEC-03): a
+//   movie watched for 30 s has a bar in the grid but is not in Home's row.
 import type { HistoryEntry } from '@/core/db';
 
 /** Saved positions below this are not worth resuming (s). */
@@ -70,4 +74,20 @@ export function watchedFraction(
   if (!finitePositive(positionSec) || !finitePositive(durationSec)) return undefined;
   const fraction = positionSec / durationSec;
   return fraction < 1 ? fraction : undefined;
+}
+
+/** An item in "Continue watching" and its progress bar (`fraction` undefined: no bar). */
+export interface ContinueWatchingProgress {
+  fraction: number | undefined;
+}
+
+/**
+ * Whether a movie belongs in Home's "Continue watching": it is resumable ({@link resumePosition});
+ * the bar shows {@link watchedFraction}. (The grids' bars show any started item instead.)
+ */
+export function continueWatchingProgress(
+  entry: Pick<HistoryEntry, 'positionSec' | 'durationSec' | 'completed'> | undefined,
+): ContinueWatchingProgress | undefined {
+  if (resumePosition(entry) === undefined) return undefined;
+  return { fraction: watchedFraction(entry) };
 }

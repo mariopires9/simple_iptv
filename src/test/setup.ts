@@ -13,6 +13,11 @@ configure({ asyncUtilTimeout: 5000 });
 // namespace is on `t` before the test file is even imported.
 await loadAllMessages();
 
+// Hook order trap (TEC-03): Vitest runs `afterEach` hooks in reverse registration order, so this
+// one (registered first) runs AFTER every test file's own `afterEach`. A file that resets shared
+// state there (`wipeAll`, `forgetActiveSource`, cache invalidation) must call `cleanup()` first,
+// or a screen still mounted can re-read and re-cache that state for the next test. (The global
+// alternative, `test.sequence.hooks: 'list'`, lives in the serialized vite.config.ts.)
 afterEach(() => {
   cleanup();
 });

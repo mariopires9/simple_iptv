@@ -1,6 +1,6 @@
 // PWA-01 AC3: Settings › Install app, fed by the install prompt store started at boot.
 import 'fake-indexeddb/auto';
-import { screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { wipeAll } from '@/core/db';
@@ -21,6 +21,9 @@ beforeEach(() => {
   installPromptStore(); // src/main.tsx starts it at boot
 });
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   resetInstallPromptStoreForTests();
   media.restore();
   await wipeAll();

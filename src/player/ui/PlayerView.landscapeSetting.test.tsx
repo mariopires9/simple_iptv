@@ -1,7 +1,7 @@
 // UX-04 AC1 (Settings › Playback): the stored "Fullscreen in landscape" setting drives PlayerView's
 // rotation prompt (PLY-03 AC3) when no explicit prop is given.
 import 'fake-indexeddb/auto';
-import { act, screen } from '@testing-library/react';
+import { act, cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { settingsRepo, wipeAll } from '@/core/db';
 import { installFullscreenApi, installOrientationQuery } from './test-utils/fakeDisplay';
@@ -10,6 +10,9 @@ import { resetFullscreenOnLandscapeSettingForTests } from './useFullscreenOnLand
 
 const restores: Array<() => void> = [];
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   while (restores.length > 0) restores.pop()?.();
   resetFullscreenOnLandscapeSettingForTests();
   await wipeAll();
