@@ -1,6 +1,7 @@
 import { app } from './app';
 import { db } from './db';
 import { favorites } from './favorites';
+import { install } from './install';
 import { lists } from './lists';
 import { live } from './live';
 import { movies } from './movies';
@@ -22,6 +23,7 @@ export const en = {
   app,
   db,
   favorites,
+  install,
   lists,
   live,
   movies,

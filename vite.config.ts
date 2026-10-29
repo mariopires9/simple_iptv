@@ -2,15 +2,24 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import { cspPlugin } from './build/csp.ts';
 import { licensesPlugin } from './build/licenses.ts';
+import { pwaOptions, themeColorPlugin } from './build/pwa.ts';
 
 // GitHub Pages serves the app under /<repo>/ — set in the deploy workflow (ADR-007).
 const base = process.env.VITE_BASE ?? '/';
 
 export default defineConfig({
   base,
-  plugins: [react(), cspPlugin(), licensesPlugin()],
+  // PWA-01/PWA-02: manifest + generateSW precache of the app shell (rules in build/pwa.ts).
+  plugins: [
+    react(),
+    cspPlugin(),
+    licensesPlugin(),
+    themeColorPlugin(),
+    VitePWA(pwaOptions(base)),
+  ],
   // Workers as ES modules: allows dynamic import() inside tasks (FND-07).
   worker: { format: 'es' },
   build: {
