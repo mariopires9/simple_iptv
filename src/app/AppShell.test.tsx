@@ -226,10 +226,10 @@ describe('AppShell — accessibility and selection', () => {
     expect(css).toContain('padding:32px');
   });
 
-  it('renders the top bar with app name, search placeholder and children in <main>', () => {
+  it('renders the top bar with app name, the search link and children in <main>', () => {
     renderAt(1400);
     expect(within(screen.getByRole('banner')).getByText('Simple IPTV')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Search' })).toHaveAttribute('href', '/search');
     expect(within(screen.getByRole('main')).getByText('Page content')).toBeInTheDocument();
   });
 

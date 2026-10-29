@@ -296,6 +296,11 @@ export interface SettingsMap {
   liveViewState: unknown;
   /** Start the last live channel when the app opens on Live (LIV-03; UI in UX-04). */
   playLastChannelOnOpen: boolean;
+  /**
+   * Last global searches, most recent first (SCH-02, max. 10). Untrusted on read: owned and
+   * validated by features/search.
+   */
+  recentSearches: unknown;
 }
 
 export type SettingsKey = keyof SettingsMap;
@@ -310,4 +315,9 @@ export interface SearchIndexEntry {
   /** Serialized MiniSearch index (`JSON.stringify(index)`). */
   data: string;
   builtAt: number;
+  /**
+   * Format of `data` (SCH-01; owned by src/worker/search). An entry with another (or no) version
+   * is rebuilt instead of loaded.
+   */
+  version?: number;
 }

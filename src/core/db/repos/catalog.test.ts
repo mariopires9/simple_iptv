@@ -3,7 +3,7 @@ import { closeDatabase, getDb } from '../database';
 import { categoryKey, itemKey } from '../keys';
 import { openFreshDatabase } from '../test-utils';
 import type { CatalogItemInput, CategoryInput } from '../types';
-import { catalogRepo } from './catalog';
+import { catalogRepo, onCatalogWrite } from './catalog';
 import { sourcesRepo } from './sources';
 
 beforeEach(async () => {
@@ -277,6 +277,74 @@ describe('catalogRepo — queries', () => {
     expect((await catalogRepo.getSeriesDetails('s1:series:7'))?.seasons).toHaveLength(1);
     await catalogRepo.putSearchIndex({ sourceId: 's1', data: '{}', builtAt: 2 });
     expect((await catalogRepo.getSearchIndex('s1'))?.builtAt).toBe(2);
+  });
+});
+
+describe('catalogRepo — search index support (SCH-01 review)', () => {
+  const entry = (sourceId: string) => ({ sourceId, data: '{}', builtAt: 1, version: 1 });
+  const putSource = (id: string) =>
+    sourcesRepo.put({
+      id,
+      kind: 'm3u-url',
+      name: id,
+      prefs: { liveFormat: 'auto' },
+      createdAt: 1,
+      lastSyncStatus: 'ok',
+      stats: { live: 0, movies: 0, series: 0 },
+    });
+
+  it('getCategories reads several categories in one bulk read, in order, without missing keys', async () => {
+    await catalogRepo.replaceForSource('s1', 'live', { categories: cats(3), items: [] });
+    const db = await getDb();
+    const bulk = vi.spyOn(db.categories, 'bulkGet');
+    const keys = [
+      categoryKey('s1', 'live', 3),
+      categoryKey('s1', 'live', 9),
+      categoryKey('s1', 'live', 1),
+    ];
+    const found = await catalogRepo.getCategories(keys);
+    expect(found.map((c) => c.name)).toEqual(['Cat 3', 'Cat 1']);
+    expect(bulk).toHaveBeenCalledTimes(1);
+    expect(await catalogRepo.getCategories([])).toEqual([]);
+  });
+
+  it('every catalogue write deletes the source search index (other sources keep theirs)', async () => {
+    await putSource('s1');
+    await putSource('s2');
+    const write = [
+      () => catalogRepo.replaceForSource('s1', 'live', { categories: [], items: channels(1) }),
+      () => catalogRepo.replaceForExistingSource('s1', 'movie', { categories: [], items: [] }),
+      () =>
+        catalogRepo.replaceAllForExistingSource('s1', {
+          live: { categories: [], items: [] },
+          movie: { categories: [], items: [] },
+          series: { categories: [], items: [] },
+        }),
+    ];
+    for (const run of write) {
+      await catalogRepo.putSearchIndex(entry('s1'));
+      await catalogRepo.putSearchIndex(entry('s2'));
+      await run();
+      expect(await catalogRepo.getSearchIndex('s1')).toBeUndefined();
+      expect(await catalogRepo.getSearchIndex('s2')).toBeDefined();
+    }
+  });
+
+  it('notifies write listeners when a write starts', async () => {
+    await putSource('s1');
+    const seen: string[] = [];
+    const stop = onCatalogWrite((id) => seen.push(id));
+    await catalogRepo.replaceForExistingSource('s1', 'live', { categories: [], items: [] });
+    stop();
+    await catalogRepo.replaceForExistingSource('s1', 'live', { categories: [], items: [] });
+    expect(seen).toEqual(['s1']);
+  });
+
+  it('putSearchIndexForExistingSource writes only for an existing source', async () => {
+    expect(await catalogRepo.putSearchIndexForExistingSource(entry('gone'))).toBe(false);
+    await putSource('s1');
+    expect(await catalogRepo.putSearchIndexForExistingSource(entry('s1'))).toBe(true);
+    expect(await catalogRepo.getSearchIndex('s1')).toBeDefined();
   });
 });
 

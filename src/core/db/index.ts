@@ -19,12 +19,16 @@ export {
   typePrefix,
   isContentType,
   normalizeName,
+  tokenizeSearchText,
+  isSearchableQuery,
+  MIN_SEARCH_QUERY_LENGTH,
   type ParsedItemKey,
   type ParsedCategoryKey,
 } from './keys';
 export { sourcesRepo } from './repos/sources';
 export {
   catalogRepo,
+  onCatalogWrite,
   BULK_CHUNK_SIZE,
   type PageOptions,
   type CatalogReplacementByType,

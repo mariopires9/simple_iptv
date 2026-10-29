@@ -15,6 +15,14 @@ import {
   type SyncM3uInput,
   type SyncM3uResult,
 } from '@/providers/m3u';
+import {
+  rebuildSearchIndexAfterSync,
+  searchCatalog,
+  warmUpSearch,
+  type SearchQueryInput,
+  type SearchQueryResult,
+  type SearchWarmupResult,
+} from './search/searchService';
 
 export interface SelfTestInput {
   steps: number;
@@ -43,17 +51,38 @@ export async function selfTest(input: SelfTestInput, ctx: TaskContext): Promise<
   return { steps };
 }
 
-/** SRC-07: syncs an Xtream source's catalogue (the password is read from the vault in here). */
+/**
+ * SRC-07: syncs an Xtream source's catalogue (the password is read from the vault in here), then
+ * queues its search index rebuild (SCH-01).
+ */
 export function syncXtream(input: SyncXtreamInput, ctx: TaskContext): Promise<SyncXtreamResult> {
-  return syncXtreamSource(input, ctx);
+  return syncXtreamSource(input, ctx, { afterSync: rebuildSearchIndexAfterSync });
 }
 
 /**
  * SRC-04/SRC-05: downloads, parses and stores an M3U-URL source (the list URL is read from the
- * vault in here and never crosses postMessage).
+ * vault in here and never crosses postMessage), then queues its search index rebuild (SCH-01).
  */
 export function syncM3u(input: SyncM3uInput, ctx: TaskContext): Promise<SyncM3uResult> {
-  return syncM3uSource(input, ctx);
+  return syncM3uSource(input, ctx, { afterSync: rebuildSearchIndexAfterSync });
+}
+
+/**
+ * SCH-01: global search over the source's index (loaded from IndexedDB, or built if missing or
+ * stale). Results grouped by type, at most `limit` per type.
+ */
+export function searchQuery(input: SearchQueryInput, ctx: TaskContext): Promise<SearchQueryResult> {
+  ctx.throwIfCancelled();
+  return searchCatalog(input);
+}
+
+/** SCH-01: loads the source's index into memory ahead of the first query (search screen open). */
+export function searchWarmup(
+  input: { sourceId: string },
+  ctx: TaskContext,
+): Promise<SearchWarmupResult> {
+  ctx.throwIfCancelled();
+  return warmUpSearch(typeof input?.sourceId === 'string' ? input.sourceId : '');
 }
 
 /**
@@ -69,6 +98,8 @@ export const tasks = {
   syncXtream,
   syncM3u,
   waitSyncIdle,
+  searchQuery,
+  searchWarmup,
 } satisfies TaskRegistry;
 
 export type Tasks = typeof tasks;

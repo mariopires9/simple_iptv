@@ -11,3 +11,10 @@ export {
 } from './backgroundSync';
 export { WorkerTaskError, type RunTaskOptions, type TaskProgress } from '@/core/worker';
 export type { TaskInput, TaskName, TaskOutput } from './tasks';
+export type {
+  SearchGroup,
+  SearchHit,
+  SearchQueryInput,
+  SearchQueryResult,
+  SearchWarmupResult,
+} from './search/searchService';

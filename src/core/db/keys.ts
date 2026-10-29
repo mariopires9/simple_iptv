@@ -105,3 +105,21 @@ export function parseCategoryKey(key: string): ParsedCategoryKey | undefined {
 export function normalizeName(name: string): string {
   return name.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
+
+/** Shortest search query, in letters and digits after normalization (SCH-01/SCH-02). */
+export const MIN_SEARCH_QUERY_LENGTH = 2;
+
+/**
+ * Search words of a text (SCH-01): normalized (see `normalizeName`), split on anything that is not
+ * a letter or a digit. Shared by the worker's index and the search screen.
+ */
+export function tokenizeSearchText(text: string): string[] {
+  return normalizeName(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((term) => term !== '');
+}
+
+/** Whether a query has enough letters/digits to run a search (≥ {@link MIN_SEARCH_QUERY_LENGTH}). */
+export function isSearchableQuery(query: string): boolean {
+  return tokenizeSearchText(query).join('').length >= MIN_SEARCH_QUERY_LENGTH;
+}

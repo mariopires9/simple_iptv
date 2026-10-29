@@ -4,5 +4,5 @@ import type { RouteObject } from 'react-router';
 import { lazyScreen } from '@/ui/lazyScreen';
 
 export const searchRoutes: RouteObject[] = [
-  { path: 'search', lazy: lazyScreen(() => import('./SearchScreen'), 'SearchScreen', []) },
+  { path: 'search', lazy: lazyScreen(() => import('./SearchScreen'), 'SearchScreen', ['search']) },
 ];
