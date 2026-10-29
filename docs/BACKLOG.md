@@ -68,7 +68,7 @@ Allowed statuses (exactly one per story):
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
 | LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Done |
-| PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | Blocked |
+| PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | In Progress |
 
 ## Post-MVP
 
@@ -121,4 +121,4 @@ flowchart LR
 | Date | Story | Impediment | Action | Status |
 |---|---|---|---|---|
 | 2026-10-29 | QA-02 | WebKit E2E not green in CI (mobile: sync snackbar blocks bottom nav; desktop: slow first sync, one stuck live load) | WebKit row `continue-on-error` until fixed; confirm on a real iPhone in DEP-02 | Open |
-| 2026-10-29 | S-00 | Owner's provider redirects live streams to http edges without valid HTTPS → blocked in any HTTPS web app | Needs PRX-01 (proxy) or NAT-01; awaiting the owner's hosting decision (ADR-010) | Open |
+| 2026-10-29 | S-00 | Owner's provider redirects live streams to http edges without valid HTTPS → blocked in any HTTPS web app | Needs PRX-01 (proxy) or NAT-01; owner's hosting decision (2026-10-29): proxy on the owner's Windows PC (native Node), HTTPS via Tailscale Serve (not yet installed) | Open |
