@@ -27,8 +27,8 @@ Allowed statuses (exactly one per story):
 | SRC-02 | Xtream client: auth/account | E1 | Must | 3 | FND-06 | 2 | M1 | Done |
 | SRC-04 | Streaming M3U parser | E1 | Must | 5 | FND-07 | 2 | M1 | Done |
 | PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | Done |
-| FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | In Progress |
-| FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | In Progress |
+| FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | Done |
+| FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | Done |
 | PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | Backlog |
 | PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | Backlog |
 | QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Backlog |
@@ -63,7 +63,7 @@ Allowed statuses (exactly one per story):
 | VOD-03 | VOD with resume | E5 | Must | 3 | VOD-02, FAV-02 | 6 | M2 | In Progress |
 | SER-02 | Series details | E6 | Must | 5 | SER-01, PLY-02 | 6 | M2 | In Progress |
 | SER-03 | Episode, resume, next | E6 | Must | 3 | SER-02, VOD-03 | 7 | M2 | In Progress |
-| FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | In Progress |
+| FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | Done |
 | UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | Backlog |
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
