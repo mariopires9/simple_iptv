@@ -242,6 +242,17 @@ export const AUDIO_CONTAINERS: ReadonlySet<StreamContainer> = new Set([
   'flac',
 ]);
 
+/**
+ * The kind of a group keyword: own properties only, so words such as "constructor" or
+ * "__proto__" never resolve to inherited members of the plain object.
+ */
+function keyword(
+  rules: M3uClassificationRules,
+  word: string,
+): Exclude<GroupKind, 'live'> | undefined {
+  return Object.hasOwn(rules.groupKeywords, word) ? rules.groupKeywords[word] : undefined;
+}
+
 /** Whether `words[i]` (alone or with the next word) is in `set`. */
 function hasWordAt(words: readonly string[], i: number, set: ReadonlySet<string>): boolean {
   const word = words[i] as string;
@@ -268,9 +279,9 @@ export function classifyGroup(
     const word = words[i] as string;
     const next = words[i + 1];
     if (hasWordAt(words, i, live)) return 'live';
-    const pair = next !== undefined ? rules.groupKeywords[`${word} ${next}`] : undefined;
+    const pair = next !== undefined ? keyword(rules, `${word} ${next}`) : undefined;
     if (pair !== undefined) return pair;
-    const single = rules.groupKeywords[word];
+    const single = keyword(rules, word);
     if (single !== undefined) return single;
     if (word.length > 2 && !noise.has(word)) significant++;
   }

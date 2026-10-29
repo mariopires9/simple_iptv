@@ -555,6 +555,11 @@ describe('rules table', () => {
     expect(classifyGroup('Canais | Filmes')).toBe('live');
     expect(classifyGroup('Filmes | Canais')).toBe('movie');
     expect(classifyGroup('Filmes 24/7')).toBe('live');
+    // Inherited object members are not keywords.
+    for (const group of ['constructor', '__proto__', 'toString', 'hasOwnProperty valueOf']) {
+      expect(classifyGroup(group)).toBeUndefined();
+      expect(classifyEntry({ name: 'Canal', path: '/a.m3u8', group }).type).toBe('live');
+    }
     expect(classifyGroup('Drama Series')).toBeUndefined();
     expect(classifyGroup('')).toBeUndefined();
     expect(classifyGroup(undefined)).toBeUndefined();
