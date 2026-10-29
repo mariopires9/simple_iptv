@@ -29,6 +29,7 @@ export const live = {
         : count === 1
           ? '1 channel matches'
           : `${count} channels match`,
+    failed: "Couldn't filter this category. The full list is shown.",
     noMatches: (query: string) => `No channels match “${query}”`,
   },
   epg: {

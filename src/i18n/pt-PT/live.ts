@@ -25,6 +25,7 @@ export const live = {
         : count === 1
           ? '1 canal corresponde'
           : `${count} canais correspondem`,
+    failed: 'Não foi possível filtrar esta categoria. É mostrada a lista completa.',
     noMatches: (query: string) => `Nenhum canal corresponde a «${query}»`,
   },
   epg: {

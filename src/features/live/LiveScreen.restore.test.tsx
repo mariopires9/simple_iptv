@@ -6,7 +6,7 @@
 import 'fake-indexeddb/auto';
 import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { itemKey, settingsRepo, wipeAll } from '@/core/db';
 import { clearLogBuffer, getLogEntries } from '@/core/log';
 import { CHANNEL_ROW_HEIGHT } from '@/ui/state';
@@ -122,6 +122,27 @@ describe('LIV-03 AC1 — reopening restores category, selection and scroll', () 
     await waitFor(() => expect(restored.scrollTop).toBe(300 * CHANNEL_ROW_HEIGHT));
   });
 
+  it('the restore is one-shot: a remount (filter cleared) starts where the list is now', async () => {
+    await saveLiveView(SOURCE_ID, view('30', { scrollTop: 300 * CHANNEL_ROW_HEIGHT }));
+    show('/live');
+    const list = await listbox('Channels in Mega');
+    await waitFor(() => expect(list.scrollTop).toBe(300 * CHANNEL_ROW_HEIGHT));
+    act(() => list.scrollTo({ top: 100 * CHANNEL_ROW_HEIGHT }));
+    // Filtering and clearing the filter remounts the list.
+    const field = screen.getByRole('searchbox', { name: 'Filter channels' });
+    await userEvent.type(field, 'channel 11');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/channels? match/), {
+      timeout: 30_000,
+    });
+    await userEvent.keyboard('{Escape}');
+    const back = await listbox('Channels in Mega');
+    await waitFor(() => expect(back.scrollTop).toBe(100 * CHANNEL_ROW_HEIGHT));
+    // …and the mount never wrote the stale restored offset back.
+    await waitFor(async () =>
+      expect((await loadLiveStartup(SOURCE_ID)).view?.scrollTop).toBe(100 * CHANNEL_ROW_HEIGHT),
+    );
+  }, 60_000);
+
   it('"All" saved: bare /live stays as it is and restores the offset', async () => {
     await saveLiveView(SOURCE_ID, view('~all', { scrollTop: 50 * CHANNEL_ROW_HEIGHT }));
     const { router } = show('/live');
@@ -180,6 +201,22 @@ describe('LIV-03 AC2 — "Play last channel on open"', () => {
     expect(router.state.location.pathname).toBe('/live/category/10');
     expect(new URLSearchParams(router.state.location.search).get('channel')).toBe(key(3));
     expect(await screen.findByTestId('live-player')).toBeInTheDocument();
+  });
+
+  it('the redirect to the last channel reads the saved state once (no second entry)', async () => {
+    await saveLiveView(SOURCE_ID, view('~all'));
+    await saveLastChannel(key(3));
+    await setPlayLastChannelOnOpen(true);
+    const get = vi.spyOn(settingsRepo, 'get');
+    const { router } = show('/live');
+    await listbox('Channels in All');
+    await waitFor(() =>
+      expect(new URLSearchParams(router.state.location.search).get('channel')).toBe(key(3)),
+    );
+    expect(router.state.location.pathname).toBe('/live');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(get.mock.calls.filter(([k]) => k === 'liveViewState')).toHaveLength(1);
+    vi.restoreAllMocks();
   });
 
   it('playing a channel records it as the last one', async () => {

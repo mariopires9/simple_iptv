@@ -43,6 +43,6 @@ export type {
   XtreamConnectionReport,
 } from './types';
 export { decodeBase64Utf8, fetchShortEpg, parseShortEpg } from './shortEpg';
-export type { ShortEpgProgramme } from './shortEpg';
+export type { ShortEpgEncoding, ShortEpgProgramme } from './shortEpg';
 export { fetchVodInfo, parseVodInfo } from './vodInfo';
 export type { VodInfo } from './vodInfo';
