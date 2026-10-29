@@ -3,24 +3,28 @@
 import type { Category } from '@/core/db';
 import { t } from '@/i18n';
 import { UNCATEGORIZED_CATEGORY_ID } from '@/providers/m3u';
+import {
+  LIVE_VIRTUAL_CATEGORY_IDS,
+  liveCategoryPath,
+  type LiveVirtualCategoryKind,
+} from '@/ui/routes/live';
 
-export type VirtualCategoryKind = 'favorites' | 'recent' | 'all';
+export type VirtualCategoryKind = LiveVirtualCategoryKind;
 
-/**
- * Route ids of the virtual categories. Source categories use their `externalId`; the `~` prefix
- * keeps the virtual ids apart from provider ids (Xtream ids are numeric).
- */
-export const VIRTUAL_CATEGORY_IDS: Readonly<Record<VirtualCategoryKind, string>> = {
-  favorites: '~favorites',
-  recent: '~recent',
-  all: '~all',
-};
+/** Route ids of the virtual categories (shared with Home and Search, `@/ui/routes/live`). */
+export const VIRTUAL_CATEGORY_IDS = LIVE_VIRTUAL_CATEGORY_IDS;
 
 /** Category selected by `/live` (no category in the route). */
 export const DEFAULT_CATEGORY_ID = VIRTUAL_CATEGORY_IDS.all;
 
 export type LiveCategory =
-  | { kind: VirtualCategoryKind; id: string; name: string }
+  | {
+      kind: VirtualCategoryKind;
+      id: string;
+      name: string;
+      /** "Favorites": shown with a star in the category navigation. */
+      favorite: boolean;
+    }
   | { kind: 'source'; id: string; name: string; key: string };
 
 const VIRTUAL_ORDER: readonly VirtualCategoryKind[] = ['favorites', 'recent', 'all'];
@@ -38,6 +42,7 @@ export function buildCategories(sourceCategories: readonly Category[]): LiveCate
     kind,
     id: VIRTUAL_CATEGORY_IDS[kind],
     name: t.live.virtualCategories[kind],
+    favorite: kind === 'favorites',
   }));
   const own: LiveCategory[] = [...sourceCategories]
     .sort((a, b) => a.order - b.order)
@@ -46,6 +51,4 @@ export function buildCategories(sourceCategories: readonly Category[]): LiveCate
 }
 
 /** Route path that selects a category. */
-export function categoryPath(id: string): string {
-  return `/live/category/${encodeURIComponent(id)}`;
-}
+export const categoryPath = liveCategoryPath;

@@ -21,17 +21,14 @@ import {
   type Favorite,
   type HistoryEntry,
 } from '@/core/db';
-import { RESUME_MIN_SEC, resumePosition, watchedFraction } from '@/ui/vod/resume';
+import { LIVE_RECENT_LIMIT, liveChannelPath } from '@/ui/routes/live';
+import { continueWatchingProgress, type ContinueWatchingProgress } from '@/ui/vod/resume';
 
-export const RECENT_CHANNELS_LIMIT = 30;
+/** The same limit as Live "Recent" (FAV-02 AC1). */
+export const RECENT_CHANNELS_LIMIT = LIVE_RECENT_LIMIT;
 export const CONTINUE_WATCHING_LIMIT = 20;
 /** Favorites shown on Home (all types, most recently added first); the rest via "See all". */
 export const HOME_FAVORITES_LIMIT = 20;
-/**
- * Live route id of "All" (features/live `VIRTUAL_CATEGORY_IDS.all`; features cannot import each
- * other): the category used for a channel without one.
- */
-const LIVE_ALL_CATEGORY_ID = '~all';
 
 /** One item as the screens show it. */
 export interface CardItem {
@@ -51,8 +48,7 @@ export interface CardItem {
 export function channelHref(channel: CatalogItemByType['live']): string {
   const category =
     channel.categoryKey === undefined ? undefined : parseCategoryKey(channel.categoryKey);
-  const categoryId = category?.externalId ?? LIVE_ALL_CATEGORY_ID;
-  return `/live/category/${encodeURIComponent(categoryId)}?channel=${encodeURIComponent(channel.key)}`;
+  return liveChannelPath(category?.externalId, channel.key);
 }
 
 export function itemHref(item: CatalogItemByType[ContentType]): string {
@@ -72,25 +68,24 @@ export function toCard(item: CatalogItemByType[ContentType]): CardItem {
 }
 
 /** A "Continue watching" entry and its progress bar (`fraction` undefined: no bar). */
-export interface ContinueWatching {
-  fraction: number | undefined;
-}
+export type ContinueWatching = ContinueWatchingProgress;
 
-/** Whether the entry belongs in "Continue watching" (FAV-02 AC2, VOD-03 rules), else undefined. */
+/**
+ * Whether the entry belongs in "Continue watching" (FAV-02 AC2), else undefined. Movies follow
+ * the shared rule (`continueWatchingProgress`, also the Movies grid's bars). A series' own entry
+ * follows it too for the episode in progress (a few seconds are not "watching" the series yet);
+ * the one series-only case is position 0 on a not-yet-started next episode after a finished one
+ * (SER-03), which is shown without a bar.
+ */
 export function continueWatching(entry: HistoryEntry): ContinueWatching | undefined {
   if (entry.completed) return undefined;
   switch (entry.type) {
     case 'movie':
-      return resumePosition(entry) === undefined ? undefined : { fraction: watchedFraction(entry) };
+      return continueWatchingProgress(entry);
     case 'series':
       if (isEpisodeItemKey(entry.itemKey) || entry.episodeKey === undefined) return undefined;
-      // Position 0: the series moved on to the next episode after a finished one (SER-03), so
-      // it is shown. Otherwise the episode in progress follows the VOD-03 minimum (1 min): a few
-      // seconds of an episode are not "watching" the series yet.
-      if (entry.positionSec !== 0 && !((entry.positionSec ?? 0) >= RESUME_MIN_SEC)) {
-        return undefined;
-      }
-      return { fraction: watchedFraction(entry) };
+      if (entry.positionSec === 0) return { fraction: undefined };
+      return continueWatchingProgress(entry);
     default:
       return undefined;
   }

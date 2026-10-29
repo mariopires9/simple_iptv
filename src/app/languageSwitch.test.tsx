@@ -6,8 +6,9 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { settingsRepo, wipeAll } from '@/core/db';
+import { claimPlayback } from '@/core/session';
 import { invalidateSourcesPresence, setSourcesPresent } from '@/features/sources';
-import { holdLocaleSwitch, resetLanguagePreferenceForTests, setLocale, t } from '@/i18n';
+import { resetLanguagePreferenceForTests, setLocale, t } from '@/i18n';
 import { messages } from '@/i18n/catalogs';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { App } from './App';
@@ -115,7 +116,7 @@ describe('UX-06 — switching the interface language in Settings', () => {
     expect(document.documentElement.lang).toBe('pt-PT');
   });
 
-  it('while a player holds the locale, a browser change waits even across navigation', async () => {
+  it('while a player is open, a browser change waits even across navigation', async () => {
     const languages = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US']);
     const user = userEvent.setup();
     window.location.hash = '#/settings';
@@ -124,7 +125,7 @@ describe('UX-06 — switching the interface language in Settings', () => {
       level: 1,
       name: messages('en').routes.screens.settings.title,
     });
-    const release = holdLocaleSwitch(); // what a mounted PlayerView does
+    const release = claimPlayback(); // what a mounted PlayerView does
     languages.mockReturnValue(['pt-PT']);
     act(() => {
       window.dispatchEvent(new Event('languagechange'));

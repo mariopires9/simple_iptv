@@ -66,6 +66,18 @@ describe('buildCategories', () => {
       ['source', '2', 'Second'],
     ]);
   });
+
+  it('marks only "Favorites" for the star icon of the category navigation (TEC-03)', () => {
+    const source = [{ key: cat('1'), externalId: '1', name: 'First', order: 0 }] as Category[];
+    expect(
+      buildCategories(source).map((c) => [c.id, 'favorite' in c ? c.favorite : undefined]),
+    ).toEqual([
+      [VIRTUAL_CATEGORY_IDS.favorites, true],
+      [VIRTUAL_CATEGORY_IDS.recent, false],
+      [VIRTUAL_CATEGORY_IDS.all, false],
+      ['1', undefined],
+    ]);
+  });
 });
 
 describe('concatPager ("All")', () => {

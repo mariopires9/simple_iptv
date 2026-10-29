@@ -24,6 +24,7 @@ import { t } from '@/i18n';
 import { CategoryNav } from '@/ui/catalog/CategoryNav';
 import { useActiveSource } from '@/ui/hooks/useActiveSource';
 import { useFillHeight } from '@/ui/hooks/useFillHeight';
+import { liveChannelPath } from '@/ui/routes/live';
 import {
   ChannelListSkeleton,
   DelayedLoading,
@@ -430,9 +431,7 @@ export function LiveScreen() {
       setSelection(next);
       setAnnouncement(t.live.player.watching(channel.name));
       // Replace: picking or zapping channels must not stack one history entry per channel.
-      navigate(`${categoryPath(categoryId)}?channel=${encodeURIComponent(channel.key)}`, {
-        replace: true,
-      });
+      navigate(liveChannelPath(categoryId, channel.key), { replace: true });
     },
     [navigate, categoryId],
   );

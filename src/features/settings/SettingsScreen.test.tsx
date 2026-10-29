@@ -1,6 +1,6 @@
 // UX-04 AC1: the Settings sections, in order, with Sources and Privacy links and the theme.
 import 'fake-indexeddb/auto';
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { settingsRepo, wipeAll } from '@/core/db';
@@ -16,6 +16,9 @@ beforeEach(() => {
   media = installMatchMedia({ width: 1200 });
 });
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   media.restore();
   localStorage.removeItem(THEME_CACHE_KEY);
   await wipeAll();

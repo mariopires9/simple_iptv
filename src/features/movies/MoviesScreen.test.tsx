@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -120,6 +120,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   restoreScroll();
   media?.restore();
   media = undefined;
@@ -426,6 +429,12 @@ describe('MoviesScreen — posters (VOD-01 AC3/AC4)', () => {
       durationSec: 1500,
       completed: true,
     });
+    // TEC-03: the same rule as Home's "Continue watching" — 30 s is not resumable, so no bar.
+    await historyRepo.upsert({
+      itemKey: itemKey(SOURCE, 'movie', 'a3'),
+      positionSec: 30,
+      durationSec: 1500,
+    });
     try {
       show('/movies/category/10');
       const g = await grid('Movies in Action');
@@ -436,9 +445,13 @@ describe('MoviesScreen — posters (VOD-01 AC3/AC4)', () => {
       // Completed: no bar.
       const zulu = within(g).getByRole('link', { name: /Zulu Dawn/ });
       expect(within(zulu).queryByTestId('poster-progress')).toBeNull();
+      // Below the 1 min resume minimum: not in Continue watching, no bar.
+      const ecran = within(g).getByRole('link', { name: /Écran Total/ });
+      expect(within(ecran).queryByTestId('poster-progress')).toBeNull();
     } finally {
       await historyRepo.remove(itemKey(SOURCE, 'movie', 'a2'));
       await historyRepo.remove(itemKey(SOURCE, 'movie', 'a1'));
+      await historyRepo.remove(itemKey(SOURCE, 'movie', 'a3'));
     }
   });
 });

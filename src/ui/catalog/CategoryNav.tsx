@@ -12,11 +12,12 @@ import ListItemText from '@mui/material/ListItemText';
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 
-/** A navigable category. `kind: 'favorites'` gets a star icon. */
+/** A navigable category. */
 export interface NavCategory {
-  kind: string;
   id: string;
   name: string;
+  /** The favourites category (Live): shown with a star icon. */
+  favorite?: boolean | undefined;
 }
 
 export interface CategoryNavProps {
@@ -66,7 +67,7 @@ export function CategoryNav({
                   to={{ pathname: pathFor(c.id), search }}
                   clickable
                   label={c.name}
-                  icon={c.kind === 'favorites' ? <StarRounded aria-hidden /> : undefined}
+                  icon={c.favorite ? <StarRounded aria-hidden /> : undefined}
                   color={selected ? 'primary' : 'default'}
                   variant={selected ? 'filled' : 'outlined'}
                   aria-current={selected ? 'page' : undefined}
@@ -97,9 +98,7 @@ export function CategoryNav({
                 aria-current={selected ? 'page' : undefined}
                 sx={{ minHeight: 44 }}
               >
-                {c.kind === 'favorites' && (
-                  <StarRounded aria-hidden fontSize="small" sx={{ mr: 1 }} />
-                )}
+                {c.favorite && <StarRounded aria-hidden fontSize="small" sx={{ mr: 1 }} />}
                 <ListItemText primary={c.name} />
               </ListItemButton>
             </li>

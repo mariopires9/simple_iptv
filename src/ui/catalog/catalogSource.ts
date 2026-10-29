@@ -5,7 +5,7 @@
 // `@/core/db` (Dexie) is imported dynamically: `src/ui` is checked as part of the initial bundle
 // (ADR-003, src/app/initialBundle.test.ts), although only the lazy catalogue screens use this.
 import type { Category, HistoryEntry, Source } from '@/core/db';
-import { watchedFraction } from '@/ui/vod/resume';
+import { continueWatchingProgress } from '@/ui/vod/resume';
 import { buildCatalogCategories, type CatalogCategory, type CategoryNames } from './categories';
 import type { PosterType } from './sortIndex';
 
@@ -19,7 +19,7 @@ export type CatalogSourceState =
       categories: CatalogCategory[];
       /** Keys of the source categories in display order (the segments of "All"). */
       sourceCategoryKeys: string[];
-      /** Watched fraction (0–1, exclusive) per item key with a saved position. */
+      /** Watched fraction (0–1) per item key in "Continue watching" (`@/ui/vod/resume`). */
       progress: ReadonlyMap<string, number>;
     };
 
@@ -53,7 +53,8 @@ export async function loadCatalogSource(
   const categories = buildCatalogCategories(sourceCategories, options.names);
   const progress = new Map<string, number>();
   for (const entry of history) {
-    const fraction = watchedFraction(entry);
+    // Home's "Continue watching" rule: only resumable items get a bar.
+    const fraction = continueWatchingProgress(entry)?.fraction;
     if (fraction !== undefined) progress.set(entry.itemKey, fraction);
   }
   return {

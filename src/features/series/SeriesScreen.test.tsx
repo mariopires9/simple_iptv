@@ -1,7 +1,7 @@
 // SER-01: series grid (categories, posters with the number of seasons when known, sort,
 // "Uncategorized", active-list switching), on the shared poster-grid screen.
 import 'fake-indexeddb/auto';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -69,6 +69,9 @@ beforeEach(() => {
   restoreScroll = installScrollMetrics();
 });
 afterEach(async () => {
+  // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
+  // mounted could re-read state while it is reset below and cache it for the next test.
+  cleanup();
   restoreScroll();
   media?.restore();
   media = undefined;

@@ -108,6 +108,8 @@ describe('continue watching (FAV-02 AC2)', () => {
     // VOD-03 minimum: a few seconds of an episode do not put the series in the row.
     ['just started (10 s)', { episodeKey: 'e', positionSec: 10, durationSec: 1200 }],
     ['below 1 min', { episodeKey: 'e', positionSec: 59, durationSec: 1200 }],
+    // TEC-03: the shared rule (`continueWatchingProgress`) — beyond 95 % is not resumable.
+    ['beyond 95 %', { episodeKey: 'e', positionSec: 1150, durationSec: 1200 }],
     ['no position', { episodeKey: 'e' }],
     ['no episode', {}],
   ])('series %s → not shown', (_, fields) => {
