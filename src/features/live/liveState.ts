@@ -23,19 +23,10 @@ export interface SavedLiveView {
   savedAt: number;
 }
 
-/** Settings keys owned by the Live screen that `SettingsMap` does not declare (yet). */
-interface LiveSettings {
-  liveViewState: unknown;
-  playLastChannelOnOpen: unknown;
-}
-
 const LIVE_VIEW_KEY = 'liveViewState';
 export const PLAY_LAST_CHANNEL_KEY = 'playLastChannelOnOpen';
 
-const store = settingsRepo as unknown as {
-  get(key: keyof LiveSettings): Promise<unknown>;
-  set(key: keyof LiveSettings, value: unknown): Promise<void>;
-};
+const store = settingsRepo;
 
 /** At most this many sources keep a saved view (the oldest is dropped). */
 export const MAX_SAVED_VIEWS = 20;
@@ -141,10 +132,9 @@ export function saveLastChannel(key: string): Promise<void> {
 export function clearLiveState(): Promise<void> {
   writes = writes.then(async () => {
     try {
-      const unset = settingsRepo.remove as (key: string) => Promise<void>;
       await Promise.all([
-        unset(LIVE_VIEW_KEY),
-        unset(PLAY_LAST_CHANNEL_KEY),
+        settingsRepo.remove(LIVE_VIEW_KEY),
+        settingsRepo.remove(PLAY_LAST_CHANNEL_KEY),
         settingsRepo.remove('lastChannelKey'),
       ]);
     } catch (error) {

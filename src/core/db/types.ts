@@ -292,6 +292,10 @@ export interface SettingsMap {
   lastRoute: string;
   lastChannelKey: string;
   onboardingDone: boolean;
+  /** Live screen view per source (LIV-03); shape owned and validated by features/live. */
+  liveViewState: unknown;
+  /** Start the last live channel when the app opens on Live (LIV-03; UI in UX-04). */
+  playLastChannelOnOpen: boolean;
 }
 
 export type SettingsKey = keyof SettingsMap;
