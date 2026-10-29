@@ -54,6 +54,7 @@ import {
   type FetchImpl,
   type NetErrorHint,
   type NetErrorKind,
+  type UrlRewriter,
 } from '@/core/net';
 import { WorkerTaskError, type TaskContext, type TaskProgress } from '@/core/worker';
 import { M3uCatalogBuilder } from './catalog';
@@ -139,6 +140,11 @@ export interface SyncM3uResult {
 export interface SyncM3uDeps {
   vault?: CredentialVault;
   fetchImpl?: FetchImpl;
+  /**
+   * The list's data rewriter (personal proxy, PRX-01), asked once the source is read; used for
+   * the list download. Default: direct. The data worker injects `rewritersForSource`.
+   */
+  rewriterFor?: (source: Source) => Promise<UrlRewriter>;
   now?: () => number;
   inactivityTimeoutMs?: number;
   /** How often cancellation is polled while waiting (ms). Default 50. */
@@ -430,6 +436,7 @@ async function runSync(
 
   // --- List URL from the vault (never leaves the worker); a file has no URL nor secrets ---
   let location: ListLocation;
+  let rewriter: UrlRewriter | undefined;
   if (origin.kind === 'url') {
     const { secretRef } = source;
     if (!secretRef) throw new WorkerTaskError('failed', 'M3U sync: source has no list URL');
@@ -439,6 +446,7 @@ async function runSync(
       const parsed = parseExternalUrl(raw, 'source');
       if (!parsed.ok) return await fail('invalid-url');
       location = { kind: 'url', url: parsed.url };
+      if (deps.rewriterFor) rewriter = await deps.rewriterFor(source);
     } catch (err) {
       if (err instanceof SourceRemovedError) throw err;
       return await fail(err instanceof VaultKeyLostError ? 'credentials-lost' : 'unknown');
@@ -503,6 +511,7 @@ async function runSync(
             signal: abort.signal,
             inactivityTimeoutMs: deps.inactivityTimeoutMs ?? DOWNLOAD_INACTIVITY_TIMEOUT_MS,
             ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+            ...(rewriter ? { rewriter } : {}),
             onBytes,
             onChunk,
           });

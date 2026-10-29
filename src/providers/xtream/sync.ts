@@ -43,7 +43,7 @@ import {
 } from '@/core/db';
 import { credentialVault, VaultKeyLostError, type CredentialVault } from '@/core/crypto';
 import { log } from '@/core/log';
-import { NetError, type FetchImpl } from '@/core/net';
+import { NetError, type FetchImpl, type UrlRewriter } from '@/core/net';
 import { WorkerTaskError, type TaskContext } from '@/core/worker';
 import {
   XTREAM_CATALOG_ACTIONS,
@@ -108,6 +108,11 @@ export interface SyncXtreamResult {
 export interface SyncXtreamDeps {
   vault?: CredentialVault;
   fetchImpl?: FetchImpl;
+  /**
+   * The list's data rewriter (personal proxy, PRX-01), asked once the source is read; used for
+   * every API request of the sync. Default: direct. The data worker injects `rewritersForSource`.
+   */
+  rewriterFor?: (source: Source) => Promise<UrlRewriter>;
   now?: () => number;
   /** Timeout of the auth and categories requests. Default {@link CATEGORIES_TIMEOUT_MS}. */
   categoriesTimeoutMs?: number;
@@ -400,8 +405,10 @@ async function runSync(
   }
 
   let password: string | undefined;
+  let rewriter: UrlRewriter | undefined;
   try {
     password = await vault.get(secretRef);
+    if (deps.rewriterFor) rewriter = await deps.rewriterFor(source);
   } catch (err) {
     return failAll(err);
   }
@@ -420,6 +427,7 @@ async function runSync(
   try {
     const base: XtreamClientOptions = { baseUrl: serverUrl, username, password };
     if (deps.fetchImpl) base.fetchImpl = deps.fetchImpl;
+    if (rewriter) base.rewriter = rewriter;
     let categoriesClient: ReturnType<typeof createXtreamClient>;
     let itemsClient: ReturnType<typeof createXtreamClient>;
     try {

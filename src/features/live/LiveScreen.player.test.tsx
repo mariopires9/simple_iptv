@@ -18,6 +18,7 @@ import {
   type Source,
 } from '@/core/db';
 import { clearLogBuffer, getLogEntries, toLogJson } from '@/core/log';
+import { PROXY_TOKEN_REF } from '@/core/session';
 import { PlaybackError, type StreamDescriptor } from '@/player';
 import type { PlayerViewProps } from '@/player/ui';
 import { clearLiveState } from './liveState';
@@ -223,6 +224,39 @@ async function openFrom(path: string, name: string, width?: number) {
 }
 
 // --- tests ---------------------------------------------------------------------------------
+
+describe('PRX-01 — the player gets the list’s playback rewriter', () => {
+  const TOKEN = 'tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789';
+
+  it('direct by default (no proxy routing)', async () => {
+    await openFrom('/live/category/1', 'Channel 2', 1400);
+    await playerShows(2);
+    const { rewriter } = lastView();
+    expect(rewriter?.rewrite(urlOf(2), 'playlist') ?? urlOf(2)).toBe(urlOf(2));
+  });
+
+  it('`streams`: streams and playlists go through the saved proxy', async () => {
+    await sourcesRepo.put({ ...xtream, prefs: { ...xtream.prefs, proxy: 'streams' } });
+    await settingsRepo.set('personalProxy', { baseUrl: 'https://pc.example.test' });
+    vi.mocked(credentialVault.get).mockImplementation((ref) =>
+      Promise.resolve(ref === PROXY_TOKEN_REF ? TOKEN : PASS),
+    );
+    try {
+      await openFrom('/live/category/1', 'Channel 2', 1400);
+      await playerShows(2);
+      const { rewriter } = lastView();
+      for (const purpose of ['playlist', 'stream'] as const) {
+        expect(rewriter?.rewrite(urlOf(2), purpose)).toMatch(
+          new RegExp(`^https://pc\\.example\\.test/v1/${TOKEN}/u/[A-Za-z0-9_-]+/2\\.m3u8$`),
+        );
+      }
+      expect(rewriter?.rewrite(urlOf(2), 'image')).toBe(urlOf(2));
+    } finally {
+      await sourcesRepo.put(xtream);
+      await settingsRepo.remove('personalProxy');
+    }
+  });
+});
 
 describe('LIV-02 AC1 — opening the player', () => {
   it('desktop: clicking a channel replaces the placeholder panel and starts playback', async () => {

@@ -57,12 +57,12 @@ export const player = {
     blocked: {
       title: 'Stream blocked by the browser',
       message:
-        'The browser blocked this stream. The server probably does not allow access from web apps (CORS) or does not use HTTPS. The connection diagnostics explain what you can do.',
+        'The browser blocked this stream. The server probably does not allow access from web apps (CORS) or does not use HTTPS. You can route this list through your personal proxy (Settings › Personal proxy); the connection diagnostics explain other options.',
     },
     blockedMixedContent: {
       title: 'Insecure stream address',
       message:
-        'This stream uses HTTP, which browsers block on a secure (HTTPS) page. Use an HTTPS source if the provider offers one; the connection diagnostics explain other options.',
+        'This stream uses HTTP, which browsers block on a secure (HTTPS) page. Use an HTTPS source if the provider offers one, or route this list through your personal proxy (Settings › Personal proxy); the connection diagnostics explain other options.',
     },
     'unsupported-container': {
       title: 'Format or codec not supported',

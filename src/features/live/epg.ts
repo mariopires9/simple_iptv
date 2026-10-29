@@ -16,6 +16,7 @@ import { VaultKeyLostError, credentialVault, type CredentialVault } from '@/core
 import type { Channel, Source } from '@/core/db';
 import { log } from '@/core/log';
 import { isNetError, type FetchImpl } from '@/core/net';
+import { rewritersForSource } from '@/core/session';
 import { createXtreamClient, fetchShortEpg, type ShortEpgProgramme } from '@/providers/xtream';
 
 export type { ShortEpgProgramme } from '@/providers/xtream';
@@ -130,10 +131,13 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
       try {
         const password = await (deps.vault ?? credentialVault).get(secretRef);
         if (password === undefined) return undefined;
+        // The list's data rewriter (personal proxy when it routes everything, PRX-01).
+        const { data } = await rewritersForSource(source);
         const options: Parameters<typeof createXtreamClient>[0] = {
           baseUrl: serverUrl,
           username,
           password,
+          rewriter: data,
         };
         if (deps.fetchImpl) options.fetchImpl = deps.fetchImpl;
         return createXtreamClient(options);
