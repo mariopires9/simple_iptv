@@ -14,7 +14,7 @@ export function PrivacySection() {
   const text = t.settings.privacy;
   return (
     <SettingsSection title={t.settings.sections.privacy}>
-      <List disablePadding>
+      <List disablePadding component="div">
         <ListItemButton component={Link} to="/settings/privacy">
           <ListItemText primary={text.title} secondary={text.summary} />
           <ChevronRightRounded aria-hidden />
