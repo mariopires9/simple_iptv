@@ -212,11 +212,10 @@ describe('syncM3u through the worker API (SRC-04/SRC-05)', () => {
     const phases = new Set(seen.map((p) => p.phase as M3uSyncProgress['phase']));
     // The worker's progress throttle keeps only the latest message per 50 ms window, yet the final
     // download/parse totals are spaced so they reach the client before the write phase (review #7).
-    expect([...phases]).toEqual(expect.arrayContaining(['download', 'parse', 'write', 'done']));
-    const beforeWrite = seen.slice(
-      0,
-      seen.findIndex((p) => p.phase === 'write'),
-    );
+    // `write` itself is transient: a fast write can be superseded by `done` within one window.
+    expect([...phases]).toEqual(expect.arrayContaining(['download', 'parse', 'done']));
+    const writeAt = seen.findIndex((p) => p.phase === 'write' || p.phase === 'done');
+    const beforeWrite = seen.slice(0, writeAt);
     expect(beforeWrite.filter((p) => p.phase === 'download').at(-1)?.done).toBe(result.bytes);
     expect(beforeWrite.filter((p) => p.phase === 'parse').at(-1)?.done).toBe(result.entries);
     expect(seen.at(-1)).toMatchObject({ phase: 'done' });
