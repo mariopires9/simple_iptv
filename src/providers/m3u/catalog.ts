@@ -11,9 +11,10 @@
 //   {@link UNCATEGORIZED_CATEGORY_ID} (AC9), so every item has a `categoryKey`.
 // - Categories are per content type, in order of first appearance in the list.
 //
-// Storage: M3U items keep the full stream URL in plain text (`streamUrl`, and `streamPath` for
-// channels/movies, as documented in ARCHITECTURE.md §5 / SECURITY.md §2). Images and catch-up
-// templates are only stored when they pass `isStorableUrl` (no list credentials).
+// Storage: M3U items keep the full stream URL once, in plain text, in `streamUrl` (ARCHITECTURE.md
+// §5 / SECURITY.md §2); the required `streamPath` of channels/movies is left empty (players read
+// `streamUrl ?? streamPath`). Images and catch-up templates are only stored when they pass
+// `isStorableUrl` (no list credentials).
 import type {
   CatalogItemInput,
   CatalogReplacement,
@@ -26,8 +27,11 @@ import type { M3uEntry } from './parser';
 
 /** Category id of entries without a group (AC9). Never collides with `g…` hashed ids. */
 export const UNCATEGORIZED_CATEGORY_ID = 'uncategorized';
-/** Stored name of the synthetic category; the UI may localise it by its id. */
-export const UNCATEGORIZED_CATEGORY_NAME = 'Uncategorized';
+/**
+ * Stored name of the synthetic category: empty (language-neutral). The UI shows a localised label
+ * for a category with id {@link UNCATEGORIZED_CATEGORY_ID} and an empty name.
+ */
+export const UNCATEGORIZED_CATEGORY_NAME = '';
 
 /**
  * Non-cryptographic 64-bit hash (two 32-bit lanes, cyrb53-style mixing) as 16 hex characters.
@@ -155,7 +159,7 @@ export class M3uCatalogBuilder {
         const item: CatalogItemInput<'live'> = {
           externalId,
           name: entry.name,
-          streamPath: entry.url,
+          streamPath: '',
           ...this.flags(entry),
           categoryExternalId: this.category(this.live, entry.group),
         };
@@ -188,7 +192,7 @@ export class M3uCatalogBuilder {
         const item: CatalogItemInput<'movie'> = {
           externalId,
           name: entry.name,
-          streamPath: entry.url,
+          streamPath: '',
           ...this.flags(entry),
           categoryExternalId: this.category(this.movie, entry.group),
         };

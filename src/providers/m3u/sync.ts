@@ -1,15 +1,15 @@
 // M3U-by-URL import / refresh (SRC-04 + SRC-05). Runs inside the data worker as task `syncM3u`.
 //
 // Flow: source row → vault (list URL) → streaming download + parse (bytes and entries reported as
-// they arrive) → catalogue rows per type → guarded replace per type → source stats/status.
+// they arrive) → catalogue rows → one guarded transaction for all three types → source status.
 //
 // Credentials: the list URL often embeds them (`get.php?username=…&password=…`, tokens). It is
 // read from the vault *inside the worker* and never crosses postMessage: the task input is
 // `{ sourceId }`, progress carries only phase names and counts, the result only counts and codes.
-// Logs carry codes, counts and the shortened URL (`NetError.target`). Its query values are also
-// registered with the log redactor. Stored rows: only `streamUrl`/`streamPath` hold the full stream
-// URLs (ARCHITECTURE.md §5 decision); logos, catch-up templates and header EPG URLs that contain
-// the list's credentials are dropped (`isStorableUrl`).
+// Logs carry codes, counts and the shortened URL (`NetError.target`). The list URL's credentials
+// (`listUrlSecrets`) are registered with the log redactor. Stored rows: only `streamUrl` holds the
+// full stream URL (ARCHITECTURE.md §5 decision); logos, catch-up templates and header EPG URLs that
+// contain the list's credentials are dropped (`isStorableUrl`).
 //
 // Outcomes:
 // - Success: every type (live/movie/series) is replaced with this list's content — the list is the
@@ -17,13 +17,17 @@
 //   `lastSyncAt`, `lastSyncByType` and the header `epgUrls`.
 // - Expected failure (network, HTTP status, not an M3U list, no valid entry, too large, storage,
 //   lost vault key): resolves with `status: 'error'` and a stable `error` code (+ `hint` for a
-//   blocked request); the previous catalogue stays untouched and the source records the code
-//   without advancing `lastSyncAt`.
+//   blocked request); the previous catalogue stays untouched (the write is a single transaction
+//   for live+movie+series) and the source records the code without advancing `lastSyncAt`.
+// - Internal error (an exception that is not a network failure, e.g. a parser bug): recorded on
+//   the source as `internal`, logged, and the task rejects with `WorkerTaskError('failed')`.
 // - Cancellation (any time before the write phase starts): rejects with
 //   `WorkerTaskError('cancelled')`; nothing is written and the source row is untouched. Once the
-//   write phase starts it completes, so the three types stay consistent with each other.
-// - Source removed meanwhile: the existence check runs inside each write transaction; nothing is
+//   write phase starts it completes (the UI then reports the real outcome).
+// - Source removed meanwhile: the existence check runs inside the write transaction; nothing is
 //   written and the task rejects with `WorkerTaskError('cancelled', '… (source-removed)')`.
+// - Accepted bodies: first meaningful line `#EXTM3U` or `#EXTINF`, or valid entries found within
+//   SNIFF_BYTES; anything else (HTML, JSON, empty) is `not-m3u`.
 // - Concurrency: imports of the same source are serialised (per-source queue in this worker).
 import {
   CONTENT_TYPES,
@@ -72,12 +76,13 @@ export interface SyncM3uInput {
 /**
  * Error codes (never sensitive): `NetErrorKind`s (`offline`, `timeout`, `blocked`, `http`, `auth`,
  * `parse`) plus:
- * - `not-m3u`: the response does not start with `#EXTM3U` (e.g. an HTML page) or is empty
+ * - `not-m3u`: the response is not a playlist (HTML, JSON, empty…)
  * - `empty-list`: an M3U list without any valid entry
  * - `too-large`: more than {@link MAX_ENTRIES} entries or {@link MAX_BYTES} bytes
  * - `invalid-url`: the stored list URL is not an acceptable http(s) URL
  * - `credentials-lost`: the vault cannot decrypt the list URL
- * - `storage`: writing to IndexedDB failed (e.g. quota)
+ * - `storage`: writing to IndexedDB failed (e.g. quota); nothing was changed
+ * - `internal`: a non-network exception (bug); the task also rejects with `failed`
  * - `unknown`
  */
 export type M3uSyncErrorCode =
@@ -88,6 +93,7 @@ export type M3uSyncErrorCode =
   | 'invalid-url'
   | 'credentials-lost'
   | 'storage'
+  | 'internal'
   | 'unknown';
 
 export interface SyncM3uResult {
@@ -122,6 +128,8 @@ export interface SyncM3uDeps {
 /** Guards against lists that would exhaust memory on weak devices. */
 export const MAX_ENTRIES = 500_000;
 export const MAX_BYTES = 512 * 1024 * 1024;
+/** A body without `#EXTM3U`/`#EXTINF` first must show a valid entry within this many bytes. */
+export const SNIFF_BYTES = 64 * 1024;
 
 class SourceRemovedError extends Error {
   override readonly name = 'SourceRemovedError';
@@ -133,20 +141,52 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 // Credentials in the list URL
 // ---------------------------------------------------------------------------------------------
 
+/** Query parameters whose values are credentials (≥ 3 characters). */
 const SECRET_PARAM = /user|pass|pwd|token|key|auth|sig|secret|session|sid/i;
+/** Path segments followed by `/<user>/<pass>/…` in Xtream-style URLs. */
+const CREDENTIAL_PATH_PREFIXES: ReadonlySet<string> = new Set([
+  'playlist',
+  'get',
+  'live',
+  'movie',
+  'series',
+  'timeshift',
+]);
+const MIN_SECRET = 3;
 
-/** Values of the list URL that must not end up in stored image/EPG URLs or in logs. */
+/**
+ * Values of the list URL that must not end up in stored image/EPG/catch-up URLs or in logs:
+ * - values (≥ 3 chars) of query parameters named like username/password/token/key/…, and any
+ *   other query value of 12+ characters;
+ * - in Xtream-style paths (`/playlist/<user>/<pass>/…`, `/live/<user>/<pass>/…`, …) the two
+ *   segments after the known prefix;
+ * - long opaque path segments (16+ characters), which are usually access tokens.
+ */
 export function listUrlSecrets(listUrl: URL): string[] {
   const secrets = new Set<string>();
   for (const [name, value] of listUrl.searchParams) {
-    if (value.length >= 3 && (SECRET_PARAM.test(name) || value.length >= 12)) secrets.add(value);
-  }
-  for (const segment of listUrl.pathname.split('/')) {
-    // Long opaque path segments are usually access tokens.
-    if (segment.length >= 16 && /^[A-Za-z0-9_\-.~%]+$/.test(segment) && !segment.includes('.')) {
-      secrets.add(segment);
+    if (value.length >= MIN_SECRET && (SECRET_PARAM.test(name) || value.length >= 12)) {
+      secrets.add(value);
     }
   }
+  const segments = listUrl.pathname
+    .split('/')
+    .filter((segment) => segment !== '')
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    });
+  segments.forEach((segment, i) => {
+    if (CREDENTIAL_PATH_PREFIXES.has(segment.toLowerCase()) && i + 2 < segments.length) {
+      for (const credential of segments.slice(i + 1, i + 3)) {
+        if (credential.length >= MIN_SECRET) secrets.add(credential);
+      }
+    }
+    if (segment.length >= 16 && /^[A-Za-z0-9_\-~%]+$/.test(segment)) secrets.add(segment);
+  });
   return [...secrets];
 }
 
@@ -340,20 +380,27 @@ async function runSync(
   let total: number | undefined;
   let lastReport = -Infinity;
   let parseNext = false;
+  const downloadMessage = (): M3uSyncProgress =>
+    total !== undefined
+      ? { phase: 'download', done: bytes, total }
+      : { phase: 'download', done: bytes };
   /** Alternates `download` (bytes) and `parse` (entries) messages; real time, not `deps.now`. */
-  const report = (force = false) => {
+  const report = () => {
     const t = Date.now();
-    if (!force && t - lastReport < PROGRESS_INTERVAL_MS) return;
+    if (t - lastReport < PROGRESS_INTERVAL_MS) return;
     lastReport = t;
-    if (parseNext) progress({ phase: 'parse', done: parser.stats.entries });
-    else
-      progress(
-        total !== undefined
-          ? { phase: 'download', done: bytes, total }
-          : { phase: 'download', done: bytes },
-      );
+    progress(parseNext ? { phase: 'parse', done: parser.stats.entries } : downloadMessage());
     parseNext = !parseNext;
   };
+  /** Waits until the next message cannot replace the previous one in the worker's throttle. */
+  const spaced = async () => {
+    const wait = lastReport + PROGRESS_INTERVAL_MS - Date.now();
+    if (wait > 0) await pause(wait);
+    lastReport = Date.now();
+  };
+  /** Accepted as a playlist: `#EXTM3U` / `#EXTINF` first, or valid entries found anyway. */
+  const looksLikeM3u = () =>
+    parser.firstLine === 'header' || parser.firstLine === 'extinf' || parser.stats.entries > 0;
   try {
     ctx.throwIfCancelled();
     const download = await downloadM3u(listUrl.href, parser, {
@@ -367,58 +414,68 @@ async function runSync(
       onChunk: () => {
         report();
         if (ctx.cancelled) return false;
-        if (parser.firstLine === 'other') stop = 'not-m3u';
+        if (!looksLikeM3u() && bytes >= SNIFF_BYTES) stop = 'not-m3u';
         else if (parser.stats.entries > MAX_ENTRIES || bytes > MAX_BYTES) stop = 'too-large';
         return stop === undefined;
       },
     });
     bytes = download.bytes;
     ctx.throwIfCancelled();
-    parseNext = false;
-    report(true);
-    report(true);
-    if (stop === undefined && parser.firstLine !== 'header') stop = 'not-m3u';
+    if (stop === undefined && !looksLikeM3u()) stop = 'not-m3u';
   } catch (err) {
     ctx.throwIfCancelled();
-    const kind = err instanceof NetError ? err.kind : undefined;
-    if (err instanceof NetError && kind !== undefined && kind !== 'aborted') {
-      const extra: { httpStatus?: number; hint?: NetErrorHint } = {};
-      if (err.status !== undefined) extra.httpStatus = err.status;
-      if (err.hint !== undefined) extra.hint = err.hint;
-      return await fail(kind, extra);
+    if (err instanceof NetError) {
+      const kind = err.kind;
+      if (kind !== 'aborted') {
+        const extra: { httpStatus?: number; hint?: NetErrorHint } = {};
+        if (err.status !== undefined) extra.httpStatus = err.status;
+        if (err.hint !== undefined) extra.hint = err.hint;
+        return await fail(kind, extra);
+      }
     }
-    return await fail('unknown');
+    // Not a network failure (parser / progress / logic bug): record it and fail the task.
+    log.error('m3u sync: internal error', { sourceId, error: err });
+    await fail('internal');
+    throw new WorkerTaskError('failed', 'M3U sync failed (internal)');
   } finally {
     clearInterval(poll);
   }
   if (stop !== undefined) return fail(stop);
   if (parser.stats.entries === 0) return fail('empty-list');
 
-  // --- Write (no cancellation from here on: the three types stay consistent) ---
+  // Final totals: spaced so the worker's latest-wins throttle delivers both, and the first
+  // `write` message does not replace them.
+  await spaced();
+  progress(downloadMessage());
+  await spaced();
+  progress({ phase: 'parse', done: parser.stats.entries });
+  await spaced();
+
+  // --- Write: the three types in one transaction (all or nothing); not cancellable ---
   ctx.throwIfCancelled();
   const catalog = builder.build();
   const totalItems = CONTENT_TYPES.reduce((n, t) => n + catalog[t].items.length, 0);
   progress({ phase: 'write', done: 0, total: totalItems });
+  let written: Awaited<ReturnType<typeof catalogRepo.replaceAllForExistingSource>>;
+  try {
+    written = await catalogRepo.replaceAllForExistingSource(sourceId, catalog);
+  } catch (err) {
+    // The transaction rolled back: the previous catalogue is intact.
+    log.warn('m3u sync: storage failure', { sourceId, error: err });
+    return fail('storage');
+  }
+  if (written === undefined) throw new SourceRemovedError();
+  progress({ phase: 'write', done: totalItems, total: totalItems });
+  const at = now();
   const outcomes: Partial<Record<ContentType, TypeSyncStatus>> = {};
-  let done = 0;
   for (const type of CONTENT_TYPES) {
-    let written: Awaited<ReturnType<typeof catalogRepo.replaceForExistingSource>>;
-    try {
-      written = await catalogRepo.replaceForExistingSource(sourceId, type, catalog[type]);
-    } catch {
-      return fail('storage');
-    }
-    if (written === undefined) throw new SourceRemovedError();
-    const at = now();
     outcomes[type] = {
       status: 'ok',
       at,
       lastOkAt: at,
-      items: written.items,
-      categories: written.categories,
+      items: written[type].items,
+      categories: written[type].categories,
     };
-    done += catalog[type].items.length;
-    progress({ phase: 'write', done, total: totalItems });
   }
 
   const epgUrls = parser.header.epgUrls.filter(isStorableUrl);

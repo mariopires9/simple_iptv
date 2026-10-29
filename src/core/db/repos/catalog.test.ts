@@ -307,3 +307,63 @@ describe('catalogRepo.replaceForExistingSource (SRC-07 review)', () => {
     expect(await catalogRepo.listCategories('s1', 'movie')).toEqual([]);
   });
 });
+
+describe('catalogRepo.replaceAllForExistingSource (SRC-04/05 review)', () => {
+  const putSource = (id: string) =>
+    sourcesRepo.put({
+      id,
+      kind: 'm3u-url',
+      name: id,
+      prefs: { liveFormat: 'auto' },
+      createdAt: 1,
+      lastSyncStatus: 'never',
+      stats: { live: 0, movies: 0, series: 0 },
+    });
+  const series = (n: number): CatalogItemInput<'series'>[] =>
+    Array.from({ length: n }, (_, i) => ({
+      externalId: String(i + 1),
+      categoryExternalId: '1',
+      name: `Series ${i + 1}`,
+    }));
+  const all = (live: number, movie: number, ser: number) => ({
+    live: { categories: cats(2), items: channels(live, 2) },
+    movie: { categories: cats(1), items: movies(movie) },
+    series: { categories: cats(1), items: series(ser) },
+  });
+
+  it('replaces the three types and reports per-type counts', async () => {
+    await putSource('s1');
+    await catalogRepo.replaceAllForExistingSource('s1', all(5, 4, 3));
+    const result = await catalogRepo.replaceAllForExistingSource('s1', all(2, 0, 1));
+    expect(result).toEqual({
+      live: { categories: 2, items: 2, duplicates: 0 },
+      movie: { categories: 1, items: 0, duplicates: 0 },
+      series: { categories: 1, items: 1, duplicates: 0 },
+    });
+    expect(await catalogRepo.count('s1', 'live')).toBe(2);
+    expect(await catalogRepo.count('s1', 'movie')).toBe(0);
+    expect(await catalogRepo.count('s1', 'series')).toBe(1);
+  });
+
+  it('writes nothing when the source is gone', async () => {
+    expect(await catalogRepo.replaceAllForExistingSource('ghost', all(3, 3, 3))).toBeUndefined();
+    expect(await catalogRepo.count('ghost', 'live')).toBe(0);
+  });
+
+  it('a storage failure on the last type rolls back every type', async () => {
+    await putSource('s1');
+    await catalogRepo.replaceAllForExistingSource('s1', all(5, 4, 3));
+    const db = await getDb();
+    // Transactions use their own Table instances: fail `bulkPut` on the series table only.
+    const proto = Object.getPrototypeOf(db.series) as { bulkPut: (...a: unknown[]) => unknown };
+    const original = proto.bulkPut;
+    vi.spyOn(proto, 'bulkPut').mockImplementation(function (this: { name: string }, ...args) {
+      if (this.name === 'series') return Promise.reject(new Error('QuotaExceededError'));
+      return original.apply(this, args);
+    });
+    await expect(catalogRepo.replaceAllForExistingSource('s1', all(1, 1, 1))).rejects.toThrow();
+    expect(await catalogRepo.count('s1', 'live')).toBe(5);
+    expect(await catalogRepo.count('s1', 'movie')).toBe(4);
+    expect(await catalogRepo.count('s1', 'series')).toBe(3);
+  });
+});

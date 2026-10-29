@@ -3,6 +3,8 @@ export const live = {
   title: 'Live TV',
   categories: 'Categories',
   virtualCategories: { favorites: 'Favorites', recent: 'Recent', all: 'All' },
+  /** Synthetic category of M3U entries without a group (SRC-04 AC9). */
+  uncategorized: 'Uncategorized',
   /** Accessible name of the channel listbox. */
   channelsIn: (category: string) => `Channels in ${category}`,
   /** Visually hidden suffix of a favorite channel's option (the star is decorative). */

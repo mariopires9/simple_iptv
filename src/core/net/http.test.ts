@@ -4,6 +4,7 @@ import { NetError } from './errors';
 import {
   DEFAULT_TIMEOUT_MS,
   fetchJson,
+  fetchStream,
   fetchText,
   identityRewriter,
   type FetchImpl,
@@ -405,5 +406,133 @@ describe('fetchJson — no leaks', () => {
     expect(text).not.toContain(USER);
     expect(text).not.toContain(PASS);
     expect(text).toContain('http://***/player_api.php');
+  });
+});
+
+describe('fetchStream (SRC-05 review)', () => {
+  const LIST = 'https://lists.example.test/list.m3u';
+
+  /** Body from chunks; `fail` makes the read after the last chunk error; `stall` never ends. */
+  function streamed(
+    chunks: string[],
+    init: ResponseInit & { fail?: unknown; stall?: boolean; delayMs?: number } = {},
+  ): FetchImpl {
+    return () => {
+      const queue = chunks.map((c) => new TextEncoder().encode(c));
+      const { fail, stall, delayMs = 0, ...rest } = init;
+      const body = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+          const next = queue.shift();
+          if (next) controller.enqueue(next);
+          else if (fail !== undefined) controller.error(fail);
+          else if (!stall) controller.close();
+          else await new Promise(() => undefined);
+        },
+      });
+      return Promise.resolve(new Response(body, rest));
+    };
+  }
+
+  async function readAll(fetchImpl: FetchImpl, options: Record<string, unknown> = {}) {
+    const seen: Array<{ bytes: number; total: number | undefined }> = [];
+    const text = await fetchStream(
+      LIST,
+      async (body) => {
+        let out = '';
+        for (let chunk = await body.read(); chunk; chunk = await body.read()) {
+          out += new TextDecoder().decode(chunk);
+          seen.push({ bytes: body.bytes, total: body.total });
+        }
+        return out;
+      },
+      { fetchImpl, ...options },
+    );
+    return { text, seen };
+  }
+
+  it('streams the body chunk by chunk with the Content-Length as total', async () => {
+    const { text, seen } = await readAll(
+      streamed(['#EXTM3U\n', 'abc'], { headers: { 'content-length': '11' } }),
+    );
+    expect(text).toBe('#EXTM3U\nabc');
+    expect(seen).toEqual([
+      { bytes: 8, total: 11 },
+      { bytes: 11, total: 11 },
+    ]);
+  });
+
+  it('has no total for a content-encoded body (the length is the compressed size)', async () => {
+    const { seen } = await readAll(
+      streamed(['0123456789'], { headers: { 'content-length': '4', 'content-encoding': 'gzip' } }),
+    );
+    expect(seen[0]?.total).toBeUndefined();
+  });
+
+  it('a request blocked before any response → blocked with a hint', async () => {
+    const err = await readAll(throwing(new TypeError('Failed to fetch'))).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NetError);
+    expect(err).toMatchObject({ kind: 'blocked', hint: 'cors' });
+  });
+
+  it('a connection broken mid-body → blocked without a CORS hint', async () => {
+    const err = await readAll(streamed(['#EXTM3U\n'], { fail: new TypeError('network error') }))
+      .then(() => undefined)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NetError);
+    expect((err as NetError).kind).toBe('blocked');
+    expect((err as NetError).hint).toBeUndefined();
+  });
+
+  it('HTTP errors are classified like fetchText', async () => {
+    const err = await readAll(respond('', { status: 404 })).catch((e: unknown) => e);
+    expect(err).toMatchObject({ kind: 'http', status: 404 });
+  });
+
+  it('an exception thrown by the consumer passes through unchanged and cancels the body', async () => {
+    let cancelled = false;
+    const fetchImpl: FetchImpl = () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new Uint8Array([65]));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        ),
+      );
+    const bug = new RangeError('consumer bug');
+    const err = await fetchStream(
+      LIST,
+      async (body) => {
+        await body.read();
+        throw bug;
+      },
+      { fetchImpl },
+    ).catch((e: unknown) => e);
+    expect(err).toBe(bug);
+    expect(cancelled).toBe(true);
+    expect(getLogEntries().some((e) => e.message === 'Network request failed')).toBe(false);
+  });
+
+  it('the timeout is an inactivity timeout: slow but steady bodies complete', async () => {
+    const { text } = await readAll(streamed(['a', 'b', 'c', 'd'], { delayMs: 30 }), {
+      inactivityTimeoutMs: 60,
+    });
+    expect(text).toBe('abcd');
+    const err = await readAll(streamed(['a'], { stall: true }), { inactivityTimeoutMs: 60 }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ kind: 'timeout' });
+  });
+
+  it('caller abort → aborted', async () => {
+    const controller = new AbortController();
+    const run = readAll(streamed(['a'], { stall: true }), { signal: controller.signal });
+    setTimeout(() => controller.abort(), 10);
+    expect(await run.catch((e: unknown) => e)).toMatchObject({ kind: 'aborted' });
   });
 });

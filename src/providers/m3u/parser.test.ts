@@ -209,7 +209,8 @@ describe('fixtures', () => {
 
   it('malformed.m3u: tolerant, counts what it skips (AC4, AC5)', () => {
     const { entries, stats, firstLine } = parseM3uText(fixture('malformed.m3u'));
-    expect(firstLine).toBe('other');
+    // No #EXTM3U header: starts directly with an entry (accepted by the import, AC4).
+    expect(firstLine).toBe('extinf');
     const names = entries.map((e) => e.name);
     expect(names).toContain('First Entry Without #EXTM3U Header');
     expect(names).toContain('Entry After Missing URL');

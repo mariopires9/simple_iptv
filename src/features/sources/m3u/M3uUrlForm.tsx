@@ -8,7 +8,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
-import type { Source } from '@/core/db';
+import type { Source, SourceStats } from '@/core/db';
 import { log } from '@/core/log';
 import { detectLocale, t } from '@/i18n';
 import { detectXtreamPlaylistUrl, type SyncM3uResult } from '@/providers/m3u';
@@ -17,7 +17,12 @@ import type { TaskProgress } from '@/worker';
 import { MAX_SOURCE_NAME_LENGTH } from '../xtream/saveXtreamSource';
 import { stashXtreamPrefill } from '../xtream/prefill';
 import { TextInput } from '../xtream/TextInput';
-import { runM3uImport, type RunM3uImport } from './runM3uImport';
+import {
+  runM3uImport,
+  settleM3uImport,
+  type RunM3uImport,
+  type SettleM3uImport,
+} from './runM3uImport';
 import { deleteM3uUrlSource, saveM3uUrlSource } from './saveM3uUrlSource';
 import { validateM3uUrlForm, type M3uUrlFormValues } from './validate';
 
@@ -25,12 +30,15 @@ export interface M3uUrlFormDeps {
   saveSource: typeof saveM3uUrlSource;
   deleteSource: typeof deleteM3uUrlSource;
   runImport: RunM3uImport;
+  /** After a cancel: waits for the worker to stop and returns the source row (real outcome). */
+  settleImport: SettleM3uImport;
 }
 
 const defaultDeps: M3uUrlFormDeps = {
   saveSource: saveM3uUrlSource,
   deleteSource: deleteM3uUrlSource,
   runImport: runM3uImport,
+  settleImport: settleM3uImport,
 };
 
 export interface M3uUrlFormProps {
@@ -52,6 +60,12 @@ interface Failure {
   /** Blocked by the browser: point to the local-file import (SRC-06, coming soon). */
   localFile: boolean;
   variant: 'error' | 'offline' | 'empty';
+}
+
+/** What the success panel shows. */
+interface Imported {
+  stats: SourceStats;
+  skipped: number;
 }
 
 interface Progress {
@@ -156,7 +170,7 @@ export function M3uUrlForm({ doneTo, xtreamTo, deps: depsOverride }: M3uUrlFormP
   const [failure, setFailure] = useState<Failure | undefined>();
   /** The saved source while its first import has not succeeded (retry / delete). */
   const [source, setSource] = useState<Source | undefined>();
-  const [success, setSuccess] = useState<SyncM3uResult | undefined>();
+  const [success, setSuccess] = useState<Imported | undefined>();
 
   const urlInput = useRef<HTMLInputElement | null>(null);
   const failureRef = useRef<HTMLDivElement>(null);
@@ -214,19 +228,34 @@ export function M3uUrlForm({ doneTo, xtreamTo, deps: depsOverride }: M3uUrlFormP
     try {
       result = await deps.runImport(target.id, { signal: abort.signal, onProgress });
     } catch (error) {
+      if (abort.signal.aborted) {
+        // The client-side cancel rejects at once; the worker may still be finishing a write phase
+        // (not cancellable). Wait for it and report what really happened.
+        const settled = await deps.settleImport(target.id).catch(() => undefined);
+        if (controller.current === abort) controller.current = undefined;
+        if (!mounted.current) return;
+        setStep(undefined);
+        if (settled?.lastSyncStatus === 'ok') {
+          setSource(undefined);
+          setSuccess({ stats: settled.stats, skipped: 0 });
+        } else {
+          setFailure(errorFailure(error));
+        }
+        return;
+      }
+      if (controller.current === abort) controller.current = undefined;
       if (!mounted.current) return;
       log.warn('M3U import failed', { sourceId: target.id, error });
       setStep(undefined);
       setFailure(errorFailure(error));
       return;
-    } finally {
-      if (controller.current === abort) controller.current = undefined;
     }
+    if (controller.current === abort) controller.current = undefined;
     if (!mounted.current) return;
     setStep(undefined);
     if (result.status === 'ok') {
       setSource(undefined);
-      setSuccess(result);
+      setSuccess({ stats: result.stats, skipped: result.skipped });
     } else {
       setFailure(resultFailure(result));
     }

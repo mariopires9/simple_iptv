@@ -2,6 +2,7 @@
 // followed by the source's own categories in their original order.
 import type { Category } from '@/core/db';
 import { t } from '@/i18n';
+import { UNCATEGORIZED_CATEGORY_ID } from '@/providers/m3u';
 
 export type VirtualCategoryKind = 'favorites' | 'recent' | 'all';
 
@@ -24,6 +25,13 @@ export type LiveCategory =
 
 const VIRTUAL_ORDER: readonly VirtualCategoryKind[] = ['favorites', 'recent', 'all'];
 
+/** Display name: the synthetic M3U "Uncategorized" category is stored nameless and localised here. */
+function categoryName(c: Category): string {
+  return c.externalId === UNCATEGORIZED_CATEGORY_ID && c.name === ''
+    ? t.live.uncategorized
+    : c.name;
+}
+
 /** Virtual categories first, then the source categories sorted by their original `order`. */
 export function buildCategories(sourceCategories: readonly Category[]): LiveCategory[] {
   const virtual: LiveCategory[] = VIRTUAL_ORDER.map((kind) => ({
@@ -33,7 +41,7 @@ export function buildCategories(sourceCategories: readonly Category[]): LiveCate
   }));
   const own: LiveCategory[] = [...sourceCategories]
     .sort((a, b) => a.order - b.order)
-    .map((c) => ({ kind: 'source', id: c.externalId, name: c.name, key: c.key }));
+    .map((c) => ({ kind: 'source', id: c.externalId, name: categoryName(c), key: c.key }));
   return [...virtual, ...own];
 }
 
