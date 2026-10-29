@@ -10,7 +10,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import type { Source, SourceStats } from '@/core/db';
 import { log } from '@/core/log';
-import { numberFormat, t } from '@/i18n';
+import { intlNumberFormat, t } from '@/i18n';
+import { formatBytes } from '@/ui/format';
 import { detectXtreamPlaylistUrl, type SyncM3uResult } from '@/providers/m3u';
 import { describeError, ProgressPanel, StateView, useToast } from '@/ui/state';
 import type { TaskProgress } from '@/worker';
@@ -80,17 +81,7 @@ const EMPTY: M3uUrlFormValues = { url: '', name: '' };
 const NO_PROGRESS: Progress = { bytes: 0, entries: 0, written: 0 };
 
 // Active locale at call time (a language switch applies at once, UX-06 AC5).
-const integer = { format: (value: number) => numberFormat().format(value) };
-const decimal = {
-  format: (value: number) => numberFormat({ maximumFractionDigits: 1 }).format(value),
-};
-
-/** `512 KB`, `12.3 MB`. */
-export function formatBytes(bytes: number): string {
-  const units = t.sources.addM3uUrl.units;
-  if (bytes < 1024 * 1024) return units.kb(integer.format(Math.ceil(bytes / 1024)));
-  return units.mb(decimal.format(bytes / (1024 * 1024)));
-}
+const integer = intlNumberFormat();
 
 function resultFailure(result: SyncM3uResult): Failure {
   const text = t.sources;
@@ -335,9 +326,9 @@ export function M3uUrlForm({ doneTo, xtreamTo, deps: depsOverride }: M3uUrlFormP
   if (success) {
     const r = text.result;
     const lines = [
-      r.live(integer.format(success.stats.live)),
-      r.movies(integer.format(success.stats.movies)),
-      r.series(integer.format(success.stats.series)),
+      r.live(integer().format(success.stats.live)),
+      r.movies(integer().format(success.stats.movies)),
+      r.series(integer().format(success.stats.series)),
     ];
     return (
       <Stack spacing={2} component="section" aria-labelledby="m3u-success-title">
@@ -359,7 +350,7 @@ export function M3uUrlForm({ doneTo, xtreamTo, deps: depsOverride }: M3uUrlFormP
         </Box>
         {success.skipped > 0 && (
           <Typography color="text.secondary">
-            {r.skipped(integer.format(success.skipped))}
+            {r.skipped(integer().format(success.skipped))}
           </Typography>
         )}
         <Button variant="contained" size="large" onClick={finish} sx={{ minHeight: 44 }}>
@@ -376,7 +367,7 @@ export function M3uUrlForm({ doneTo, xtreamTo, deps: depsOverride }: M3uUrlFormP
       progress.total !== undefined
         ? p.downloadedOf(formatBytes(progress.bytes), formatBytes(progress.total))
         : p.downloaded(formatBytes(progress.bytes)),
-      p.entries(integer.format(progress.entries)),
+      p.entries(integer().format(progress.entries)),
     );
   }
 

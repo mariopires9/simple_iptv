@@ -57,6 +57,27 @@ function SwitchRow({
  * active list's preferred live format (Xtream only). Each change is saved at once; a failed save
  * puts the control back and says so.
  */
+/** One field of the section's state: how to read it and how to write it back. */
+interface SettingField<V> {
+  get: (settings: PlaybackSettings) => V;
+  set: (settings: PlaybackSettings, value: V) => PlaybackSettings;
+}
+
+const FULLSCREEN: SettingField<boolean> = {
+  get: (s) => s.fullscreenOnLandscape,
+  set: (s, fullscreenOnLandscape) => ({ ...s, fullscreenOnLandscape }),
+};
+const PLAY_LAST: SettingField<boolean> = {
+  get: (s) => s.playLastChannelOnOpen,
+  set: (s, playLastChannelOnOpen) => ({ ...s, playLastChannelOnOpen }),
+};
+/** The active list's live format (`undefined` without a list: nothing to set). */
+const LIVE_FORMAT: SettingField<LiveFormat | undefined> = {
+  get: (s) => s.activeList?.liveFormat,
+  set: (s, liveFormat) =>
+    s.activeList && liveFormat ? { ...s, activeList: { ...s.activeList, liveFormat } } : s,
+};
+
 export function PlaybackSection() {
   const text = t.settings.playback;
   const toast = useToast();
@@ -79,13 +100,18 @@ export function PlaybackSection() {
   if (!settings)
     return <SettingsSection title={t.settings.sections.playback}>{null}</SettingsSection>;
 
-  /** Optimistic update; reverted (with a toast) if the save fails. */
-  const change = (next: PlaybackSettings, save: () => Promise<void>) => {
-    const previous = settings;
-    setSettings(next);
+  /**
+   * Optimistic update of one field; if its save fails, only that field goes back (and only if it
+   * still holds the value that failed: a later change of it, or of another field, is kept).
+   */
+  const change = <V,>(field: SettingField<V>, value: V, save: () => Promise<void>) => {
+    const previous = field.get(settings);
+    setSettings((current) => current && field.set(current, value));
     save().catch((error: unknown) => {
       log.warn('settings: a playback setting could not be saved', { error });
-      setSettings(previous);
+      setSettings((current) =>
+        current && field.get(current) === value ? field.set(current, previous) : current,
+      );
       toast.show({ message: text.saveError, severity: 'error' });
     });
   };
@@ -104,9 +130,7 @@ export function PlaybackSection() {
           hint={text.fullscreenOnLandscapeHint}
           checked={settings.fullscreenOnLandscape}
           onChange={(checked) =>
-            change({ ...settings, fullscreenOnLandscape: checked }, () =>
-              saveFullscreenOnLandscape(checked),
-            )
+            change(FULLSCREEN, checked, () => saveFullscreenOnLandscape(checked))
           }
         />
         <SwitchRow
@@ -114,9 +138,7 @@ export function PlaybackSection() {
           hint={text.playLastChannelHint}
           checked={settings.playLastChannelOnOpen}
           onChange={(checked) =>
-            change({ ...settings, playLastChannelOnOpen: checked }, () =>
-              savePlayLastChannelOnOpen(checked),
-            )
+            change(PLAY_LAST, checked, () => savePlayLastChannelOnOpen(checked))
           }
         />
         <FormControl disabled={!xtream}>
@@ -128,9 +150,7 @@ export function PlaybackSection() {
             onChange={(event) => {
               if (!xtream) return;
               const liveFormat = event.target.value as LiveFormat;
-              change({ ...settings, activeList: { ...xtream, liveFormat } }, () =>
-                saveLiveFormat(xtream.id, liveFormat),
-              );
+              change(LIVE_FORMAT, liveFormat, () => saveLiveFormat(xtream.id, liveFormat));
             }}
           >
             {LIVE_FORMATS.map((format) => (

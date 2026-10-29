@@ -4,7 +4,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { DelayedLoading, StateView } from '@/ui/state';
@@ -34,14 +34,30 @@ export function AboutSection({ version = APP_VERSION, load = loadLicenses }: Abo
   const listId = useId();
   const [licenses, setLicenses] = useState<LicensesState>({ status: 'closed' });
   const open = licenses.status !== 'closed';
+  /** Bumped on every open, close and unmount: a late answer of an older request is ignored. */
+  const request = useRef(0);
+  useEffect(
+    () => () => {
+      request.current++;
+    },
+    [],
+  );
+
+  const close = () => {
+    request.current++;
+    setLicenses({ status: 'closed' });
+  };
 
   const fetchList = () => {
+    const id = ++request.current;
     setLicenses({ status: 'loading' });
     load().then(
-      (packages) => setLicenses({ status: 'ready', packages }),
+      (packages) => {
+        if (id === request.current) setLicenses({ status: 'ready', packages });
+      },
       (error: unknown) => {
         log.warn('settings: the licenses list could not be loaded', { error });
-        setLicenses({ status: 'error' });
+        if (id === request.current) setLicenses({ status: 'error' });
       },
     );
   };
@@ -62,7 +78,7 @@ export function AboutSection({ version = APP_VERSION, load = loadLicenses }: Abo
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
             endIcon={open ? <ExpandLessRounded /> : <ExpandMoreRounded />}
-            onClick={() => (open ? setLicenses({ status: 'closed' }) : fetchList())}
+            onClick={() => (open ? close() : fetchList())}
             sx={{ px: 0 }}
           >
             {text.licenses}

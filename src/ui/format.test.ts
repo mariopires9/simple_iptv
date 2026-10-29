@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { activeLocale } from '@/i18n';
-import { formatPercent } from './format';
+import { afterEach, describe, expect, it } from 'vitest';
+import { activeLocale, setLocale } from '@/i18n';
+import { formatBytes, formatPercent } from './format';
 
 describe('formatPercent', () => {
   it('formats a 0–1 fraction as a whole percentage per locale', () => {
@@ -17,5 +17,31 @@ describe('formatPercent', () => {
     expect(formatPercent(1.7, 'en')).toBe('100%');
     expect(formatPercent(-1, 'en')).toBe('0%');
     expect(formatPercent(Number.NaN, 'en')).toBe('0%');
+  });
+});
+
+describe('formatBytes (shared by Settings › Storage and the M3U import)', () => {
+  afterEach(() => setLocale('en'));
+
+  it('decimal (SI) units with one decimal, localised by Intl', () => {
+    expect(formatBytes(512)).toBe('512 byte');
+    expect(formatBytes(1_500)).toBe('1.5 kB');
+    expect(formatBytes(12_300_000)).toBe('12.3 MB');
+    expect(formatBytes(2_340_000_000)).toBe('2.3 GB');
+    expect(formatBytes(999_960)).toBe('1 MB');
+    expect(formatBytes(-5)).toBe('0 byte');
+    expect(formatBytes(Number.NaN)).toBe('0 byte');
+  });
+
+  it('follows the active locale', async () => {
+    await setLocale('pt-PT');
+    const expected = new Intl.NumberFormat('pt-PT', {
+      style: 'unit',
+      unit: 'megabyte',
+      unitDisplay: 'short',
+      maximumFractionDigits: 1,
+    }).format(12.3);
+    expect(formatBytes(12_300_000)).toBe(expected);
+    expect(formatBytes(12_300_000, 'en')).toBe('12.3 MB');
   });
 });

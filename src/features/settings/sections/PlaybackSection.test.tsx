@@ -74,6 +74,29 @@ describe('PlaybackSection (UX-04 AC1)', () => {
     expect(playLast).not.toBeChecked();
   });
 
+  it('a failed save rolls back only its own field (a concurrent change is kept)', async () => {
+    const user = userEvent.setup();
+    renderSettings(<PlaybackSection />);
+    const fullscreen = await screen.findByRole('switch', { name: text.fullscreenOnLandscape });
+    const playLast = screen.getByRole('switch', { name: text.playLastChannel });
+    let rejectFullscreen!: (error: Error) => void;
+    const original = settingsRepo.set.bind(settingsRepo);
+    vi.spyOn(settingsRepo, 'set').mockImplementation((key, value) =>
+      key === 'fullscreenOnLandscape'
+        ? new Promise<void>((_resolve, reject) => {
+            rejectFullscreen = reject;
+          })
+        : original(key, value),
+    );
+    await user.click(fullscreen); // on → off, save pending
+    await user.click(playLast); // off → on, saved
+    await waitFor(async () => expect(await settingsRepo.get('playLastChannelOnOpen')).toBe(true));
+    rejectFullscreen(new Error('quota'));
+    expect((await screen.findAllByText(text.saveError)).length).toBeGreaterThan(0);
+    expect(fullscreen).toBeChecked(); // rolled back
+    expect(playLast).toBeChecked(); // kept
+  });
+
   it('live format: edits the active Xtream list (consumed by resolveStream)', async () => {
     await sourcesRepo.put(source('m3u', 'm3u-url', 1));
     await sourcesRepo.put(source('x', 'xtream', 2));

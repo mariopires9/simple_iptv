@@ -48,17 +48,22 @@ describe('getStorageStatus (PWA-05 AC1)', () => {
         persisted: () => Promise.resolve(true),
         estimate: () => Promise.resolve({ usage: 1234, quota: 5678 }),
       }),
-    ).toEqual({ persisted: true, usage: 1234, quota: 5678 });
+    ).toEqual({ persisted: true, canPersist: false, usage: 1234, quota: 5678 });
   });
 
   it('tolerates missing or failing APIs', async () => {
-    expect(await getStorageStatus(undefined)).toEqual({ persisted: undefined });
+    expect(await getStorageStatus(undefined)).toEqual({ persisted: undefined, canPersist: false });
     expect(
       await getStorageStatus({
         persisted: () => Promise.reject(new Error('x')),
         estimate: () => Promise.resolve({}),
       }),
-    ).toEqual({ persisted: undefined });
+    ).toEqual({ persisted: undefined, canPersist: false });
+    // Older Safari: persist() without persisted() — the app can still ask.
+    expect(await getStorageStatus({ persist: () => Promise.resolve(true) })).toEqual({
+      persisted: undefined,
+      canPersist: true,
+    });
   });
 });
 

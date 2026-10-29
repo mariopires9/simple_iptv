@@ -3,7 +3,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   getCapabilities,
   getStorageStatus,
@@ -11,26 +11,10 @@ import {
   requestPersistentStorage,
   type StorageStatus,
 } from '@/core/platform';
-import { numberFormat, t } from '@/i18n';
+import { log } from '@/core/log';
+import { t } from '@/i18n';
+import { formatBytes } from '@/ui/format';
 import { SettingsSection } from '../SettingsSection';
-
-const UNITS = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const;
-
-/** `12.3 MB` in the active locale (decimal units, like the browsers' own storage settings). */
-export function formatBytes(bytes: number): string {
-  let value = Math.max(0, bytes);
-  let unit = 0;
-  while (value >= 1000 && unit < UNITS.length - 1) {
-    value /= 1000;
-    unit++;
-  }
-  return numberFormat({
-    style: 'unit',
-    unit: UNITS[unit],
-    unitDisplay: 'short',
-    maximumFractionDigits: unit === 0 ? 0 : 1,
-  }).format(value);
-}
 
 /** Injectable platform checks (tests). */
 export interface StorageSectionProps {
@@ -53,32 +37,41 @@ export function StorageSection({
 }: StorageSectionProps) {
   const text = t.settings.storage;
   const [status, setStatus] = useState<StorageStatus>();
-  const [denied, setDenied] = useState(false);
+  /** The browser's last answer to "Ask again" (when `persisted()` itself cannot tell). */
+  const [answer, setAnswer] = useState<boolean>();
   const [busy, setBusy] = useState(false);
   const [iosWarning] = useState(() => isIOS() && !isInstalled());
+  const mounted = useRef(true);
 
-  const refresh = useCallback(() => loadStatus().then(setStatus), [loadStatus]);
   useEffect(() => {
-    let active = true;
+    mounted.current = true;
     loadStatus().then((next) => {
-      if (active) setStatus(next);
+      if (mounted.current) setStatus(next);
     });
     return () => {
-      active = false;
+      mounted.current = false;
     };
   }, [loadStatus]);
 
   const request = async () => {
     setBusy(true);
-    const granted = await requestPersist();
-    setDenied(granted === false);
-    await refresh();
-    setBusy(false);
+    try {
+      const granted = await requestPersist();
+      const next = await loadStatus();
+      if (!mounted.current) return;
+      setAnswer(granted);
+      setStatus(next);
+    } catch (error) {
+      log.warn('settings: the storage status could not be refreshed', { error });
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
   };
 
+  const persisted = status?.persisted ?? answer;
   let persistedText = text.persistedUnknown;
-  if (status?.persisted === true) persistedText = text.persistedOn;
-  else if (status?.persisted === false) persistedText = text.persistedOff;
+  if (persisted === true) persistedText = text.persistedOn;
+  else if (persisted === false) persistedText = text.persistedOff;
 
   let usageText = text.usageUnknown;
   if (status?.usage !== undefined) {
@@ -99,12 +92,13 @@ export function StorageSection({
                 {text.persisted}
               </Typography>
               <Typography color="text.secondary">{persistedText}</Typography>
-              {status.persisted === false && (
+              {/* Also when `persisted()` is missing but `persist()` exists (older Safari). */}
+              {persisted !== true && status.canPersist && (
                 <Button sx={{ mt: 1 }} variant="outlined" onClick={request} disabled={busy}>
                   {text.request}
                 </Button>
               )}
-              {denied && (
+              {answer === false && (
                 <Typography role="status" color="text.secondary" sx={{ mt: 1 }}>
                   {text.requestDenied}
                 </Typography>

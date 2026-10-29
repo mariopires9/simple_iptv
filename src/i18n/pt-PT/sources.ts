@@ -47,10 +47,6 @@ export const sources = {
       downloadedOf: (size: string, total: string) => `${size} de ${total} descarregados`,
       entries: (count: string) => `${count} entradas lidas`,
     },
-    units: {
-      kb: (n: string) => `${n} KB`,
-      mb: (n: string) => `${n} MB`,
-    },
     result: {
       title: 'Lista importada',
       live: (n: string) => `Canais: ${n}`,

@@ -43,7 +43,7 @@ export const settings = {
     persistedOff:
       'Inativo: o navegador pode apagar os dados da aplicação quando o dispositivo tiver pouco espaço.',
     persistedUnknown: 'Este navegador não indica se os dados são mantidos.',
-    request: 'Ativar',
+    request: 'Pedir novamente',
     requestDenied: 'O navegador não o permitiu. Instalar a aplicação costuma ajudar.',
     usage: 'Espaço utilizado',
     usageOf: (used: string, quota: string) => `${used} de ${quota}`,

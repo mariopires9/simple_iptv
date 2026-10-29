@@ -13,6 +13,8 @@ export interface StorageManagerLike {
 /** `persisted`: `undefined` when the browser cannot tell (no `persisted()`, or it failed). */
 export interface StorageStatus {
   persisted: boolean | undefined;
+  /** `persist()` exists: the app can ask (again), even where `persisted()` is missing. */
+  canPersist: boolean;
   /** Bytes used by this origin (`estimate().usage`). */
   usage?: number;
   /** Bytes this origin may use (`estimate().quota`). */
@@ -52,7 +54,7 @@ export async function getStorageStatus(
       ? storage.estimate().catch(() => undefined)
       : Promise.resolve(undefined),
   ]);
-  const status: StorageStatus = { persisted };
+  const status: StorageStatus = { persisted, canPersist: typeof storage?.persist === 'function' };
   if (typeof estimate?.usage === 'number') status.usage = estimate.usage;
   if (typeof estimate?.quota === 'number') status.quota = estimate.quota;
   return status;

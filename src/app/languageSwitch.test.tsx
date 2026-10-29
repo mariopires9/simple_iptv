@@ -2,12 +2,12 @@
 // shell and screen — without a reload, keeps the route and the focus, updates <html lang> and
 // persists the choice.
 import 'fake-indexeddb/auto';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { settingsRepo, wipeAll } from '@/core/db';
 import { invalidateSourcesPresence, setSourcesPresent } from '@/features/sources';
-import { resetLanguagePreferenceForTests, setLocale, t } from '@/i18n';
+import { holdLocaleSwitch, resetLanguagePreferenceForTests, setLocale, t } from '@/i18n';
 import { messages } from '@/i18n/catalogs';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { App } from './App';
@@ -21,6 +21,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   invalidateSourcesPresence();
   resetAppRouter();
   media.restore();
@@ -67,9 +68,14 @@ describe('UX-06 — switching the interface language in Settings', () => {
     await waitFor(async () => expect(await settingsRepo.get('locale')).toBe('en'));
   });
 
-  it('a stored language is applied at start-up', async () => {
+  it('a stored language is applied before the first render (no English screen, no re-mount)', async () => {
     await settingsRepo.set('locale', 'pt-PT');
     window.location.hash = '#/settings';
+    const headings: string[] = [];
+    const observer = new MutationObserver(() => {
+      for (const h1 of document.querySelectorAll('h1')) headings.push(h1.textContent ?? '');
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     render(<App />);
     await screen.findByRole('heading', {
       level: 1,
@@ -79,6 +85,62 @@ describe('UX-06 — switching the interface language in Settings', () => {
     expect(
       screen.getByRole('radio', { name: messages('pt-PT').settings.language.names['pt-PT'] }),
     ).toBeChecked();
+    observer.disconnect();
+    expect(headings).not.toContain(messages('en').routes.screens.settings.title);
+  });
+
+  it('a browser language change (System) does not re-mount the screen; it applies on navigation', async () => {
+    const languages = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US']);
+    const user = userEvent.setup();
+    window.location.hash = '#/settings';
+    render(<App />);
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: messages('en').routes.screens.settings.title,
+    });
+    // Something typed or toggled on screen must survive: the heading node itself is kept.
+    languages.mockReturnValue(['pt-PT']);
+    act(() => {
+      window.dispatchEvent(new Event('languagechange'));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(heading).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('en');
+
+    await user.click(screen.getAllByRole('link', { name: messages('en').nav.favorites })[0]!);
+    await screen.findByRole('heading', {
+      level: 1,
+      name: messages('pt-PT').routes.screens.favorites.title,
+    });
+    expect(document.documentElement.lang).toBe('pt-PT');
+  });
+
+  it('while a player holds the locale, a browser change waits even across navigation', async () => {
+    const languages = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US']);
+    const user = userEvent.setup();
+    window.location.hash = '#/settings';
+    render(<App />);
+    await screen.findByRole('heading', {
+      level: 1,
+      name: messages('en').routes.screens.settings.title,
+    });
+    const release = holdLocaleSwitch(); // what a mounted PlayerView does
+    languages.mockReturnValue(['pt-PT']);
+    act(() => {
+      window.dispatchEvent(new Event('languagechange'));
+    });
+    await user.click(screen.getAllByRole('link', { name: messages('en').nav.favorites })[0]!);
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: messages('en').routes.screens.favorites.title,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(heading).toBeInTheDocument();
+    act(() => release()); // playback ended
+    await screen.findByRole('heading', {
+      level: 1,
+      name: messages('pt-PT').routes.screens.favorites.title,
+    });
   });
 
   it('"System" names the language it resolves to', async () => {

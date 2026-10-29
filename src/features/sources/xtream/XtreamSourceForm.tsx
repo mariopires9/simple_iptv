@@ -17,7 +17,7 @@ import { useNavigate } from 'react-router';
 import type { Source } from '@/core/db';
 import { log } from '@/core/log';
 import type { FetchImpl } from '@/core/net';
-import { dateTimeFormat, numberFormat as activeNumberFormat, t } from '@/i18n';
+import { intlDateTimeFormat, intlNumberFormat, t } from '@/i18n';
 import {
   normalizeServerUrl,
   testConnection,
@@ -558,10 +558,8 @@ function FixList({ fixes }: { fixes: readonly ConnectionFixCode[] }) {
 }
 
 // Active locale at call time (a language switch applies at once, UX-06 AC5).
-const dateFormat = {
-  format: (epochMs: number) => dateTimeFormat({ dateStyle: 'long' }).format(epochMs),
-};
-const numberFormat = { format: (value: number) => activeNumberFormat().format(value) };
+const longDate = intlDateTimeFormat({ dateStyle: 'long' });
+const integer = intlNumberFormat();
 
 /** Account lines shown after a successful test (status, expiry, connections). */
 export function accountLines(account: ConnectionAccount | undefined): string[] {
@@ -569,14 +567,14 @@ export function accountLines(account: ConnectionAccount | undefined): string[] {
   const r = t.sources.result;
   const lines = [r.status(account.status)];
   lines.push(
-    account.expiresAt !== undefined ? r.expires(dateFormat.format(account.expiresAt)) : r.noExpiry,
+    account.expiresAt !== undefined ? r.expires(longDate().format(account.expiresAt)) : r.noExpiry,
   );
   const { activeConnections: active, maxConnections: max } = account;
   if (max !== undefined && max > 0) {
     lines.push(
       active !== undefined
-        ? r.connections(numberFormat.format(active), numberFormat.format(max))
-        : r.maxConnections(numberFormat.format(max)),
+        ? r.connections(integer().format(active), integer().format(max))
+        : r.maxConnections(integer().format(max)),
     );
   }
   return lines;

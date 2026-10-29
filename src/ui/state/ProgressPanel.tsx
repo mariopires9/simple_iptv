@@ -5,7 +5,7 @@ import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { useEffect, useId, useRef } from 'react';
-import { numberFormat as activeNumberFormat, t } from '@/i18n';
+import { intlNumberFormat, t } from '@/i18n';
 import { visuallyHidden } from './visuallyHidden';
 
 export interface ProgressPanelProps {
@@ -22,7 +22,7 @@ export interface ProgressPanelProps {
 }
 
 // Active locale at call time (UX-06 AC5).
-const numberFormat = { format: (value: number) => activeNumberFormat().format(value) };
+const integer = intlNumberFormat();
 
 export function ProgressPanel({ phase, count, total, onCancel, cancelling }: ProgressPanelProps) {
   const phaseId = useId();
@@ -36,8 +36,8 @@ export function ProgressPanel({ phase, count, total, onCancel, cancelling }: Pro
   const percent = determinate ? Math.min(100, Math.max(0, (count / total) * 100)) : undefined;
   let countText: string | undefined;
   if (determinate)
-    countText = t.state.progress.countOf(numberFormat.format(count), numberFormat.format(total));
-  else if (count !== undefined) countText = t.state.progress.count(numberFormat.format(count));
+    countText = t.state.progress.countOf(integer().format(count), integer().format(total));
+  else if (count !== undefined) countText = t.state.progress.count(integer().format(count));
 
   return (
     <Box

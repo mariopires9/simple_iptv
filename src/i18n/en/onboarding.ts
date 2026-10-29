@@ -1,4 +1,4 @@
-// First-run onboarding (UX-01, docs/UX_UI.md §4.1) and the Privacy placeholder it links to.
+// First-run onboarding (UX-01, docs/UX_UI.md §4.1).
 export const onboarding = {
   title: 'Welcome to Simple IPTV',
   intro: 'Connect your IPTV subscription to start watching.',
@@ -15,5 +15,4 @@ export const onboarding = {
   note: "We don't include channels · your data stays on this device.",
   legal: 'Use only sources and content you are authorized to access.',
   learnMore: 'Learn more',
-  /** Placeholder for Settings › Privacy and data (filled in by UX-04). */
 };

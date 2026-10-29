@@ -6,11 +6,14 @@ import { settingsRepo, wipeAll } from '@/core/db';
 import { messages } from './catalogs';
 import {
   activeLocale,
-  dateTimeFormat,
+  applyPendingLocale,
+  hasPendingLocale,
+  holdLocaleSwitch,
   installLanguagePreference,
+  intlDateTimeFormat,
+  intlNumberFormat,
   LANGUAGE_CACHE_KEY,
   languagePreference,
-  numberFormat,
   resetLanguagePreferenceForTests,
   restoreLanguagePreference,
   setLanguagePreference,
@@ -104,8 +107,10 @@ describe('UX-06 AC2/AC3 — choosing a language', () => {
   });
 
   it('a failed save keeps the switch (and the mirror)', async () => {
-    vi.spyOn(settingsRepo, 'set').mockRejectedValue(new Error('quota'));
-    await setLanguagePreference('pt-PT');
+    const db = await import('@/core/db'); // the instance i18n loads on demand
+    vi.spyOn(db.settingsRepo, 'set').mockRejectedValue(new Error('quota'));
+    expect(await setLanguagePreference('pt-PT')).toBe('switched');
+    expect(await settingsRepo.get('locale')).toBeUndefined();
     expect(activeLocale()).toBe('pt-PT');
     expect(localStorage.getItem(LANGUAGE_CACHE_KEY)).toBe('pt-PT');
   });
@@ -119,13 +124,34 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
     expect(languagePreference()).toBe('pt-PT');
   });
 
-  it('no stored value means System', async () => {
+  it('no stored value and no mirror means System', async () => {
     browserLanguages('en-GB');
-    localStorage.setItem(LANGUAGE_CACHE_KEY, 'pt-PT'); // stale mirror
     await restoreLanguagePreference();
     expect(languagePreference()).toBe('system');
     expect(activeLocale()).toBe('en');
-    expect(localStorage.getItem(LANGUAGE_CACHE_KEY)).toBeNull();
+    expect(await settingsRepo.get('locale')).toBeUndefined();
+  });
+
+  it('failed save, then restart: the mirror wins and is written back (self-heal)', async () => {
+    browserLanguages('en-GB');
+    // The module instance i18n loads on demand (not this file's static import).
+    const db = await import('@/core/db');
+    const set = vi.spyOn(db.settingsRepo, 'set').mockRejectedValueOnce(new Error('quota'));
+    await setLanguagePreference('pt-PT');
+    expect(await settingsRepo.get('locale')).toBeUndefined();
+    set.mockRestore();
+
+    // "Restart": a fresh module reads the mirror for the first paint…
+    vi.resetModules();
+    const fresh = await import('./index');
+    expect(fresh.activeLocale()).toBe('pt-PT');
+    // …and the start-up restore keeps it instead of falling back to System, and saves it.
+    await fresh.restoreLanguagePreference();
+    expect(fresh.languagePreference()).toBe('pt-PT');
+    expect(fresh.activeLocale()).toBe('pt-PT');
+    expect(localStorage.getItem(LANGUAGE_CACHE_KEY)).toBe('pt-PT');
+    expect(await settingsRepo.get('locale')).toBe('pt-PT');
+    fresh.resetLanguagePreferenceForTests();
   });
 
   it('a choice made while the stored value loads is not overridden', async () => {
@@ -137,13 +163,56 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
     expect(languagePreference()).toBe('en');
   });
 
-  it('with System, a browser language change applies at once', async () => {
+  it('with System, a browser language change waits for a safe point (navigation)', async () => {
     const languages = browserLanguages('en-US');
     const cleanup = installLanguagePreference();
-    await vi.waitFor(() => expect(languagePreference()).toBe('system'));
     languages.mockReturnValue(['pt-PT']);
     window.dispatchEvent(new Event('languagechange'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(activeLocale()).toBe('en'); // no switch (nor re-mount) on its own
+    expect(hasPendingLocale()).toBe(true);
+    applyPendingLocale();
     await vi.waitFor(() => expect(activeLocale()).toBe('pt-PT'));
+    expect(hasPendingLocale()).toBe(false);
+    cleanup();
+  });
+
+  it('a held locale (player mounted) defers the switch until the last release', async () => {
+    const languages = browserLanguages('en-US');
+    const cleanup = installLanguagePreference();
+    const releaseA = holdLocaleSwitch();
+    const releaseB = holdLocaleSwitch();
+    languages.mockReturnValue(['pt-PT']);
+    window.dispatchEvent(new Event('languagechange'));
+    applyPendingLocale(); // a navigation during playback
+    releaseA();
+    releaseA(); // idempotent
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(activeLocale()).toBe('en');
+    releaseB(); // playback ended
+    await vi.waitFor(() => expect(activeLocale()).toBe('pt-PT'));
+    cleanup();
+  });
+
+  it('a browser change back to the active language leaves nothing pending', async () => {
+    const languages = browserLanguages('en-US');
+    const cleanup = installLanguagePreference();
+    languages.mockReturnValue(['pt-PT']);
+    window.dispatchEvent(new Event('languagechange'));
+    languages.mockReturnValue(['en-GB']);
+    window.dispatchEvent(new Event('languagechange'));
+    expect(hasPendingLocale()).toBe(false);
+    cleanup();
+  });
+
+  it('an explicit choice resolves with the outcome and drops a pending browser change', async () => {
+    const languages = browserLanguages('en-US');
+    const cleanup = installLanguagePreference();
+    languages.mockReturnValue(['pt-PT']);
+    window.dispatchEvent(new Event('languagechange'));
+    expect(await setLanguagePreference('en')).toBe('unchanged');
+    expect(hasPendingLocale()).toBe(false);
+    expect(await setLanguagePreference('pt-PT')).toBe('switched');
     cleanup();
   });
 
@@ -153,6 +222,8 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
     const cleanup = installLanguagePreference();
     languages.mockReturnValue(['pt-PT']);
     window.dispatchEvent(new Event('languagechange'));
+    expect(hasPendingLocale()).toBe(false);
+    applyPendingLocale();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(activeLocale()).toBe('en');
     cleanup();
@@ -160,13 +231,16 @@ describe('UX-06 AC2 — the stored preference is the source of truth', () => {
 });
 
 describe('UX-06 AC5 — Intl formatting follows the active locale', () => {
-  it('numbers and dates switch with the language', async () => {
+  it('numbers and dates switch with the language; instances are cached per locale', async () => {
     const at = Date.UTC(2026, 0, 31, 12);
-    const long = { dateStyle: 'long', timeZone: 'UTC' } as const;
-    expect(numberFormat().format(1234.5)).toBe('1,234.5');
-    expect(dateTimeFormat(long).format(at)).toBe('January 31, 2026');
+    const numbers = intlNumberFormat();
+    const longDate = intlDateTimeFormat({ dateStyle: 'long', timeZone: 'UTC' });
+    expect(numbers().format(1234.5)).toBe('1,234.5');
+    expect(longDate().format(at)).toBe('January 31, 2026');
+    expect(numbers()).toBe(numbers());
     await setLanguagePreference('pt-PT');
-    expect(numberFormat().format(1234.5)).toBe(new Intl.NumberFormat('pt-PT').format(1234.5));
-    expect(dateTimeFormat(long).format(at)).toBe('31 de janeiro de 2026');
+    expect(numbers().format(1234.5)).toBe(new Intl.NumberFormat('pt-PT').format(1234.5));
+    expect(longDate().format(at)).toBe('31 de janeiro de 2026');
+    expect(numbers('en').format(1234.5)).toBe('1,234.5');
   });
 });

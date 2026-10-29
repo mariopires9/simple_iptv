@@ -43,7 +43,7 @@ export const settings = {
     persistedOn: 'On: the browser will not delete the app’s data to free up space.',
     persistedOff: 'Off: the browser may delete the app’s data when the device runs low on space.',
     persistedUnknown: 'This browser does not report whether the data is kept.',
-    request: 'Turn on',
+    request: 'Ask again',
     requestDenied: 'The browser did not allow it. Installing the app usually helps.',
     usage: 'Space used',
     usageOf: (used: string, quota: string) => `${used} of ${quota}`,

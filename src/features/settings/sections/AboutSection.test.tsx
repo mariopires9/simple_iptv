@@ -1,7 +1,7 @@
 // UX-04 AC1–AC3 — Settings › About: version, licenses generated at build time (loaded only when
 // opened) and the legal notice.
 import 'fake-indexeddb/auto';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@/i18n';
@@ -56,6 +56,29 @@ describe('AboutSection', () => {
 
     await user.click(toggle);
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  it('AC2: a late answer after closing (or unmounting) is ignored', async () => {
+    const user = userEvent.setup();
+    let resolve!: (packages: LicenseEntry[]) => void;
+    const load = vi.fn(
+      () =>
+        new Promise<LicenseEntry[]>((res) => {
+          resolve = res;
+        }),
+    );
+    const view = renderSettings(<AboutSection load={load} />);
+    const toggle = screen.getByRole('button', { name: text.licenses });
+    await user.click(toggle); // open: loading
+    await user.click(toggle); // closed before the answer
+    await act(async () => resolve(PACKAGES));
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+
+    await user.click(toggle); // a new request
+    view.unmount();
+    await act(async () => resolve(PACKAGES)); // no update on an unmounted section
+    expect(load).toHaveBeenCalledTimes(2);
   });
 
   it('AC2: a missing list (plugin not registered) degrades to a message with a retry', async () => {

@@ -14,14 +14,17 @@ import {
   subscribeLanguagePreference,
   t,
   type LanguagePreference,
+  type Locale,
 } from '@/i18n';
 import { SettingsSection } from '../SettingsSection';
 
 /**
- * A switch re-mounts the screen in the new language (src/app/App.tsx): the remounted section
- * puts the focus back on the chosen option, so keyboard and screen reader users keep their place.
+ * A switch re-mounts the screen in the new language (src/app/App.tsx), so React state does not
+ * survive it: this hand-off tells the re-mounted section to put the focus back on the chosen
+ * option (keyboard and screen reader users keep their place). It names the locale it waits for,
+ * so it only applies to that re-mount, and is dropped when the switch fails or is superseded.
  */
-let refocusAfterSwitch = false;
+let refocusFor: Locale | undefined;
 
 /** Settings › Language (UX-06 AC2): System / English / Português, applied at once and saved. */
 export function LanguageSection() {
@@ -31,8 +34,8 @@ export function LanguageSection() {
   const text = t.settings.language;
 
   useEffect(() => {
-    if (!refocusAfterSwitch) return;
-    refocusAfterSwitch = false;
+    if (refocusFor === undefined || refocusFor !== activeLocale()) return;
+    refocusFor = undefined;
     groupRef.current?.querySelector<HTMLInputElement>('input:checked')?.focus();
   }, []);
 
@@ -54,8 +57,12 @@ export function LanguageSection() {
             const next = event.target.value;
             if (!isLanguagePreference(next)) return;
             // Only a locale change re-mounts (e.g. not English → System when System is English).
-            refocusAfterSwitch = detectLocale(next) !== activeLocale();
-            void setLanguagePreference(next);
+            const target = detectLocale(next);
+            refocusFor = target !== activeLocale() ? target : undefined;
+            void setLanguagePreference(next).then((outcome) => {
+              // Failed or superseded: no re-mount in that locale will consume it.
+              if (outcome !== 'switched' && refocusFor === target) refocusFor = undefined;
+            });
           }}
         >
           {LANGUAGE_PREFERENCES.map((option) => (

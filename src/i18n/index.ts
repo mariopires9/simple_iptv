@@ -228,13 +228,25 @@ function publishPreference(next: LanguagePreference): void {
   for (const listener of [...preferenceListeners]) listener();
 }
 
+/** Outcome of applying a preference: the switch result, or `failed` (strings unchanged). */
+export type LanguageSwitchOutcome = LocaleSwitchResult | 'failed';
+
 /** Applies the locale a preference resolves to; a switch failure keeps the current strings. */
-async function applyPreference(next: LanguagePreference): Promise<void> {
+async function applyPreference(next: LanguagePreference): Promise<LanguageSwitchOutcome> {
   try {
-    await setLocale(detectLocale(next));
+    return await setLocale(detectLocale(next));
   } catch (error) {
     log.warn('i18n: the interface language could not be switched', { error });
+    return 'failed';
   }
+}
+
+function persistPreference(next: LanguagePreference): Promise<void> {
+  return loadSettingsRepo()
+    .then((settingsRepo) => settingsRepo.set('locale', next))
+    .catch((error: unknown) => {
+      log.warn('i18n: the language preference could not be saved', { error });
+    });
 }
 
 /** What the user chose (`system` until a choice is known). */
@@ -253,22 +265,24 @@ export function subscribeLanguagePreference(listener: () => void): () => void {
 /**
  * The user picks a language (Settings › Language): every string switches at once (the app
  * re-renders on `subscribeLocale`), and the choice is saved. A failed save is only logged: the
- * localStorage mirror keeps it for this browser.
+ * localStorage mirror keeps it, and the next start-up writes it back (`restoreLanguagePreference`).
+ * Resolves with the switch outcome (`unchanged` when the preference maps to the active locale).
  */
-export async function setLanguagePreference(next: LanguagePreference): Promise<void> {
+export async function setLanguagePreference(
+  next: LanguagePreference,
+): Promise<LanguageSwitchOutcome> {
   userChoseLanguage = true;
+  pendingSystemChange = false;
   publishPreference(next);
-  const saved = loadSettingsRepo()
-    .then((settingsRepo) => settingsRepo.set('locale', next))
-    .catch((error: unknown) => {
-      log.warn('i18n: the language preference could not be saved', { error });
-    });
-  await Promise.all([applyPreference(next), saved]);
+  const [outcome] = await Promise.all([applyPreference(next), persistPreference(next)]);
+  return outcome;
 }
 
 /**
- * Start-up: reconciles with the stored preference (the source of truth; no stored value means
- * `system`), unless the user already chose meanwhile. A database error keeps the cached choice.
+ * Start-up, before the app's first render (src/app/App.tsx): reconciles with the stored
+ * preference, the source of truth, unless the user already chose meanwhile. Without a stored
+ * value, a choice kept by the localStorage mirror (e.g. its save failed) wins and is written back
+ * (self-heal); with neither, `system`. A database error keeps the cached choice.
  */
 export async function restoreLanguagePreference(): Promise<void> {
   let stored: unknown;
@@ -279,63 +293,105 @@ export async function restoreLanguagePreference(): Promise<void> {
     return;
   }
   if (userChoseLanguage) return;
-  const next = isLanguagePreference(stored) ? stored : 'system';
+  let next: LanguagePreference;
+  if (isLanguagePreference(stored)) {
+    next = stored;
+  } else {
+    next = readCachedLanguagePreference() ?? 'system';
+    if (next !== 'system') await persistPreference(next);
+  }
+  if (userChoseLanguage) return;
   publishPreference(next);
   await applyPreference(next);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Browser language changes while on `system` are not the user's doing: switching then would
+// re-mount the screen (src/app/App.tsx) and tear down playback or a half-filled form. They wait
+// for a safe point: the next navigation (`applyPendingLocale`) with no player holding the locale,
+// or the end of playback.
+// ---------------------------------------------------------------------------------------------
+
+let pendingSystemChange = false;
+let localeHolds = 0;
+
 /**
- * App start-up (src/app/App.tsx): restores the stored preference and, while it is `system`,
- * follows browser language changes. Returns the cleanup.
+ * Keeps a browser-driven locale switch from happening while held (a mounted player). Returns the
+ * release; the last release applies a pending switch (playback ended).
+ */
+export function holdLocaleSwitch(): () => void {
+  localeHolds++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    localeHolds--;
+    applyPendingLocale();
+  };
+}
+
+/** Whether a browser language change is waiting for a safe point. */
+export function hasPendingLocale(): boolean {
+  return pendingSystemChange;
+}
+
+/** A safe point (navigation, playback ended): applies a pending browser language change. */
+export function applyPendingLocale(): void {
+  if (!pendingSystemChange || localeHolds > 0) return;
+  pendingSystemChange = false;
+  if (preference === 'system') void applyPreference('system');
+}
+
+/**
+ * App start-up (src/app/App.tsx): while the preference is `system`, a browser language change is
+ * recorded and applied at the next safe point. Returns the cleanup.
  */
 export function installLanguagePreference(): () => void {
-  void restoreLanguagePreference();
   const onLanguageChange = () => {
-    if (preference === 'system') void applyPreference('system');
+    if (preference !== 'system') return;
+    pendingSystemChange = detectLocale('system') !== activeLocale();
   };
   globalThis.addEventListener?.('languagechange', onLanguageChange);
   return () => globalThis.removeEventListener?.('languagechange', onLanguageChange);
 }
 
-/** Tests only: back to the start-up state (`system`, nothing chosen, nothing cached). */
+/** Tests only: back to the start-up state (`system`, nothing chosen, cached, pending or held). */
 export function resetLanguagePreferenceForTests(): void {
   userChoseLanguage = false;
+  pendingSystemChange = false;
+  localeHolds = 0;
   writeCachedLanguagePreference('system');
   preference = 'system';
 }
 
 // ---------------------------------------------------------------------------------------------
-// Intl formatters of the active locale (UX-06 AC5): read the locale at call time, so a language
-// switch applies to dates, times and numbers too. Cached per locale and options.
+// Intl formatters of the active locale (UX-06 AC5). Define one at module level with its options;
+// calling it returns the instance for the locale active at call time (so a language switch
+// applies to dates, times and numbers too), cached per locale.
 // ---------------------------------------------------------------------------------------------
 
-const numberFormats = new Map<string, Intl.NumberFormat>();
-const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();
-
-/** `Intl.NumberFormat` for the active locale (or `locale`). */
-export function numberFormat(
-  options: Intl.NumberFormatOptions = {},
-  locale: Locale = activeLocale(),
-): Intl.NumberFormat {
-  const id = `${locale}|${JSON.stringify(options)}`;
-  let format = numberFormats.get(id);
-  if (!format) {
-    format = new Intl.NumberFormat(locale, options);
-    numberFormats.set(id, format);
-  }
-  return format;
+function perLocale<F>(create: (locale: Locale) => F): (locale?: Locale) => F {
+  const cache = new Map<Locale, F>();
+  return (locale = activeLocale()) => {
+    let format = cache.get(locale);
+    if (format === undefined) {
+      format = create(locale);
+      cache.set(locale, format);
+    }
+    return format;
+  };
 }
 
-/** `Intl.DateTimeFormat` for the active locale (or `locale`). */
-export function dateTimeFormat(
+/** `const integer = intlNumberFormat(); integer().format(n)` — in the active locale. */
+export function intlNumberFormat(
+  options: Intl.NumberFormatOptions = {},
+): (locale?: Locale) => Intl.NumberFormat {
+  return perLocale((locale) => new Intl.NumberFormat(locale, options));
+}
+
+/** `const longDate = intlDateTimeFormat({ dateStyle: 'long' }); longDate().format(ms)`. */
+export function intlDateTimeFormat(
   options: Intl.DateTimeFormatOptions,
-  locale: Locale = activeLocale(),
-): Intl.DateTimeFormat {
-  const id = `${locale}|${JSON.stringify(options)}`;
-  let format = dateTimeFormats.get(id);
-  if (!format) {
-    format = new Intl.DateTimeFormat(locale, options);
-    dateTimeFormats.set(id, format);
-  }
-  return format;
+): (locale?: Locale) => Intl.DateTimeFormat {
+  return perLocale((locale) => new Intl.DateTimeFormat(locale, options));
 }

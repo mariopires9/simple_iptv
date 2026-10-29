@@ -18,7 +18,8 @@ import { createMswServer } from '@/test/msw/server';
 import { ToastProvider } from '@/ui/state';
 import { OnboardingXtreamScreen } from '../AddXtreamScreen';
 import { getSourcesPresent, invalidateSourcesPresence } from '../sourcesPresence';
-import { M3uUrlForm, formatBytes, type M3uUrlFormDeps } from './M3uUrlForm';
+import { formatBytes } from '@/ui/format';
+import { M3uUrlForm, type M3uUrlFormDeps } from './M3uUrlForm';
 import type { M3uImportOptions, RunM3uImport, SettleM3uImport } from './runM3uImport';
 
 const server = createMswServer(...xtreamHandlers());
@@ -337,13 +338,6 @@ describe('AC3/AC4 — failures', () => {
     expect(await screen.findByTestId('m3u-failure')).toHaveTextContent(
       t.state.errors.net.httpStatus('404'),
     );
-  });
-});
-
-describe('formatBytes', () => {
-  it('KB below 1 MB, MB with one decimal above', () => {
-    expect(formatBytes(1500)).toBe(text.units.kb('2'));
-    expect(formatBytes(5 * 1024 * 1024 + 300_000)).toBe(text.units.mb('5.3'));
   });
 });
 
