@@ -259,3 +259,6 @@ flowchart TD
 - hls.js (full build ~179 KB gz, ADR-017) and mpegts.js (~62 KB gz) only on first play; the service worker precaches them so later first plays are instant.
 - Reuse the same `<video>` when zapping; `destroy()` the previous engine before `load()`.
 - Search in the worker with a 120 ms debounce.
+
+
+M3U catalogue (SRC-04/05): items keep the full stream URL only in `streamUrl` (`streamPath` is empty); extra item fields `container`, `drm`, `requiredHeaders`, `audioOnly`; `Source.epgUrls`. Keys: item id = 64-bit hash of `url + name` (duplicates suffixed), category id = `g` + hash of the group name, synthetic `uncategorized` category (empty stored name, localised in the UI). All three types are written in one transaction (`catalogRepo.replaceAllForExistingSource`). Streaming downloads use `fetchStream` in `src/core/net/http.ts`.
