@@ -90,7 +90,7 @@ describe('continue watching (FAV-02 AC2)', () => {
   it.each([
     ['in progress', { episodeKey: 'e', positionSec: 300, durationSec: 1200 }, 0.25],
     ['moved on to the next episode', { episodeKey: 'e', positionSec: 0 }, undefined],
-    ['just started', { episodeKey: 'e', positionSec: 10, durationSec: 1200 }, 10 / 1200],
+    ['at the 1 min minimum', { episodeKey: 'e', positionSec: 60, durationSec: 1200 }, 0.05],
   ] as const)('series %s → shown, progress %s', (_, fields, fraction) => {
     const entry = {
       itemKey: series('s1'),
@@ -105,6 +105,10 @@ describe('continue watching (FAV-02 AC2)', () => {
 
   it.each([
     ['finished (last episode)', { episodeKey: 'e', completed: true }],
+    // VOD-03 minimum: a few seconds of an episode do not put the series in the row.
+    ['just started (10 s)', { episodeKey: 'e', positionSec: 10, durationSec: 1200 }],
+    ['below 1 min', { episodeKey: 'e', positionSec: 59, durationSec: 1200 }],
+    ['no position', { episodeKey: 'e' }],
     ['no episode', {}],
   ])('series %s → not shown', (_, fields) => {
     const entry = {
@@ -221,6 +225,25 @@ describe('continue watching — series episodes (SER-02/03)', () => {
 });
 
 describe('continue watching — finished episode (SER-03 review #1)', () => {
+  it('a series with only a few seconds of its first episode is not shown (VOD-03 minimum)', async () => {
+    const e1 = episodeItemKey(series('s2'), '1');
+    await historyRepo.upsert({ itemKey: e1, positionSec: 10, durationSec: 1200 });
+    await historyRepo.set({
+      itemKey: series('s2'),
+      episodeKey: e1,
+      positionSec: 10,
+      durationSec: 1200,
+    });
+    expect(await loadContinueWatching(SOURCE)).toEqual([]);
+    await historyRepo.set({
+      itemKey: series('s2'),
+      episodeKey: e1,
+      positionSec: 90,
+      durationSec: 1200,
+    });
+    expect((await loadContinueWatching(SOURCE)).map((c) => c.href)).toEqual(['/series/s2']);
+  });
+
   it('a series whose episode was finished stays, on its next episode', async () => {
     const e1 = episodeItemKey(series('s2'), '1');
     const e2 = episodeItemKey(series('s2'), '2');

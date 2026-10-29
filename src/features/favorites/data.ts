@@ -21,7 +21,7 @@ import {
   type Favorite,
   type HistoryEntry,
 } from '@/core/db';
-import { resumePosition, watchedFraction } from '@/ui/vod/resume';
+import { RESUME_MIN_SEC, resumePosition, watchedFraction } from '@/ui/vod/resume';
 
 export const RECENT_CHANNELS_LIMIT = 30;
 export const CONTINUE_WATCHING_LIMIT = 20;
@@ -84,6 +84,12 @@ export function continueWatching(entry: HistoryEntry): ContinueWatching | undefi
       return resumePosition(entry) === undefined ? undefined : { fraction: watchedFraction(entry) };
     case 'series':
       if (isEpisodeItemKey(entry.itemKey) || entry.episodeKey === undefined) return undefined;
+      // Position 0: the series moved on to the next episode after a finished one (SER-03), so
+      // it is shown. Otherwise the episode in progress follows the VOD-03 minimum (1 min): a few
+      // seconds of an episode are not "watching" the series yet.
+      if (entry.positionSec !== 0 && !((entry.positionSec ?? 0) >= RESUME_MIN_SEC)) {
+        return undefined;
+      }
       return { fraction: watchedFraction(entry) };
     default:
       return undefined;
