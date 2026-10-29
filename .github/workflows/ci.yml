@@ -37,3 +37,46 @@ jobs:
           name: coverage
           path: coverage/
           retention-days: 7
+
+  # QA-02: Playwright E2E + axe against `vite preview` of the production build. One job per engine,
+  # in parallel; every request outside the preview origin is served by the synthetic panel and the
+  # local test streams (e2e/support/network.ts), so no job ever reaches a real provider.
+  e2e:
+    name: e2e (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: chromium, browser: chromium, projects: 'chromium-*', base: /, specs: '' }
+          - { name: firefox, browser: firefox, projects: 'firefox-*', base: /, specs: '' }
+          - { name: webkit, browser: webkit, projects: 'webkit-*', base: /, specs: '' }
+          # The GitHub Pages sub-path (DEP-01): base-dependent URLs (SW scope, lazy chunks).
+          - name: chromium-subpath
+            browser: chromium
+            projects: chromium-desktop
+            base: /simple_iptv/
+            specs: e2e/smoke.spec.ts
+    env:
+      VITE_BASE: ${{ matrix.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run build
+      - run: npm run test:e2e -- --project="${{ matrix.projects }}" ${{ matrix.specs }}
+      # QA-02 AC3: traces, videos and screenshots of failing tests, plus the HTML report.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-${{ matrix.name }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -11,7 +11,7 @@ export function SourcesSection() {
   const text = t.settings;
   return (
     <SettingsSection title={text.sections.sources}>
-      <List disablePadding>
+      <List disablePadding component="div">
         <ListItemButton component={Link} to="/settings/sources">
           <ListItemText primary={text.sources.myLists} secondary={text.sources.myListsHint} />
           <ChevronRightRounded aria-hidden />
