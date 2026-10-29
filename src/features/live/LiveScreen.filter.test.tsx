@@ -97,6 +97,9 @@ describe('LIV-04 — quick channel filter', () => {
       await userEvent.keyboard('{ArrowDown}');
       const list = await listbox('Channels in Mega');
       expect(list).toHaveFocus();
+      // Rows are read from IndexedDB a page at a time: wait until the target row is loaded so the
+      // keys act on a real row, not a loading placeholder (load-sensitive otherwise).
+      await within(list).findByText('Channel 19990', undefined, SLOW);
       await userEvent.keyboard('{ArrowDown}{Enter}');
       await waitFor(() =>
         expect(new URLSearchParams(router.state.location.search).get('channel')).toBe(
