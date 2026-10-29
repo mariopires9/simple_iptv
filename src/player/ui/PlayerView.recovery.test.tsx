@@ -3,7 +3,8 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PlaybackError } from '../types';
 import { AUDIO_CHECK_DELAY_MS } from './audioCheck';
-import { DIAGNOSTICS_PATH, LIVE_RECONNECT_DELAYS_MS } from './PlayerView';
+import { DIAGNOSTICS_PATH, LIVE_RECONNECT_DELAYS_MS, SUSTAINED_PLAYBACK_S } from './PlayerView';
+import type { FakeController } from './test-utils/fakeMedia';
 import { LIVE, VOD, flush, renderPlayer } from './test-utils/renderPlayer';
 
 afterEach(() => {
@@ -17,6 +18,14 @@ const networkError = () =>
 function fail(t: ReturnType<typeof renderPlayer>, error: PlaybackError) {
   act(() => t.controller.emit('error', error));
 }
+
+/** The first load fails inside controller.play(), before any frame (like CORS/mixed content). */
+const refuseFirstLoad = (error: PlaybackError) => ({
+  router: true,
+  onController: (c: FakeController) => {
+    c.play.mockImplementationOnce(async () => c.emit('error', error));
+  },
+});
 
 async function advance(ms: number) {
   act(() => vi.advanceTimersByTime(ms));
@@ -50,7 +59,27 @@ describe('PlayerView — live reconnects (AC1)', () => {
     expect(t.controller.play).toHaveBeenCalledTimes(4);
   });
 
-  it('a reconnect that plays resets the backoff', async () => {
+  it('a stream that loads and drops again at once still ends on the overlay (review #1)', async () => {
+    vi.useFakeTimers();
+    const t = renderPlayer({ descriptor: LIVE });
+    await flush();
+    for (const delay of LIVE_RECONNECT_DELAYS_MS) {
+      // Every reconnect reaches its first frame and plays a little before dropping.
+      act(() => {
+        t.media.emit('loadeddata');
+        t.media.emit('playing');
+        t.media.setTime(t.media.video.currentTime + 2);
+      });
+      fail(t, networkError());
+      await advance(delay);
+    }
+    act(() => t.media.emit('playing'));
+    fail(t, networkError());
+    expect(screen.getByRole('alert')).toHaveTextContent('Connection lost');
+    expect(t.controller.play).toHaveBeenCalledTimes(4);
+  });
+
+  it(`only ${SUSTAINED_PLAYBACK_S} s of real playback resets the backoff`, async () => {
     vi.useFakeTimers();
     const t = renderPlayer({ descriptor: LIVE });
     await flush();
@@ -59,12 +88,65 @@ describe('PlayerView — live reconnects (AC1)', () => {
     fail(t, networkError());
     await advance(2000);
     expect(t.controller.play).toHaveBeenCalledTimes(3);
-    act(() => t.media.emit('playing'));
-    expect(screen.queryByTestId('player-reconnecting')).toBeNull();
+    act(() => {
+      t.media.emit('playing');
+      t.media.video.currentTime = 100; // a seek is not playback progress
+      t.media.setTime(100 + SUSTAINED_PLAYBACK_S - 1);
+    });
+    fail(t, networkError());
+    expect(screen.getByTestId('player-reconnecting')).toHaveTextContent('attempt 3 of 3');
+    await advance(4000);
+    act(() => {
+      t.media.emit('playing');
+      t.media.setTime(100 + 2 * SUSTAINED_PLAYBACK_S);
+    });
     fail(t, networkError());
     expect(screen.getByTestId('player-reconnecting')).toHaveTextContent('attempt 1 of 3');
     await advance(1000);
-    expect(t.controller.play).toHaveBeenCalledTimes(4);
+    expect(t.controller.play).toHaveBeenCalledTimes(5);
+  });
+
+  it('repeated errors during the delay schedule one reconnect, attempts in order (review #3)', async () => {
+    vi.useFakeTimers();
+    const t = renderPlayer({ descriptor: LIVE });
+    await flush();
+    for (const [i, delay] of LIVE_RECONNECT_DELAYS_MS.entries()) {
+      fail(t, networkError());
+      fail(t, networkError());
+      expect(screen.getByTestId('player-reconnecting')).toHaveTextContent(`attempt ${i + 1} of 3`);
+      await advance(delay);
+      expect(t.controller.play).toHaveBeenCalledTimes(i + 2);
+    }
+    fail(t, networkError());
+    expect(screen.getByRole('alert')).toHaveTextContent('Connection lost');
+  });
+
+  it('blocked after the stream played is a dropped connection: reconnects (review #2)', async () => {
+    vi.useFakeTimers();
+    const t = renderPlayer({ descriptor: LIVE }, { router: true });
+    await flush();
+    const dropped = () => new PlaybackError({ kind: 'blocked', hint: 'cors', detail: 'Exception' });
+    for (const delay of LIVE_RECONNECT_DELAYS_MS) {
+      fail(t, dropped());
+      expect(screen.queryByRole('alert')).toBeNull();
+      await advance(delay);
+    }
+    fail(t, dropped());
+    // Final message: a lost connection, not CORS.
+    expect(screen.getByRole('alert')).toHaveTextContent('Connection lost');
+    expect(screen.queryByRole('link', { name: 'Connection diagnostics' })).toBeNull();
+  });
+
+  it('blocked before the first frame stays blocked: no reconnect (review #2)', async () => {
+    vi.useFakeTimers();
+    const t = renderPlayer(
+      { descriptor: LIVE },
+      refuseFirstLoad(new PlaybackError({ kind: 'blocked', hint: 'cors' })),
+    );
+    await flush();
+    expect(screen.getByRole('alert')).toHaveTextContent('Stream blocked by the browser');
+    await advance(10_000);
+    expect(t.controller.play).toHaveBeenCalledTimes(1);
   });
 
   it('"Try again" after the overlay starts a fresh set of reconnects', async () => {
@@ -92,7 +174,7 @@ describe('PlayerView — live reconnects (AC1)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Connection problem');
     vod.unmount();
 
-    for (const kind of ['blocked', 'auth', 'unsupported-codec', 'decode'] as const) {
+    for (const kind of ['auth', 'unsupported-codec', 'decode'] as const) {
       const live = renderPlayer({ descriptor: LIVE }, { router: true });
       await flush();
       fail(live, new PlaybackError({ kind }));
@@ -154,18 +236,22 @@ describe('PlayerView — error overlay actions (AC5, AC6)', () => {
   });
 
   it('blocked: HTTPS/CORS message with a link to the diagnostics', async () => {
-    const t = renderPlayer({ descriptor: LIVE }, { router: true });
+    renderPlayer(
+      { descriptor: LIVE },
+      refuseFirstLoad(new PlaybackError({ kind: 'blocked', hint: 'cors', url: LIVE.url })),
+    );
     await flush();
-    fail(t, new PlaybackError({ kind: 'blocked', hint: 'cors', url: LIVE.url }));
     expect(screen.getByRole('alert')).toHaveTextContent('Stream blocked by the browser');
     const link = screen.getByRole('link', { name: 'Connection diagnostics' });
     expect(link).toHaveAttribute('href', DIAGNOSTICS_PATH);
   });
 
   it('blocked by mixed content: HTTPS message, also with the diagnostics link', async () => {
-    const t = renderPlayer({ descriptor: LIVE }, { router: true });
+    renderPlayer(
+      { descriptor: LIVE },
+      refuseFirstLoad(new PlaybackError({ kind: 'blocked', hint: 'mixed-content' })),
+    );
     await flush();
-    fail(t, new PlaybackError({ kind: 'blocked', hint: 'mixed-content' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Insecure stream address');
     expect(screen.getByRole('link', { name: 'Connection diagnostics' })).toBeInTheDocument();
   });
@@ -267,6 +353,67 @@ describe('PlayerView — no sound (AC3)', () => {
     await flush();
     await advance(AUDIO_CHECK_DELAY_MS * 2);
     expect(screen.queryByTestId('player-no-audio')).toBeNull();
+  });
+
+  it('muted or volume 0: no "no sound" banner from the counters (review #9)', async () => {
+    vi.useFakeTimers();
+    const counters = (media: { readyState: number; video: HTMLVideoElement }) => {
+      media.readyState = 4;
+      Object.defineProperties(media.video, {
+        webkitAudioDecodedByteCount: { configurable: true, value: 0 },
+        webkitVideoDecodedByteCount: { configurable: true, value: 50_000 },
+      });
+    };
+    const muted = renderPlayer({ descriptor: LIVE }, { beforePlay: counters });
+    await flush();
+    act(() => {
+      muted.media.video.muted = true;
+    });
+    await advance(AUDIO_CHECK_DELAY_MS * 2);
+    expect(screen.queryByTestId('player-no-audio')).toBeNull();
+    muted.unmount();
+
+    const zero = renderPlayer({ descriptor: LIVE }, { beforePlay: counters });
+    await flush();
+    act(() => {
+      zero.media.video.volume = 0;
+    });
+    await advance(AUDIO_CHECK_DELAY_MS * 2);
+    expect(screen.queryByTestId('player-no-audio')).toBeNull();
+    zero.unmount();
+  });
+
+  it('the engine found no audio track: no "no sound" banner (review #9)', async () => {
+    vi.useFakeTimers();
+    const t = renderPlayer(
+      { descriptor: LIVE },
+      {
+        beforePlay: (media) => {
+          media.readyState = 4;
+          Object.defineProperties(media.video, {
+            webkitAudioDecodedByteCount: { configurable: true, value: 0 },
+            webkitVideoDecodedByteCount: { configurable: true, value: 50_000 },
+          });
+        },
+      },
+    );
+    await flush();
+    act(() => t.controller.emit('notice', { type: 'no-audio-track' }));
+    await advance(AUDIO_CHECK_DELAY_MS * 2);
+    expect(screen.queryByTestId('player-no-audio')).toBeNull();
+  });
+
+  it('video track refused: "no picture" banner naming the codec (review #7)', async () => {
+    const t = renderPlayer({ descriptor: LIVE });
+    await flush();
+    act(() => t.controller.emit('notice', { type: 'video-unsupported', codec: 'hvc1.1.6.L93.B0' }));
+    const banner = screen.getByTestId('player-no-video');
+    expect(banner).toHaveAttribute('role', 'status');
+    expect(banner).toHaveTextContent(
+      'No picture: video codec HEVC (H.265) is not supported in this browser.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByTestId('player-no-video')).toBeNull();
   });
 
   it('a new stream starts without the previous banner', async () => {

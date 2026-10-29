@@ -174,14 +174,34 @@ describe('hls engine', () => {
     });
     expect(errors).toHaveLength(0);
     expect(notices).toEqual([{ type: 'audio-unsupported', codec: 'ac-3' }]);
-    // A non-fatal codec error on another buffer is not about the audio.
+  });
+
+  it('a refused video SourceBuffer is a "video unsupported" notice (review #7)', async () => {
+    const { hls, errors, engine } = await loaded();
+    const notices: unknown[] = [];
+    engine.on('notice', (n) => notices.push(n));
     hls.error({
       type: 'mediaError',
       details: 'bufferAddCodecError',
       fatal: false,
+      mimeType: 'video/mp4;codecs=hvc1.1.6.L93.B0',
       sourceBufferName: 'video',
     });
-    expect(notices).toHaveLength(1);
+    expect(errors).toHaveLength(0);
+    expect(notices).toEqual([{ type: 'video-unsupported', codec: 'hvc1.1.6.L93.B0' }]);
+  });
+
+  it('a stream whose first fragment has no audio track → "no-audio-track" notice (review #9)', async () => {
+    const { hls, engine } = await loaded();
+    const notices: unknown[] = [];
+    engine.on('notice', (n) => notices.push(n));
+    hls.bufferCodecs({ video: {}, audio: {} });
+    hls.bufferCodecs({ audiovideo: {} });
+    expect(notices).toEqual([]);
+    hls.bufferCodecs({ video: {} });
+    expect(notices).toEqual([{ type: 'no-audio-track' }]);
+    await engine.destroy();
+    expect(hls.count('hlsBufferCodecs')).toBe(0);
   });
 
   it('destroy removes the handlers, destroys hls.js and releases the element', async () => {

@@ -1,11 +1,11 @@
 // hls.js engine (PLY-01). hls.js is only downloaded on the first load() (ADR-005).
 import type Hls from 'hls.js';
-import type { ErrorData, HlsConfig } from 'hls.js';
+import type { BufferCodecsData, ErrorData, HlsConfig } from 'hls.js';
 import { log } from '@/core/log';
 import { shortenUrl } from '@/core/net';
 import {
   errorName,
-  isHlsAudioCodecRejected,
+  hlsRejectedTrack,
   isRecoverableHlsMediaError,
   parseCodecs,
   mapHlsError,
@@ -116,11 +116,12 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
 
       const recovery = createRecoveryPolicy();
       const onError = (_event: string, data: ErrorData) => {
-        if (isHlsAudioCodecRejected(data)) {
+        const rejected = hlsRejectedTrack(data);
+        if (rejected) {
           const codec = parseCodecs(data.mimeType);
-          log.warn('hls: audio codec not supported, playing without sound', { codec });
+          log.warn('hls: codec not supported, dropping the track', { track: rejected, codec });
           events.emit('notice', {
-            type: 'audio-unsupported',
+            type: rejected === 'audio' ? 'audio-unsupported' : 'video-unsupported',
             ...(codec !== undefined ? { codec } : {}),
           });
           return;
@@ -137,11 +138,19 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
         events.emit('error', mapHlsError(data, ctx));
       };
       const onFragBuffered = () => recovery.healthy();
+      // The demuxed tracks of the first fragment: a stream without audio is silent on purpose.
+      const onBufferCodecs = (_event: string, data: BufferCodecsData) => {
+        if (data.video && !data.audio && !data.audiovideo) {
+          events.emit('notice', { type: 'no-audio-track' });
+        }
+      };
       instance.on(HlsClass.Events.ERROR, onError);
       instance.on(HlsClass.Events.FRAG_BUFFERED, onFragBuffered);
+      instance.on(HlsClass.Events.BUFFER_CODECS, onBufferCodecs);
       detachListeners = () => {
         instance.off(HlsClass.Events.ERROR, onError);
         instance.off(HlsClass.Events.FRAG_BUFFERED, onFragBuffered);
+        instance.off(HlsClass.Events.BUFFER_CODECS, onBufferCodecs);
       };
 
       try {

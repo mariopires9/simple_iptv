@@ -126,9 +126,15 @@ export interface PlayerEngine {
  *   playback starts from the beginning.
  * - `audio-unsupported`: the browser refused the audio track (e.g. AC-3 in Chrome); the video
  *   keeps playing without sound (PLY-04 AC3). `codec` is the RFC 6381 string when known.
+ * - `video-unsupported`: the browser refused the video track; only the sound plays.
+ * - `no-audio-track`: the engine found no audio track in the stream (so silence is expected and
+ *   the "no sound" heuristic must not fire).
  */
 export type PlaybackNotice =
-  { type: 'resume-unsupported'; startAt: number } | { type: 'audio-unsupported'; codec?: string };
+  | { type: 'resume-unsupported'; startAt: number }
+  | { type: 'audio-unsupported'; codec?: string }
+  | { type: 'video-unsupported'; codec?: string }
+  | { type: 'no-audio-track' };
 
 export interface EngineEvents {
   error: PlaybackError;

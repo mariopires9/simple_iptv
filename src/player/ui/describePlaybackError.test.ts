@@ -4,7 +4,7 @@ import { en } from '@/i18n/en';
 import { ptPT } from '@/i18n/pt-PT';
 import { PlaybackError } from '../types';
 import { containerName, formatCodecs } from './codecNames';
-import { describePlaybackError } from './describePlaybackError';
+import { describePlaybackError, isTransientFailure } from './describePlaybackError';
 
 const e = en.player.errors;
 
@@ -116,6 +116,29 @@ describe('describePlaybackError', () => {
         expect(messages[key].message.length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe('transient failures (review #2)', () => {
+  it('network is always transient; blocked only once the stream has played', () => {
+    expect(isTransientFailure(new PlaybackError({ kind: 'network' }), false)).toBe(true);
+    const blocked = new PlaybackError({ kind: 'blocked', hint: 'cors', detail: 'Exception' });
+    expect(isTransientFailure(blocked, false)).toBe(false);
+    expect(isTransientFailure(blocked, true)).toBe(true);
+    for (const kind of ['auth', 'unsupported-codec', 'unsupported-container', 'decode'] as const) {
+      expect(isTransientFailure(new PlaybackError({ kind }), true)).toBe(false);
+    }
+  });
+
+  it('a blocked drop after playback is described as a lost connection', () => {
+    const blocked = new PlaybackError({ kind: 'blocked', hint: 'cors' });
+    expect(describePlaybackError(blocked, { kind: 'live', afterStart: true })).toEqual(
+      e.networkLive,
+    );
+    expect(describePlaybackError(blocked, { kind: 'live', afterStart: false })).toEqual({
+      ...e.blocked,
+      action: 'diagnostics',
+    });
   });
 });
 

@@ -111,7 +111,7 @@ function record(controller: ReturnType<typeof createPlayerController>) {
     events.push(['skipped', `${p.reason}:${p.descriptor.container}:${p.attempt}`]),
   );
   controller.on('notice', (n) =>
-    events.push(['notice', `${n.type}:${n.type === 'resume-unsupported' ? n.startAt : n.codec}`]),
+    events.push(['notice', `${n.type}:${n.type === 'resume-unsupported' ? n.startAt : ''}`]),
   );
   controller.on('error', (e) => events.push(['error', e.kind]));
   return events;

@@ -100,6 +100,12 @@ export const player = {
     codec: (codec: string) => `Sem som: o áudio ${codec} não é suportado neste browser.`,
     unknown: 'Sem som: este browser pode não suportar o áudio desta emissão.',
   },
+  noVideo: {
+    codec: (codec: string) =>
+      `Sem imagem: o codec de vídeo ${codec} não é suportado neste browser.`,
+    unknown: 'Sem imagem: o codec de vídeo desta emissão não é suportado neste browser.',
+  },
+  tapForFullscreen: 'Toque para ecrã inteiro',
   nativeFullscreenNote:
     'Neste dispositivo, o ecrã inteiro usa o leitor do sistema e os respetivos controlos.',
 } satisfies MessageShape<typeof base>;

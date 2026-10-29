@@ -6,7 +6,7 @@ import { vi } from 'vitest';
 import { createAppTheme } from '@/ui';
 import type { StreamDescriptor } from '../../types';
 import { PlayerView, type PlayerViewProps } from '../PlayerView';
-import { fakeController, installFakeMedia, type FakeMedia } from './fakeMedia';
+import { fakeController, installFakeMedia, type FakeController, type FakeMedia } from './fakeMedia';
 
 export const VOD: StreamDescriptor = {
   url: 'https://example.test/movie.mp4',
@@ -36,9 +36,15 @@ export const key = (target: Element, k: string) => fireEvent.keyDown(target, { k
 
 export function renderPlayer(
   props: Partial<PlayerViewProps> = {},
-  options: { beforePlay?: (media: FakeMedia) => void; router?: boolean } = {},
+  options: {
+    beforePlay?: (media: FakeMedia) => void;
+    router?: boolean;
+    /** Configures the fake controller before the first render (e.g. a failing first load). */
+    onController?: (controller: FakeController) => void;
+  } = {},
 ) {
   const controller = fakeController();
+  options.onController?.(controller);
   let media: FakeMedia | undefined;
   const factory = vi.fn((video: HTMLVideoElement) => {
     media = installFakeMedia(video);

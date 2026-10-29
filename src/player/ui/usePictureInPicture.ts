@@ -1,6 +1,6 @@
 // Picture-in-Picture (PLY-03 AC4): the standard API (`requestPictureInPicture`) or Safari's
 // presentation mode (`webkitSetPresentationMode`). Hidden where neither exists.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '@/core/log';
 import { errorName } from '../errors';
 
@@ -82,10 +82,23 @@ export function usePictureInPicture(
     for (const type of events) video.addEventListener(type, sync);
     return () => {
       for (const type of events) video.removeEventListener(type, sync);
-      // Closing the player closes its PiP window too.
-      if (isInPip(video)) void leave(video);
     };
   }, [video, api]);
+
+  // Unmount only (not on dependency changes): closing the player ends its PiP window. Known
+  // limitation: the <video> element belongs to the player, so PiP cannot outlive it (e.g. to keep
+  // watching while browsing other screens).
+  const latestVideo = useRef(video);
+  useEffect(() => {
+    latestVideo.current = video;
+  });
+  useEffect(
+    () => () => {
+      const last = latestVideo.current;
+      if (last && isInPip(last)) void leave(last);
+    },
+    [],
+  );
 
   const toggle = useCallback(() => {
     if (!video || api === undefined) return;

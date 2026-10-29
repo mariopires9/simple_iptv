@@ -108,6 +108,19 @@ describe('mpegts engine', () => {
     expect(video.listenerCount('loadedmetadata')).toBe(0);
   });
 
+  it('media info without audio → "no-audio-track" notice; handler removed on destroy (review #9)', async () => {
+    const { player, engine } = await loaded();
+    const notices: unknown[] = [];
+    engine.on('notice', (n) => notices.push(n));
+    player.mediaInfo({ hasAudio: true, hasVideo: true });
+    expect(notices).toEqual([]);
+    player.mediaInfo({ hasAudio: false, hasVideo: true });
+    expect(notices).toEqual([{ type: 'no-audio-track' }]);
+    expect(player.count('media_info')).toBe(1);
+    await engine.destroy();
+    expect(player.count('media_info')).toBe(0);
+  });
+
   it('destroy removes the resume listener', async () => {
     const video = new FakeVideo();
     const engine = createMpegtsEngine({ rewriter: identity });

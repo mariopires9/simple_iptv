@@ -1,7 +1,7 @@
 // PLY-03: fullscreen, orientation and Picture-in-Picture, with mocked display APIs.
 import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { NATIVE_NOTE_MS } from './useFullscreen';
+import { NATIVE_NOTE_MS, ROTATION_PROMPT_MS } from './useFullscreen';
 import {
   installFullscreenApi,
   installOrientationLock,
@@ -162,18 +162,58 @@ describe('PlayerView — orientation (AC3)', () => {
     expect(fs.element()).toBe(t.region());
   });
 
-  it('mobile, playing: landscape enters fullscreen, back to portrait leaves it', async () => {
+  it('mobile, playing: landscape offers fullscreen; the tap enters; portrait leaves (review #4)', async () => {
     const fs = use(installFullscreenApi());
     const q = use(installOrientationQuery());
     renderPlayer({ platform: MOBILE, descriptor: LIVE });
     await flush();
     act(() => q.rotate(true));
     await flush();
+    // No request without a user gesture: only the prompt.
+    expect(fs.request).not.toHaveBeenCalled();
+    fireEvent.click(button('Tap for fullscreen'));
+    await flush();
     expect(fs.request).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Tap for fullscreen' })).toBeNull();
     expect(button('Exit fullscreen')).toBeInTheDocument();
     act(() => q.rotate(false));
     await flush();
     expect(fs.exit).toHaveBeenCalledTimes(1);
+  });
+
+  it('the prompt goes away after a few seconds, and on portrait', async () => {
+    vi.useFakeTimers();
+    use(installFullscreenApi());
+    const q = use(installOrientationQuery());
+    renderPlayer({ platform: MOBILE, descriptor: LIVE });
+    await flush();
+    act(() => q.rotate(true));
+    expect(button('Tap for fullscreen')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(ROTATION_PROMPT_MS));
+    expect(screen.queryByRole('button', { name: 'Tap for fullscreen' })).toBeNull();
+    act(() => q.rotate(false));
+    act(() => q.rotate(true));
+    expect(button('Tap for fullscreen')).toBeInTheDocument();
+    act(() => q.rotate(false));
+    expect(screen.queryByRole('button', { name: 'Tap for fullscreen' })).toBeNull();
+  });
+
+  it('a refused prompt tap does not arm the portrait exit', async () => {
+    const fs = use(installFullscreenApi());
+    const q = use(installOrientationQuery());
+    const t = renderPlayer({ platform: MOBILE, descriptor: LIVE });
+    await flush();
+    act(() => q.rotate(true));
+    fs.refuseNext();
+    fireEvent.click(button('Tap for fullscreen'));
+    await flush();
+    expect(fs.element()).toBeNull();
+    // Later, the user enters with the button; portrait must not leave it.
+    key(t.region(), 'f');
+    await flush();
+    act(() => q.rotate(false));
+    await flush();
+    expect(fs.exit).not.toHaveBeenCalled();
   });
 
   it('portrait does not leave a fullscreen the user entered with the button', async () => {
@@ -209,6 +249,7 @@ describe('PlayerView — orientation (AC3)', () => {
     act(() => q.rotate(true));
     await flush();
     expect(fs.request).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Tap for fullscreen' })).toBeNull();
     paused.unmount();
     expect(q.listenerCount()).toBe(0);
   });
@@ -242,6 +283,46 @@ describe('PlayerView — iPhone system fullscreen (AC2)', () => {
     act(() => vi.advanceTimersByTime(NATIVE_NOTE_MS));
     expect(screen.queryByTestId('player-native-fullscreen-note')).toBeNull();
     expect(t.region()).toBeInTheDocument();
+  });
+
+  it('native state follows the system player events; portrait exits only a prompt entry (review #10)', async () => {
+    const q = use(installOrientationQuery());
+    let ios: FakeIOSVideo | undefined;
+    const t = renderPlayer(
+      { platform: IPHONE, descriptor: LIVE },
+      {
+        beforePlay: (media) => {
+          ios = makeIOSVideo(media.video);
+        },
+      },
+    );
+    await flush();
+    const exitNative = () =>
+      (t.media.video as unknown as { webkitExitFullscreen: ReturnType<typeof vi.fn> })
+        .webkitExitFullscreen;
+
+    // Entered with the button: portrait leaves it alone.
+    fireEvent.click(button('Fullscreen'));
+    await flush();
+    act(() => q.rotate(true));
+    act(() => q.rotate(false));
+    expect(exitNative()).not.toHaveBeenCalled();
+    act(() => ios?.endFullscreen());
+
+    // Prompt tapped but the system player never opened: portrait does nothing.
+    ios?.enterFullscreen.mockImplementationOnce(() => undefined);
+    act(() => q.rotate(true));
+    fireEvent.click(button('Tap for fullscreen'));
+    await flush();
+    act(() => q.rotate(false));
+    expect(exitNative()).not.toHaveBeenCalled();
+
+    // Prompt tapped and the system player opened (webkitbeginfullscreen): portrait leaves it.
+    act(() => q.rotate(true));
+    fireEvent.click(button('Tap for fullscreen'));
+    await flush();
+    act(() => q.rotate(false));
+    expect(exitNative()).toHaveBeenCalledTimes(1);
   });
 
   it('the note can be dismissed', async () => {
@@ -295,6 +376,29 @@ describe('PlayerView — Picture-in-Picture (AC4)', () => {
     expect(ios?.setPresentationMode).toHaveBeenLastCalledWith('picture-in-picture');
     fireEvent.click(button('Exit picture-in-picture'));
     expect(ios?.setPresentationMode).toHaveBeenLastCalledWith('inline');
+  });
+
+  it('zapping or a change of the hook inputs keeps the PiP window open (review #8)', async () => {
+    const pip = use(installPictureInPicture());
+    const t = renderPlayer({ platform: DESKTOP, descriptor: LIVE });
+    await flush();
+    fireEvent.click(button('Picture-in-picture'));
+    await flush();
+    t.rerender({ descriptor: { ...LIVE, url: 'https://example.test/next.m3u8' } });
+    await flush();
+    // The detected API changes (the hook's effect re-runs): still no exit.
+    Object.defineProperty(document, 'pictureInPictureEnabled', {
+      configurable: true,
+      get: () => false,
+    });
+    t.rerender({ title: 'Channel' });
+    await flush();
+    expect(pip.exit).not.toHaveBeenCalled();
+    expect(pip.element()).toBe(t.media.video);
+    // Unmount still ends it.
+    t.unmount();
+    await flush();
+    expect(pip.exit).toHaveBeenCalledTimes(1);
   });
 
   it('closing the player closes its PiP window', async () => {

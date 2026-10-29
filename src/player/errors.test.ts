@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  isHlsAudioCodecRejected,
+  hlsRejectedTrack,
   isMixedContent,
   isRecoverableHlsMediaError,
   mapHlsError,
@@ -241,17 +241,15 @@ describe('codec extraction (PLY-04 AC2)', () => {
     expect(e.message).toContain('codec ac-3');
   });
 
-  it('isHlsAudioCodecRejected: only the non-fatal audio SourceBuffer case', () => {
+  it('hlsRejectedTrack: only non-fatal codec errors on the audio or video SourceBuffer', () => {
     const base = { type: 'mediaError', details: 'bufferAddCodecError' };
-    expect(isHlsAudioCodecRejected({ ...base, fatal: false, sourceBufferName: 'audio' })).toBe(
-      true,
-    );
-    expect(isHlsAudioCodecRejected({ ...base, fatal: true, sourceBufferName: 'audio' })).toBe(
-      false,
-    );
-    expect(isHlsAudioCodecRejected({ ...base, fatal: false, sourceBufferName: 'video' })).toBe(
-      false,
-    );
+    expect(hlsRejectedTrack({ ...base, fatal: false, sourceBufferName: 'audio' })).toBe('audio');
+    expect(hlsRejectedTrack({ ...base, fatal: false, sourceBufferName: 'video' })).toBe('video');
+    expect(hlsRejectedTrack({ ...base, fatal: true, sourceBufferName: 'audio' })).toBeUndefined();
+    expect(hlsRejectedTrack({ ...base, fatal: false })).toBeUndefined();
+    expect(
+      hlsRejectedTrack({ type: 'mediaError', details: 'bufferAppendError', fatal: false }),
+    ).toBeUndefined();
   });
 
   it('mpegts.js MediaMSEError quoting an unsupported type → unsupported-codec with the codec', () => {

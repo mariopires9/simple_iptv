@@ -2,9 +2,11 @@
 // - Fullscreen API available: the player region (with its own overlay) goes fullscreen.
 // - Otherwise (iPhone): `video.webkitEnterFullscreen()` — the system player with its own
 //   controls; the UI shows a note saying so.
-// - Mobile: rotating to landscape during playback enters fullscreen (when enabled) and rotating
-//   back to portrait leaves it; `screen.orientation.lock('landscape')` only where it exists, and
-//   its (frequent) rejections are swallowed.
+// - Mobile: browsers refuse fullscreen requests without a user gesture, and a rotation is not
+//   one. So rotating to landscape during playback (when enabled) shows a transient "Tap for
+//   fullscreen" prompt; the tap is the gesture. Rotating back to portrait leaves fullscreen only
+//   if it was entered from that prompt. `screen.orientation.lock('landscape')` only where it
+//   exists; its (frequent) rejections are swallowed.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '@/core/log';
 import { errorName } from '../errors';
@@ -73,7 +75,7 @@ export interface FullscreenOptions {
   fullscreenApi: boolean;
   /** Lock the orientation to landscape on entering (mobile). */
   lockLandscape: boolean;
-  /** Enter on rotation to landscape / leave on rotation to portrait (only while `playing`). */
+  /** Offer fullscreen on rotation to landscape (only while `playing`); leave it on portrait. */
   autoOnLandscape: boolean;
   playing: boolean;
 }
@@ -86,6 +88,10 @@ export interface FullscreenControl {
   /** iPhone: the system player was opened; the note about its controls is showing. */
   nativeNote: boolean;
   dismissNativeNote(): void;
+  /** The device turned to landscape during playback: offer fullscreen (needs a tap). */
+  rotationPrompt: boolean;
+  /** The tap on the prompt: the user gesture that enters fullscreen. */
+  acceptRotationPrompt(): void;
 }
 
 export function useFullscreen({
@@ -100,8 +106,11 @@ export function useFullscreen({
   const [active, setActive] = useState(false);
   const [nativeNote, setNativeNote] = useState(false);
   const locked = useRef(false);
-  /** Fullscreen was entered by rotating to landscape (so rotating back leaves it). */
+  /** Fullscreen was actually entered from the rotation prompt (so portrait leaves it). */
   const byRotation = useRef(false);
+  /** An enter() from the rotation prompt is in flight (confirmed by the change events). */
+  const fromPrompt = useRef(false);
+  const [rotationPrompt, setRotationPrompt] = useState(false);
 
   const unlock = useCallback(() => {
     if (!locked.current) return;
@@ -116,10 +125,13 @@ export function useFullscreen({
       const sync = () => {
         const now = fullscreenElement() === region;
         setActive(now);
-        if (!now) {
+        if (now) {
+          byRotation.current = fromPrompt.current;
+        } else {
           byRotation.current = false;
           unlock();
         }
+        fromPrompt.current = false;
       };
       sync();
       document.addEventListener('fullscreenchange', sync);
@@ -130,10 +142,16 @@ export function useFullscreen({
       };
     }
     if (mode === 'native-video' && video) {
-      const begin = () => setActive(true);
+      // The system player's own events are the only source of truth for its state.
+      const begin = () => {
+        setActive(true);
+        byRotation.current = fromPrompt.current;
+        fromPrompt.current = false;
+      };
       const end = () => {
         setActive(false);
         byRotation.current = false;
+        fromPrompt.current = false;
       };
       video.addEventListener('webkitbeginfullscreen', begin);
       video.addEventListener('webkitendfullscreen', end);
@@ -145,28 +163,39 @@ export function useFullscreen({
     return undefined;
   }, [mode, region, video, unlock]);
 
-  const enter = useCallback(() => {
-    if (mode === 'element' && region) {
-      const el = region as FsElement;
-      const request = el.requestFullscreen ?? el.webkitRequestFullscreen;
-      if (typeof request !== 'function') return;
-      void attempt('fullscreen', () => request.call(el)).then((ok) => {
-        const o = orientation();
-        if (!ok || !lockLandscape || typeof o?.lock !== 'function') return;
-        void attempt('orientation lock', () => o.lock?.('landscape')).then((done) => {
-          // Left fullscreen in the meantime: undo at once.
-          locked.current = done;
-          if (done && fullscreenElement() !== region) unlock();
+  const enter = useCallback(
+    (viaPrompt = false) => {
+      fromPrompt.current = viaPrompt;
+      if (mode === 'element' && region) {
+        const el = region as FsElement;
+        const request = el.requestFullscreen ?? el.webkitRequestFullscreen;
+        if (typeof request !== 'function') {
+          fromPrompt.current = false;
+          return;
+        }
+        void attempt('fullscreen', () => request.call(el)).then((ok) => {
+          if (!ok) fromPrompt.current = false;
+          const o = orientation();
+          if (!ok || !lockLandscape || typeof o?.lock !== 'function') return;
+          void attempt('orientation lock', () => o.lock?.('landscape')).then((done) => {
+            // Left fullscreen in the meantime: undo at once.
+            locked.current = done;
+            if (done && fullscreenElement() !== region) unlock();
+          });
         });
-      });
-    } else if (mode === 'native-video' && video) {
-      const el = video as NativeFsVideo;
-      // Synchronously inside the user gesture: iOS refuses it otherwise.
-      void attempt('native fullscreen', () => el.webkitEnterFullscreen?.()).then((ok) => {
-        if (ok) setNativeNote(true);
-      });
-    }
-  }, [mode, region, video, lockLandscape, unlock]);
+      } else if (mode === 'native-video' && video) {
+        const el = video as NativeFsVideo;
+        // Synchronously inside the user gesture: iOS refuses it otherwise.
+        void attempt('native fullscreen', () => el.webkitEnterFullscreen?.()).then((ok) => {
+          if (ok) setNativeNote(true);
+          else fromPrompt.current = false;
+        });
+      } else {
+        fromPrompt.current = false;
+      }
+    },
+    [mode, region, video, lockLandscape, unlock],
+  );
 
   const exit = useCallback(() => {
     byRotation.current = false;
@@ -176,11 +205,9 @@ export function useFullscreen({
       const leave = doc.exitFullscreen ?? doc.webkitExitFullscreen;
       if (typeof leave === 'function') void attempt('exit fullscreen', () => leave.call(doc));
       unlock();
-    } else if (mode === 'native-video' && video) {
+    } else if (mode === 'native-video' && video && active) {
       const el = video as NativeFsVideo;
-      if (el.webkitDisplayingFullscreen === true || active) {
-        void attempt('exit native fullscreen', () => el.webkitExitFullscreen?.());
-      }
+      void attempt('exit native fullscreen', () => el.webkitExitFullscreen?.());
     }
   }, [mode, region, video, active, unlock]);
 
@@ -189,11 +216,10 @@ export function useFullscreen({
     else enter();
   }, [active, enter, exit]);
 
-  // Rotation → fullscreen (mobile). The browser may refuse a request outside a user gesture;
-  // that is logged and ignored.
-  const latest = useRef({ active, playing, enter, exit });
+  // Rotation (mobile): landscape offers fullscreen, portrait leaves a prompt-entered one.
+  const latest = useRef({ active, playing, exit });
   useEffect(() => {
-    latest.current = { active, playing, enter, exit };
+    latest.current = { active, playing, exit };
   });
   useEffect(() => {
     if (!autoOnLandscape || mode === 'none' || typeof window.matchMedia !== 'function') {
@@ -202,12 +228,12 @@ export function useFullscreen({
     const query = window.matchMedia(LANDSCAPE_QUERY);
     const onChange = () => {
       const s = latest.current;
-      if (query.matches && s.playing && !s.active) {
-        byRotation.current = true;
-        s.enter();
-      } else if (!query.matches && s.active && byRotation.current) {
-        s.exit();
+      if (query.matches) {
+        if (s.playing && !s.active) setRotationPrompt(true);
+        return;
       }
+      setRotationPrompt(false);
+      if (s.active && byRotation.current) s.exit();
     };
     query.addEventListener('change', onChange);
     return () => query.removeEventListener('change', onChange);
@@ -234,6 +260,18 @@ export function useFullscreen({
     return () => clearTimeout(timer);
   }, [nativeNote, active]);
 
+  // The prompt is transient.
+  useEffect(() => {
+    if (!rotationPrompt) return undefined;
+    const timer = setTimeout(() => setRotationPrompt(false), ROTATION_PROMPT_MS);
+    return () => clearTimeout(timer);
+  }, [rotationPrompt]);
+
+  const acceptRotationPrompt = useCallback(() => {
+    setRotationPrompt(false);
+    enter(true);
+  }, [enter]);
+
   return {
     mode,
     active,
@@ -241,8 +279,13 @@ export function useFullscreen({
     exit,
     nativeNote,
     dismissNativeNote: useCallback(() => setNativeNote(false), []),
+    rotationPrompt: rotationPrompt && !active,
+    acceptRotationPrompt,
   };
 }
+
+/** How long the "Tap for fullscreen" prompt stays after turning the device to landscape. */
+export const ROTATION_PROMPT_MS = 4000;
 
 /** How long the iPhone note about the system player's controls stays visible. */
 export const NATIVE_NOTE_MS = 8000;

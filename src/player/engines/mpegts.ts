@@ -102,6 +102,13 @@ export function createMpegtsEngine({ rewriter, pageProtocol }: EngineDeps): Play
       const onError = (type: string, detail: string, info?: MpegtsErrorInfo) =>
         events.emit('error', mapMpegtsError(type, detail, info, ctx));
       instance.on(mpegts.Events.ERROR, onError);
+      // A stream without an audio track is silent on purpose (no "no sound" warning).
+      const onMediaInfo = (info?: { hasAudio?: boolean; hasVideo?: boolean }) => {
+        if (info?.hasAudio === false && info.hasVideo !== false) {
+          events.emit('notice', { type: 'no-audio-track' });
+        }
+      };
+      instance.on(mpegts.Events.MEDIA_INFO, onMediaInfo);
       // VOD resume: seek once the element knows what is seekable. MPEG-TS without an index is
       // often not seekable at all; then playback starts from the beginning and a
       // `resume-unsupported` notice is emitted.
@@ -114,6 +121,7 @@ export function createMpegtsEngine({ rewriter, pageProtocol }: EngineDeps): Play
           : undefined;
       detachListeners = () => {
         instance.off(mpegts.Events.ERROR, onError);
+        instance.off(mpegts.Events.MEDIA_INFO, onMediaInfo);
         stopSeek?.();
       };
 

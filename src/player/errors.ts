@@ -155,11 +155,15 @@ export function mapHlsError(data: HlsErrorLike, ctx: ErrorContext): PlaybackErro
 }
 
 /**
- * A non-fatal hls.js `bufferAddCodecError` on the audio SourceBuffer: hls.js drops the audio
- * track and keeps playing the video without sound (PLY-04 AC3).
+ * A non-fatal hls.js `bufferAddCodecError`: the browser refused one SourceBuffer and hls.js
+ * drops that track, playing the other one only — video without sound (PLY-04 AC3) or sound
+ * without picture. Returns which track was refused.
  */
-export function isHlsAudioCodecRejected(data: HlsErrorLike): boolean {
-  return !data.fatal && data.details === 'bufferAddCodecError' && data.sourceBufferName === 'audio';
+export function hlsRejectedTrack(data: HlsErrorLike): 'audio' | 'video' | undefined {
+  if (data.fatal || data.details !== 'bufferAddCodecError') return undefined;
+  return data.sourceBufferName === 'audio' || data.sourceBufferName === 'video'
+    ? data.sourceBufferName
+    : undefined;
 }
 
 /** Whether a fatal hls.js error is worth one `recoverMediaError()` attempt. */

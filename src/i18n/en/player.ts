@@ -109,6 +109,14 @@ export const player = {
     codec: (codec: string) => `No sound: audio ${codec} is not supported in this browser.`,
     unknown: 'No sound: this browser may not support the audio of this stream.',
   },
+  /** Video plays without picture: the browser cannot decode the video track. */
+  noVideo: {
+    /** Argument: codec display name (e.g. `HEVC (H.265)`). */
+    codec: (codec: string) => `No picture: video codec ${codec} is not supported in this browser.`,
+    unknown: 'No picture: the video codec of this stream is not supported in this browser.',
+  },
+  /** Shown briefly when the device turns to landscape (fullscreen needs a tap). */
+  tapForFullscreen: 'Tap for fullscreen',
   /** iPhone: fullscreen is the system player (our controls are not shown there). */
   nativeFullscreenNote: 'On this device, fullscreen uses the system player and its controls.',
 };

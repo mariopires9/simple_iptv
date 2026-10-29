@@ -4,6 +4,7 @@
 // PLY-03: fullscreen (Fullscreen API or the iPhone system player), landscape → fullscreen and
 // Picture-in-Picture. PLY-04: live reconnects with backoff, the error mapping and its actions,
 // and the "no sound" banner.
+import FullscreenRounded from '@mui/icons-material/FullscreenRounded';
 import VolumeOffRounded from '@mui/icons-material/VolumeOffRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -20,7 +21,7 @@ import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
 import { AUDIO_CHECK_DELAY_MS, audioMissing } from './audioCheck';
 import { formatCodecs } from './codecNames';
-import { describePlaybackError } from './describePlaybackError';
+import { describePlaybackError, isTransientFailure } from './describePlaybackError';
 import {
   isSilent,
   liveEdgePosition,
@@ -45,20 +46,25 @@ export const DVR_MIN_WINDOW_S = 30;
 export const BUFFERING_SPINNER_DELAY_MS = 500;
 /**
  * Live: delays of the automatic reconnects after a transient network error (PLY-04 AC1). The
- * error overlay appears only when all of them failed; a load that reaches playback resets them.
+ * error overlay appears only when all of them failed. They are reset only after
+ * {@link SUSTAINED_PLAYBACK_S} of real playback, so a stream that loads and drops again at once
+ * still ends on the overlay.
  */
 export const LIVE_RECONNECT_DELAYS_MS: readonly number[] = [1000, 2000, 4000];
+/** Seconds of playback progress after which the reconnect attempts start again from zero. */
+export const SUSTAINED_PLAYBACK_S = 10;
 /**
  * Where the overlay's "Connection diagnostics" action leads (SRC-09 will add its own page).
  * The action is a router link: PlayerView is always rendered inside the app's router.
  */
 export const DIAGNOSTICS_PATH = '/settings/sources';
 
-/**
- * Failures worth reconnecting automatically: network errors only. Blocked (CORS/mixed content),
- * auth and format errors would fail the same way again.
- */
-const isTransient = (error: PlaybackError) => error.kind === 'network';
+/** A track the browser cannot decode, for one load (dismissible banner). */
+interface TrackWarning {
+  load: object;
+  codec?: string;
+  dismissed?: boolean;
+}
 
 export interface PlayerViewProps {
   descriptor: StreamDescriptor;
@@ -77,8 +83,9 @@ export interface PlayerViewProps {
   /** `Esc` / back button. `Esc` leaves fullscreen first. */
   onClose?: () => void;
   /**
-   * Rotating the device to landscape during playback enters fullscreen (and back to portrait
-   * leaves it). Default: on for mobile devices. The setting itself belongs to UX-04.
+   * Rotating the device to landscape during playback offers fullscreen ("Tap for fullscreen":
+   * browsers require a gesture); back to portrait leaves a fullscreen entered that way.
+   * Default: on for mobile devices. The setting itself belongs to UX-04.
    */
   fullscreenOnLandscape?: boolean;
   /**
@@ -130,7 +137,12 @@ export function PlayerView({
     () => ({ descriptor: stream, startAt, reloads }),
     [stream, startAt, reloads],
   );
-  const [failure, setFailure] = useState<{ load: object; error: PlaybackError }>();
+  const [failure, setFailure] = useState<{
+    load: object;
+    error: PlaybackError;
+    /** The stream had played before this failure (a drop, not a refusal). */
+    started: boolean;
+  }>();
   const [readyFor, setReadyFor] = useState<object>();
   const [autoplayMuted, setAutoplayMuted] = useState(false);
   const [announcement, setAnnouncement] = useState('');
@@ -140,7 +152,8 @@ export function PlayerView({
   // Live reconnects (PLY-04 AC1). Kept in the view rather than in the controller: "success"
   // means the stream actually plays (media events), which only the view observes — the
   // controller never calls video.play() — and the view shows the "Reconnecting…" state.
-  const reconnects = useRef({ stream, count: 0 });
+  // `started`: this stream reached its first frame at least once.
+  const reconnects = useRef({ stream, count: 0, started: false });
   const isLiveRef = useRef(kind === 'live');
   useEffect(() => {
     isLiveRef.current = kind === 'live';
@@ -151,12 +164,11 @@ export function PlayerView({
   /** "Reconnecting… (n of 3)" from the delay through the reconnect's own loading. */
   const [reconnectLabel, setReconnectLabel] = useState<{ stream: object; attempt: number }>();
 
-  // "No sound" banner (PLY-04 AC3): from an engine notice or the decoder counters.
-  const [noAudio, setNoAudio] = useState<{
-    load: object;
-    codec?: string;
-    dismissed?: boolean;
-  }>();
+  // "No sound" / "No picture" banners (PLY-04 AC3): from engine notices or decoder counters.
+  const [noAudio, setNoAudio] = useState<TrackWarning>();
+  const [noVideo, setNoVideo] = useState<TrackWarning>();
+  /** The load whose engine found no audio track at all (silence is expected there). */
+  const noAudioTrackFor = useRef<object>(undefined);
 
   useEffect(() => {
     if (!controller || !video) return undefined;
@@ -164,14 +176,15 @@ export function PlayerView({
     let failed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (reconnects.current.stream !== load.descriptor) {
-      reconnects.current = { stream: load.descriptor, count: 0 };
+      reconnects.current = { stream: load.descriptor, count: 0, started: false };
     }
     const offError = controller.on('error', (e) => {
-      if (!current) return;
+      // A reconnect is already scheduled for this load: further errors are the same failure.
+      if (!current || timer !== undefined) return;
       failed = true;
       const r = reconnects.current;
       const delay = LIVE_RECONNECT_DELAYS_MS[r.count];
-      if (isLiveRef.current && isTransient(e) && delay !== undefined) {
+      if (isLiveRef.current && isTransientFailure(e, r.started) && delay !== undefined) {
         r.count += 1;
         log.info('player: reconnecting', { attempt: r.count, delayMs: delay, kind: e.kind });
         setReconnectingFor(load);
@@ -182,20 +195,42 @@ export function PlayerView({
         }, delay);
         return;
       }
-      setFailure({ load, error: e });
+      setFailure({ load, error: e, started: r.started });
     });
     const offNotice = controller.on('notice', (notice) => {
-      if (!current || notice.type !== 'audio-unsupported') return;
-      setNoAudio({ load, ...(notice.codec !== undefined ? { codec: notice.codec } : {}) });
+      if (!current) return;
+      const warning = (codec: string | undefined): TrackWarning => ({
+        load,
+        ...(codec !== undefined ? { codec } : {}),
+      });
+      if (notice.type === 'audio-unsupported') setNoAudio(warning(notice.codec));
+      else if (notice.type === 'video-unsupported') setNoVideo(warning(notice.codec));
+      else if (notice.type === 'no-audio-track') noAudioTrackFor.current = load;
     });
     // Readiness listeners are attached only once controller.play() resolved: by then the
     // previous stream has been torn down, so its late events cannot mark this load ready.
     const markReady = () => {
       if (!current) return;
       setReadyFor(load);
-      // Playing again: the next network failure gets the full set of reconnects.
-      reconnects.current.count = 0;
-      setReconnectLabel(undefined);
+      reconnects.current.started = true;
+    };
+    // Only sustained playback gives the next failure the full set of reconnects again.
+    let progressFrom: number | undefined;
+    const onPlaying = () => {
+      progressFrom = video.currentTime;
+    };
+    // A seek (e.g. "Go live") moves the position without playing: measure from the new one.
+    const onSeek = () => {
+      if (progressFrom !== undefined) progressFrom = video.currentTime;
+    };
+    const onProgress = () => {
+      if (!current || progressFrom === undefined) return;
+      if (video.currentTime - progressFrom < SUSTAINED_PLAYBACK_S) return;
+      progressFrom = undefined;
+      if (reconnects.current.count > 0) {
+        reconnects.current.count = 0;
+        setReconnectLabel(undefined);
+      }
     };
     const READY = ['loadeddata', 'canplay', 'playing'] as const;
     let listening = false;
@@ -207,8 +242,13 @@ export function PlayerView({
       .then(async () => {
         if (!current || failed) return;
         for (const type of READY) video.addEventListener(type, markReady);
+        video.addEventListener('playing', onPlaying);
+        video.addEventListener('timeupdate', onProgress);
+        video.addEventListener('seeking', onSeek);
+        video.addEventListener('seeked', onSeek);
         listening = true;
         if (video.readyState >= HAVE_CURRENT_DATA) markReady();
+        if (!video.paused) onPlaying();
         const outcome = await startPlayback(video, () => {
           // Before the muted retry fires its events, so the announcer gives the autoplay
           // notice priority over a plain "Muted" / "Playing".
@@ -223,7 +263,13 @@ export function PlayerView({
       if (timer !== undefined) clearTimeout(timer);
       offError();
       offNotice();
-      if (listening) for (const type of READY) video.removeEventListener(type, markReady);
+      if (listening) {
+        for (const type of READY) video.removeEventListener(type, markReady);
+        video.removeEventListener('playing', onPlaying);
+        video.removeEventListener('timeupdate', onProgress);
+        video.removeEventListener('seeking', onSeek);
+        video.removeEventListener('seeked', onSeek);
+      }
     };
   }, [controller, video, load]);
 
@@ -240,12 +286,14 @@ export function PlayerView({
       disarm();
       timer = setTimeout(() => {
         timer = undefined;
-        if (video.paused || !audioMissing(video)) return;
+        // Muted, volume 0 or a stream without audio: silence proves nothing.
+        if (video.paused || video.muted || video.volume === 0) return;
+        if (noAudioTrackFor.current === load || !audioMissing(video)) return;
         log.info('player: no audio decoded');
         setNoAudio((prev) => (prev?.load === load ? prev : { load }));
       }, AUDIO_CHECK_DELAY_MS);
     };
-    const ARM = ['playing'] as const;
+    const ARM = ['playing', 'volumechange'] as const;
     const DISARM = ['pause', 'waiting', 'emptied'] as const;
     if (!video.paused) arm();
     for (const type of ARM) video.addEventListener(type, arm);
@@ -374,12 +422,15 @@ export function PlayerView({
     }
   }, [autoFocus, region]);
 
-  const errorText = error ? describePlaybackError(error, { kind, requiredHeaders }) : undefined;
-  const showUnmute = autoplayMuted && silent && error === undefined;
-  const audioWarning =
-    noAudio?.load === load && noAudio.dismissed !== true && error === undefined
-      ? noAudio
+  const errorText =
+    error && failure
+      ? describePlaybackError(error, { kind, requiredHeaders, afterStart: failure.started })
       : undefined;
+  const showUnmute = autoplayMuted && silent && error === undefined;
+  const shown = (w: TrackWarning | undefined) =>
+    w?.load === load && w.dismissed !== true && error === undefined ? w : undefined;
+  const audioWarning = shown(noAudio);
+  const videoWarning = shown(noVideo);
   const reconnectAttempt =
     reconnectLabel?.stream === stream && (loading || waitingReconnect) && error === undefined
       ? reconnectLabel.attempt
@@ -493,7 +544,27 @@ export function PlayerView({
         </Button>
       )}
 
-      {(audioWarning || fullscreen.nativeNote) && (
+      {fullscreen.rotationPrompt && (
+        <Button
+          variant="contained"
+          size="large"
+          data-testid="player-rotation-prompt"
+          startIcon={<FullscreenRounded aria-hidden />}
+          onClick={fullscreen.acceptRotationPrompt}
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            minHeight: 56,
+            px: 3,
+          }}
+        >
+          {t.player.tapForFullscreen}
+        </Button>
+      )}
+
+      {(audioWarning || videoWarning || fullscreen.nativeNote) && (
         <Box
           sx={{
             position: 'absolute',
@@ -519,6 +590,19 @@ export function PlayerView({
               {audioWarning.codec !== undefined
                 ? t.player.noAudio.codec(formatCodecs(audioWarning.codec))
                 : t.player.noAudio.unknown}
+            </Alert>
+          )}
+          {videoWarning && (
+            <Alert
+              severity="warning"
+              role="status"
+              data-testid="player-no-video"
+              closeText={t.player.dismiss}
+              onClose={() => setNoVideo({ ...videoWarning, dismissed: true })}
+            >
+              {videoWarning.codec !== undefined
+                ? t.player.noVideo.codec(formatCodecs(videoWarning.codec))
+                : t.player.noVideo.unknown}
             </Alert>
           )}
           {fullscreen.nativeNote && (
