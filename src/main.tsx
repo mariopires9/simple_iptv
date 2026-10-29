@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from '@/app/App';
 import { registerServiceWorker } from '@/app/pwa/serviceWorker';
-import { installPromptStore } from '@/core/platform';
+import { installPromptStore } from '@/core/platform/installPrompt';
 
 // PWA-01: listen for `beforeinstallprompt` from the start (it can fire before Settings exists).
 installPromptStore();
