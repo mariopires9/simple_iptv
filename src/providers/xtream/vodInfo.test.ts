@@ -6,7 +6,6 @@ import { fetchVodInfo, parseVodInfo } from './vodInfo';
 describe('parseVodInfo', () => {
   it('maps the full fixture', () => {
     expect(parseVodInfo(xtreamFixtures.vodInfo)).toEqual({
-      name: 'The Synthetic Movie',
       plot: 'A test pattern discovers it is a movie. Synthetic data for tests.',
       genre: 'Action, Comédia',
       director: 'Carol Placeholder',
@@ -17,8 +16,6 @@ describe('parseVodInfo', () => {
       poster: 'http://img.example.test/posters/2001.jpg',
       backdrop: 'http://img.example.test/backdrops/2001.jpg',
       ext: 'mp4',
-      streamId: '2001',
-      addedAt: 1735689600000,
     });
   });
 
@@ -44,7 +41,7 @@ describe('parseVodInfo', () => {
           backdrop_path: [],
           director: { nested: true },
         },
-        movie_data: { container_extension: '../../x', stream_id: 'abc', added: 0 },
+        movie_data: { container_extension: '../../x' },
       }),
     ).toEqual({});
   });
@@ -63,14 +60,12 @@ describe('parseVodInfo', () => {
         movie_data: { stream_id: 7, container_extension: '.MKV', name: 'Data name' },
       }),
     ).toEqual({
-      name: 'Data name',
       rating: 8,
       year: 1999,
       durationSec: 6125,
       backdrop: 'https://img.example.test/b.jpg',
       plot: 'Fallback plot',
       cast: 'Someone',
-      streamId: '7',
       ext: 'mkv',
     });
   });

@@ -62,6 +62,14 @@ function extensionOf(path: string): string | undefined {
   return /\.([a-z0-9]{1,5})$/i.exec(path)?.[1]?.toLowerCase();
 }
 
+/**
+ * Whether resolving this movie depends on `get_vod_info`: an Xtream movie whose catalogue entry
+ * has no container extension (the details' `container_extension` is then the best source).
+ */
+export function needsInfoExt(movie: Movie, source: Source): boolean {
+  return source.kind === 'xtream' && extensionOf(movie.streamPath) === undefined && !movie.ext;
+}
+
 /** Xtream VOD URL (exported for tests). Never log the result: it contains the password. */
 export function xtreamMovieUrl(
   base: string,

@@ -12,6 +12,7 @@ import {
   type CatalogItemInput,
 } from '@/core/db';
 import { forgetActiveSource, setActiveSource } from '@/core/session';
+import { clearBrowseState } from './browseState';
 import { clearProjectionCache } from './sortIndex';
 import { installScrollMetrics, m3uSource, renderMovies } from './test-utils';
 
@@ -88,10 +89,16 @@ async function seed() {
     items: [...ACTION, ...mega],
   });
   await catalogRepo.replaceForSource(OTHER, 'movie', {
-    categories: [{ externalId: '1', name: 'Docs' }],
+    // The synthetic "uncategorized" category the providers create for items without a valid
+    // category (stored nameless, localised by the UI) — review #2.
+    categories: [
+      { externalId: '1', name: 'Docs' },
+      { externalId: 'uncategorized', name: '' },
+    ],
     items: [
       { externalId: 'd1', categoryExternalId: '1', name: 'Deep Sea', streamPath: '' },
       { externalId: 'd2', categoryExternalId: '1', name: 'Desert', streamPath: '' },
+      { externalId: 'o1', categoryExternalId: 'uncategorized', name: 'Orphan', streamPath: '' },
     ],
   });
   await settingsRepo.set('activeSourceId', SOURCE);
@@ -119,6 +126,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   forgetActiveSource();
   clearProjectionCache();
+  clearBrowseState();
   await settingsRepo.set('activeSourceId', SOURCE);
 });
 
@@ -178,6 +186,25 @@ describe('MoviesScreen — categories (VOD-01 AC1)', () => {
       'href',
       '/movies',
     );
+  });
+
+  it('"Show all movies" keeps the sort (review #6)', async () => {
+    show('/movies/category/nope?sort=name');
+    expect(await screen.findByRole('link', { name: 'Show all movies' })).toHaveAttribute(
+      'href',
+      '/movies?sort=name',
+    );
+  });
+
+  it('movies without a category are in "All" and in a localised "Uncategorized" (review #2)', async () => {
+    await settingsRepo.set('activeSourceId', OTHER);
+    show('/movies');
+    const g = await grid('Movies in All');
+    expect(await within(g).findByRole('link', { name: 'Orphan' })).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Categories' });
+    await userEvent.click(within(nav).getByRole('link', { name: 'Uncategorized' }));
+    const own = await grid('Movies in Uncategorized');
+    expect(titles(own)).toEqual(['Orphan']);
   });
 
   it('an empty category says so', async () => {
@@ -259,6 +286,40 @@ describe('MoviesScreen — virtualised grid (VOD-01 AC1)', () => {
     await waitFor(() => expect(document.activeElement).toHaveTextContent(`Film ${MEGA}`));
     await userEvent.keyboard('{Home}');
     await waitFor(() => expect(document.activeElement).toHaveAttribute('data-index', '0'));
+  });
+
+  it('Back from the details returns to the same category, sort and scroll position (review #6)', async () => {
+    const { router } = show('/movies/category/20?sort=name');
+    const g = await grid('Movies in Mega');
+    await within(g).findByRole('link', { name: 'Film 1' });
+    act(() => {
+      g.scrollTop = 300_000;
+      fireEvent.scroll(g);
+    });
+    const far = await waitFor(() => {
+      const row = within(g)
+        .getAllByRole('row')
+        .find((r) => Number(r.getAttribute('aria-rowindex')) > 100);
+      expect(row).toBeDefined();
+      return row as HTMLElement;
+    });
+    const card = await waitFor(() => within(far).getAllByRole('link')[0] as HTMLElement);
+    const farRow = Number(far.getAttribute('aria-rowindex'));
+    await userEvent.click(card);
+    expect(router.state.location.pathname).toMatch(/^\/movies\/\d+$/);
+    const back = await screen.findByRole('link', { name: 'Back to movies' });
+    await userEvent.click(back);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/movies/category/20'));
+    expect(router.state.location.search).toBe('?sort=name');
+    const again = await grid('Movies in Mega');
+    // Scrolled back near the same rows, not to the top.
+    await waitFor(() => {
+      const indexes = within(again)
+        .getAllByRole('row')
+        .map((r) => Number(r.getAttribute('aria-rowindex')));
+      expect(Math.max(...indexes)).toBeGreaterThanOrEqual(farRow - 5);
+      expect(indexes).not.toContain(1);
+    });
   });
 
   it('a card links to the movie details', async () => {
@@ -396,6 +457,6 @@ describe('MoviesScreen — active list (SRC-08 AC4)', () => {
       within(nav)
         .getAllByRole('link')
         .map((l) => l.textContent),
-    ).toEqual(['All', 'Docs']);
+    ).toEqual(['All', 'Docs', 'Uncategorized']);
   });
 });

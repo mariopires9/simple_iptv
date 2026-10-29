@@ -15,6 +15,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { t } from '@/i18n';
 import { DelayedLoading, PosterGridSkeleton, StateView, errorDetails } from '@/ui/state';
 import { ALL_CATEGORY_ID, categoryPath, type MovieCategory } from './categories';
+import { rememberBrowse } from './browseState';
 import { CategoryNav } from './CategoryNav';
 import { MovieGrid, type GridBand } from './MovieGrid';
 import { loadMoviesSource, type MoviesSourceState } from './moviesSource';
@@ -151,6 +152,10 @@ export function MoviesScreen() {
     setSearchParams(next, { replace: true });
   };
   const search = searchParams.toString() === '' ? '' : `?${searchParams.toString()}`;
+  // "Back to movies" from a details page opened some other way returns here (browseState.ts).
+  useEffect(() => {
+    rememberBrowse({ categoryId, search });
+  }, [categoryId, search]);
   const band: GridBand = isDesktop ? 'desktop' : isTablet ? 'tablet' : 'mobile';
 
   let content;
@@ -208,6 +213,8 @@ export function MoviesScreen() {
           onPageError={onPageError}
           onRetry={retryGrid}
           gridKey={`${projectionKey}\n${effectiveSort}`}
+          search={search}
+          restoreKey={`${source.source.id}\n${categoryId}\n${effectiveSort}`}
         />
       </Box>
     );
@@ -285,6 +292,10 @@ interface GridPaneProps {
   progress: ReadonlyMap<string, number>;
   onPageError: (error: unknown) => void;
   onRetry: () => void;
+  /** Current query (the sort), kept on "Show all movies". */
+  search: string;
+  /** Scroll position memory of the grid: per list, category and sort. */
+  restoreKey: string;
 }
 
 function GridPane({
@@ -296,9 +307,15 @@ function GridPane({
   progress,
   onPageError,
   onRetry,
+  search,
+  restoreKey,
 }: GridPaneProps) {
   const showAll = (
-    <Button variant="contained" component={Link} to={categoryPath(ALL_CATEGORY_ID)}>
+    <Button
+      variant="contained"
+      component={Link}
+      to={{ pathname: categoryPath(ALL_CATEGORY_ID), search }}
+    >
       {t.movies.emptyCategory.showAll}
     </Button>
   );
@@ -337,6 +354,7 @@ function GridPane({
       band={band}
       progress={progress}
       onError={onPageError}
+      restoreKey={restoreKey}
     />
   );
 }

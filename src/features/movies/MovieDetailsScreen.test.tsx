@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { credentialVault } from '@/core/crypto';
 import {
@@ -24,6 +24,7 @@ import {
   xtreamHandlers,
 } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
+import { clearBrowseState, rememberBrowse } from './browseState';
 import { clearInfoCache } from './movieInfo';
 import { m3uSource, renderMovies } from './test-utils';
 
@@ -90,6 +91,8 @@ beforeAll(async () => {
         name: 'Test Pattern Returns',
         streamPath: '2002.mkv',
       },
+      // No extension in the catalogue: Play needs get_vod_info's (review #1).
+      { externalId: '2003', categoryExternalId: '10', name: 'Bare Movie', streamPath: '2003' },
     ],
   });
   await catalogRepo.replaceForSource(M3U, 'movie', {
@@ -124,6 +127,7 @@ afterEach(async () => {
   media?.restore();
   media = undefined;
   clearInfoCache();
+  clearBrowseState();
   clearLogBuffer();
   forgetActiveSource();
   await settingsRepo.set('activeSourceId', XTREAM);
@@ -240,6 +244,46 @@ describe('MovieDetailsScreen — server text is text (VOD-02 AC2)', () => {
 });
 
 describe('MovieDetailsScreen — Play / Resume (VOD-02 AC3)', () => {
+  it('Play before the details arrive: one descriptor, with the details’ extension (review #1)', async () => {
+    server.use(
+      http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, async () => {
+        await delay(150);
+        return HttpResponse.json({
+          info: { plot: 'Late plot' },
+          movie_data: { stream_id: 2003, container_extension: 'avi' },
+        });
+      }),
+    );
+    await open('/movies/2003');
+    // Pressed while get_vod_info is still in flight.
+    await userEvent.click(screen.getByRole('button', { name: 'Play' }));
+    await screen.findByRole('region', { name: 'Player: Bare Movie' });
+    await screen.findByText('Late plot');
+    expect(new Set(views.map((v) => v.descriptor.url))).toEqual(
+      new Set([`${XTREAM_TEST_BASE_URL}/movie/${USER}/${PASS}/2003.avi`]),
+    );
+    expect(lastView().descriptor.container).toBe('avi');
+  });
+
+  it('leaving the page aborts get_vod_info; the aborted answer is not cached (review #5)', async () => {
+    server.use(
+      http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, async () => {
+        await delay(100);
+        return HttpResponse.json(xtreamFixtures.vodInfo);
+      }),
+    );
+    const first = await open('/movies/2001');
+    await waitFor(() => expect(infoRequests()).toHaveLength(1));
+    first.unmount();
+    media?.restore();
+    await new Promise((r) => setTimeout(r, 150));
+    await open('/movies/2001');
+    await screen.findByText('Carol Placeholder');
+    expect(infoRequests()).toHaveLength(2);
+    // No warning logged for the deliberate abort.
+    expect(JSON.stringify(getLogEntries())).not.toContain('get_vod_info failed');
+  });
+
   it('Xtream: Play opens the player with the in-memory URL and no start position', async () => {
     await open('/movies/2001');
     await userEvent.click(screen.getByRole('button', { name: 'Play' }));
@@ -334,6 +378,33 @@ describe('MovieDetailsScreen — favourite, states and active list', () => {
     await open('/movies/9999');
     expect(screen.getByRole('heading', { name: 'Movie not found' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to movies' })).toHaveAttribute('href', '/movies');
+  });
+
+  it('Back from a deep link goes to the movie’s category with the last sort (review #6)', async () => {
+    clearBrowseState();
+    const first = await open('/movies/2002');
+    expect(screen.getByRole('link', { name: 'Back to movies' })).toHaveAttribute(
+      'href',
+      '/movies/category/10',
+    );
+    first.unmount();
+    media?.restore();
+    rememberBrowse({ categoryId: '99', search: '?sort=name' });
+    const { router } = await open('/movies/2002');
+    const back = screen.getByRole('link', { name: 'Back to movies' });
+    expect(back).toHaveAttribute('href', '/movies/category/10?sort=name');
+    await userEvent.click(back);
+    expect(router.state.location.pathname).toBe('/movies/category/10');
+    expect(router.state.location.search).toBe('?sort=name');
+    clearBrowseState();
+  });
+
+  it('the synopsis id comes from useId, not from the movie key (review #7)', async () => {
+    await open('/movies/film-2', M3U);
+    const plot = screen.getByTestId('movie-plot');
+    expect(plot.id).not.toContain('film-2');
+    expect(plot.id).not.toBe('');
+    expect(screen.getByRole('article')).toHaveAccessibleName('Long Movie');
   });
 
   it('switching the active list leaves the previous list’s movie', async () => {

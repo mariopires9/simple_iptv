@@ -7,8 +7,51 @@ import {
   mapVodStreams,
   toExternalId,
   toYear,
+  UNCATEGORIZED_CATEGORY_ID,
+  withUncategorized,
 } from './catalog';
+import { UNCATEGORIZED_CATEGORY_ID as M3U_UNCATEGORIZED } from '@/providers/m3u';
 import { toInt, toNumber } from './schemas';
+
+describe('withUncategorized (VOD-01 review)', () => {
+  const cats = [
+    { externalId: '1', name: 'News' },
+    { externalId: '2', name: 'Sports' },
+  ];
+
+  it('uses the same synthetic id as M3U lists', () => {
+    expect(UNCATEGORIZED_CATEGORY_ID).toBe(M3U_UNCATEGORIZED);
+  });
+
+  it('moves items with a missing or unknown category to a synthetic one, appended last', () => {
+    const live = mapLiveStreams([
+      { stream_id: 1, name: 'A', category_id: '1' },
+      { stream_id: 2, name: 'B' },
+      { stream_id: 3, name: 'C', category_id: '99' },
+    ]).items;
+    const movies = mapVodStreams([{ stream_id: 4, name: 'M', category_id: 'gone' }]).items;
+    const series = mapSeries([{ series_id: 5, name: 'S' }]).items;
+    const lists: { categoryExternalId?: string }[][] = [live, movies, series];
+    for (const items of lists) {
+      const result = withUncategorized(cats, items);
+      expect(result.categories.at(-1)).toEqual({ externalId: 'uncategorized', name: '' });
+      expect(result.categories.slice(0, 2)).toEqual(cats);
+      expect(result.items.every((i) => i.categoryExternalId !== undefined)).toBe(true);
+    }
+    expect(withUncategorized(cats, live).items.map((i) => i.categoryExternalId)).toEqual([
+      '1',
+      'uncategorized',
+      'uncategorized',
+    ]);
+  });
+
+  it('adds nothing when every item has a known category', () => {
+    const items = mapLiveStreams([{ stream_id: 1, name: 'A', category_id: '2' }]).items;
+    const result = withUncategorized(cats, items);
+    expect(result.categories).toEqual(cats);
+    expect(result.items).toEqual(items);
+  });
+});
 
 describe('coercion helpers', () => {
   it.each([
