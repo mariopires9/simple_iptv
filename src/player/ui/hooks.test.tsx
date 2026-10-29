@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PlaybackError } from '../types';
 import { describePlaybackError } from './describePlaybackError';
-import { messages } from '@/i18n';
+import { messages } from '@/i18n/catalogs';
 import { formatPercent, formatTime } from './formatTime';
 import { liveEdgePosition } from './media';
 import { AUTO_HIDE_DELAY_MS, useAutoHide } from './useAutoHide';

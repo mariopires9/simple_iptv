@@ -1,3 +1,6 @@
+/** UI locales (ADR-015): `en` is the base locale and defines the message shape. */
+export type Locale = 'en' | 'pt-PT';
+
 /**
  * Same key structure as `T`, with every string leaf widened to `string` and every message
  * function (interpolation, e.g. `(id: string) => string`) kept with the same parameters. Used

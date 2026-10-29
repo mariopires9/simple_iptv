@@ -9,7 +9,10 @@ import { routes } from './routes';
 import { sources } from './sources';
 import { state } from './state';
 
-/** Base (English) messages; aggregated per feature module (ADR-015). */
+/**
+ * Base (English) messages, every namespace (ADR-015). Defines the `Messages` type; at runtime only
+ * tests and tooling import this aggregate (TEC-01: the app loads feature namespaces lazily).
+ */
 export const en = { app, db, live, movies, nav, onboarding, player, routes, sources, state };
 
 /** Shape every locale must match exactly. */
