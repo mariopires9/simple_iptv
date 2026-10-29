@@ -1,7 +1,9 @@
 // Settings › Privacy › "Delete all data" (SRC-10): explanation, then a dialog where the user types
 // the localized confirmation word (DELETE / APAGAR). While deleting the dialog cannot be dismissed;
 // on success the app restarts on onboarding, on a partial failure it says what was not deleted and
-// offers to retry (AC3).
+// offers to retry (AC3). Once the database is gone (it is locked in this tab) the app must restart
+// even if a later step failed: closing the dialog restarts it. A deletion blocked by another tab
+// restarts the app when it completes.
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
@@ -11,11 +13,11 @@ import DialogContentText from '@mui/material/DialogContentText';
 import DialogTitle from '@mui/material/DialogTitle';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
+import { appRestart } from '@/core/session';
 import { t } from '@/i18n';
 import { ProgressPanel } from '@/ui/state';
 import {
-  appRestart,
   deleteAllData as defaultDeleteAllData,
   type DeleteAllDataResult,
   type DeleteStep,
@@ -27,7 +29,15 @@ export interface DeleteAllDataSectionProps {
   restart?: () => void;
 }
 
-type Phase = { kind: 'confirm' } | { kind: 'deleting' } | { kind: 'failed'; failed: DeleteStep[] };
+type Phase =
+  | { kind: 'confirm' }
+  | { kind: 'deleting' }
+  | {
+      kind: 'failed';
+      failed: DeleteStep[];
+      /** The database is gone (`deleted`) or its deletion is pending: closing restarts the app. */
+      database: 'kept' | 'deleted' | 'pending';
+    };
 
 /** Whether `typed` is the confirmation word (surrounding spaces and letter case ignored). */
 export function matchesConfirmWord(typed: string, word: string): boolean {
@@ -48,22 +58,50 @@ export function DeleteAllDataSection({
   const word = text.dialog.confirmWord;
   const deleting = phase.kind === 'deleting';
   const confirmed = matchesConfirmWord(typed, word);
+  const running = useRef(false);
+  const restarted = useRef(false);
+  const mustRestart = phase.kind === 'failed' && phase.database !== 'kept';
+
+  function restartOnce() {
+    if (restarted.current) return;
+    restarted.current = true;
+    restart();
+  }
 
   function close() {
     if (deleting) return;
+    if (mustRestart) {
+      restartOnce();
+      return;
+    }
     setOpen(false);
   }
 
   async function run(event?: FormEvent) {
     event?.preventDefault();
-    if (deleting || (phase.kind === 'confirm' && !confirmed)) return;
+    // Synchronous guard: a double submit must not start two deletions.
+    if (running.current || deleting || (phase.kind === 'confirm' && !confirmed)) return;
+    running.current = true;
     setPhase({ kind: 'deleting' });
-    const result = await deleteAllData();
+    let result: DeleteAllDataResult;
+    try {
+      result = await deleteAllData();
+    } finally {
+      running.current = false;
+    }
     if (result.failed.length === 0) {
-      restart();
+      restartOnce();
       return;
     }
-    setPhase({ kind: 'failed', failed: result.failed });
+    // A blocked deletion that completes later restarts the app (data gone, database locked).
+    void result.pendingDatabase?.then((deleted) => {
+      if (deleted) restartOnce();
+    });
+    setPhase({
+      kind: 'failed',
+      failed: result.failed,
+      database: result.databaseDeleted ? 'deleted' : result.pendingDatabase ? 'pending' : 'kept',
+    });
   }
 
   return (
@@ -111,6 +149,13 @@ export function DeleteAllDataSection({
                     </Typography>
                   ))}
                 </Box>
+                {phase.database !== 'kept' && (
+                  <Typography variant="body2" sx={{ mt: 2 }}>
+                    {phase.database === 'deleted'
+                      ? text.failed.deletedNote
+                      : text.failed.pendingNote}
+                  </Typography>
+                )}
               </Box>
             ) : (
               <>
@@ -142,7 +187,11 @@ export function DeleteAllDataSection({
           </DialogContent>
           <DialogActions>
             <Button onClick={close} disabled={deleting}>
-              {phase.kind === 'failed' ? text.failed.close : t.state.cancel}
+              {phase.kind !== 'failed'
+                ? t.state.cancel
+                : mustRestart
+                  ? text.failed.continue
+                  : text.failed.close}
             </Button>
             <Button
               type="submit"

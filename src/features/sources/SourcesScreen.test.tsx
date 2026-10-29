@@ -307,21 +307,24 @@ describe('SRC-06 AC3 — refresh of a local-file list asks for a new file', () =
     const big = new File(['#EXTM3U\n'], 'big.m3u');
     Object.defineProperty(big, 'size', { value: 80 * 1024 * 1024 });
 
-    let dialog = await openDialog();
+    await openDialog();
     await user.upload(fileInput(), big);
-    expect(
-      await within(dialog).findByText(
-        t.sources.addM3uFile.largeFile.message(formatBytes(big.size)),
-      ),
-    ).toBeInTheDocument();
-    await user.click(within(dialog).getByRole('button', { name: t.state.cancel }));
+    // The shared large-file confirmation replaces the refresh dialog.
+    let large = await screen.findByRole('dialog', { name: t.sources.addM3uFile.largeFile.title });
+    expect(large).toHaveTextContent(t.sources.addM3uFile.largeFile.message(formatBytes(big.size)));
+    await user.click(within(large).getByRole('button', { name: t.state.cancel }));
+    // The list name stays while the dialogs close (never "Refresh “”").
+    expect(screen.queryByText(text.refreshFile.title(''))).toBeNull();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(tasks).toHaveLength(0);
 
-    dialog = await openDialog();
+    // Reopened: back to choosing a file (nothing left waiting from before).
+    const dialog = await openDialog();
+    expect(within(dialog).getByRole('button', { name: text.refreshFile.choose })).toBeEnabled();
     await user.upload(fileInput(), big);
+    large = await screen.findByRole('dialog', { name: t.sources.addM3uFile.largeFile.title });
     await user.click(
-      await within(dialog).findByRole('button', { name: t.sources.addM3uFile.largeFile.confirm }),
+      within(large).getByRole('button', { name: t.sources.addM3uFile.largeFile.confirm }),
     );
     await waitFor(() => expect(tasks).toHaveLength(1));
     expect(tasks[0]?.input).toEqual({ sourceId: 'laptop', file: big });

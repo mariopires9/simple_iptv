@@ -95,8 +95,15 @@ export const settings = {
           caches: 'Cached files',
           storage: 'Preferences kept by the browser (language, theme)',
         },
+        /** The database is gone: the app restarts when the dialog is closed. */
+        deletedNote:
+          'Your lists, channels and settings were deleted. The app starts again from the beginning when you continue.',
+        /** The deletion waits for other tabs: the app restarts when it completes. */
+        pendingNote:
+          'The deletion is waiting for this app to close in other tabs or windows. It finishes on its own once they are closed.',
         retry: 'Try again',
         close: 'Close',
+        continue: 'Continue',
       },
     },
   },

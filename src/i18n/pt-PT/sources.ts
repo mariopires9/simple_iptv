@@ -112,6 +112,7 @@ export const sources = {
       fileHelp: 'Um ficheiro .m3u ou .m3u8.',
       name: 'Nome (opcional)',
       nameHelp: 'Se ficar vazio, é usado o nome do ficheiro.',
+      defaultName: 'Lista M3U',
     },
     validation: {
       fileRequired: 'Escolha um ficheiro.',

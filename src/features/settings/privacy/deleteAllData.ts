@@ -1,14 +1,19 @@
-// "Delete all data" (SRC-10): removes everything the app stored on this device, then restarts the
-// app on onboarding.
+// "Delete all data" (SRC-10): removes everything the app stored on this device; the caller then
+// restarts the app on onboarding (`appRestart` in core/session).
 //
 // What is deleted, in order:
 // 1. The data worker is terminated first: it holds its own IndexedDB connection (which would block
 //    the deletion), may be writing a sync, and keeps the search index cache in memory.
-// 2. IndexedDB: the `simple-iptv` database is deleted as a whole (`wipeAll`: this tab's connection
-//    is closed first). It holds the lists, catalogue, favorites, history, settings AND the vault —
-//    the encrypted secrets and the non-extractable device key — so no secret survives. Other tabs
-//    close their connection when asked (Dexie's `versionchange` handling); a tab that does not
-//    leaves the deletion blocked, which is reported as a failure after a timeout (retry).
+// 2. IndexedDB: this tab's database is LOCKED (closed, and never reopened until the page reloads,
+//    so a mounted screen cannot recreate it or write data back), then the `simple-iptv` database is
+//    deleted as a whole. It holds the lists, catalogue, favorites, history, settings AND the vault
+//    — the encrypted secrets and the non-extractable device key — so no secret survives.
+//    Other tabs: Dexie closes their connection on `versionchange` and core/db locks them; once
+//    deleted, the other tabs are told on a BroadcastChannel and restart (core/session).
+//    A tab that does not let go leaves the deletion blocked: after a timeout it is reported (the
+//    request stays pending; `pendingDatabase` resolves if it completes later, and a retry waits for
+//    that same request instead of starting another one). A deletion that fails outright unlocks the
+//    database again: the data is still there and the app keeps working.
 // 3. Cache Storage: the app never caches user data (no runtime caching, build/pwa.ts), only the app
 //    shell precache. Decision (AC2): the precache of this app's service worker is KEPT — it holds
 //    build files only, no user data, and deleting it would break starting offline until the next
@@ -18,14 +23,22 @@
 // 4. localStorage / sessionStorage: only this app's keys (`simple-iptv:` prefix — language, theme,
 //    chunk-reload guard — and React Router's scroll positions); other apps on the same origin keep
 //    theirs.
-// 5. In memory: the log redactor's secrets and the diagnostic log buffer. Everything else held in
+// 5. In memory, only once the database is gone: the log redactor's secrets and the diagnostic log
+//    buffer (while the secrets may still be stored, redaction stays on). Everything else held in
 //    memory (active list, playback flags, the sources presence cache, language, theme…) is reset by
-//    the restart that follows a full success (`restartOnOnboarding`): resetting those stores before
-//    would make mounted screens read the (deleted) database again.
+//    the restart that must follow a deleted (or pending) database.
 // The service worker registration is not touched: the app stays installed (AC2).
 // A failed step does not stop the others; the result names the failed ones and the UI offers to
 // retry, which runs every step again (they are idempotent).
+import {
+  DatabaseUnavailableError,
+  lockDatabase,
+  unlockDatabase,
+  wipeAll,
+  withTimeout,
+} from '@/core/db';
 import { clearLogBuffer, clearSecrets, log } from '@/core/log';
+import { announceDataDeleted } from '@/core/session';
 
 export type DeleteStep = 'database' | 'caches' | 'storage';
 export const DELETE_STEPS: readonly DeleteStep[] = ['database', 'caches', 'storage'];
@@ -33,6 +46,13 @@ export const DELETE_STEPS: readonly DeleteStep[] = ['database', 'caches', 'stora
 export interface DeleteAllDataResult {
   /** Steps that failed (empty: everything was deleted). */
   failed: DeleteStep[];
+  /** The database is gone (and locked in this tab): the app must restart. */
+  databaseDeleted: boolean;
+  /**
+   * The deletion was blocked (another tab) and is still pending: resolves `true` if it completes
+   * later (the app must then restart), `false` if it fails (the database is unlocked again).
+   */
+  pendingDatabase?: Promise<boolean>;
 }
 
 /** Keys of this app in Web Storage. */
@@ -47,8 +67,13 @@ export const DATABASE_DELETE_TIMEOUT_MS = 10_000;
 export interface DeleteAllDataDeps {
   /** Terminates the data worker (closing its database connection and in-memory caches). */
   stopWorker: () => Promise<void>;
+  /** Locks this tab's database (no reopen until reload) / lifts the lock. */
+  lockDatabase: () => Promise<void>;
+  unlockDatabase: () => void;
   /** Deletes the IndexedDB database. */
   deleteDatabase: () => Promise<void>;
+  /** Tells the app's other tabs (they restart). */
+  announce: () => void;
   caches: CacheStorage | undefined;
   /** Absolute URL of the app's scope (`<origin><base>`), as in Workbox cache names. */
   scope: string;
@@ -72,10 +97,10 @@ function defaultDeps(): DeleteAllDataDeps {
       const { terminateDataWorker } = await import('@/worker');
       terminateDataWorker();
     },
-    deleteDatabase: async () => {
-      const { wipeAll } = await import('@/core/db');
-      await wipeAll();
-    },
+    lockDatabase,
+    unlockDatabase,
+    deleteDatabase: wipeAll,
+    announce: () => announceDataDeleted(),
     caches: typeof caches === 'undefined' ? undefined : caches,
     scope: new URL(import.meta.env.BASE_URL, globalThis.location.href).href,
     localStorage: storage('localStorage'),
@@ -94,20 +119,24 @@ export function isAppStorageKey(key: string): boolean {
   return key.startsWith(APP_STORAGE_PREFIX) || key === SCROLL_POSITIONS_KEY;
 }
 
-function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Database deletion blocked')), ms);
-    promise.then(
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      },
-    );
-  });
+/** The database deletion in progress (one at a time: a retry waits for it). */
+let databaseDeletion: Promise<void> | undefined;
+
+function deleteDatabaseOnce(deps: DeleteAllDataDeps): Promise<void> {
+  if (!databaseDeletion) {
+    const deletion: Promise<void> = deps.deleteDatabase().finally(() => {
+      if (databaseDeletion === deletion) databaseDeletion = undefined;
+    });
+    databaseDeletion = deletion;
+  }
+  return databaseDeletion;
+}
+
+/** Once the database (secrets included) is gone: forget them in memory, tell the other tabs. */
+function afterDatabaseDeleted(deps: DeleteAllDataDeps): void {
+  clearSecrets();
+  clearLogBuffer();
+  deps.announce();
 }
 
 async function deleteCaches(cacheStorage: CacheStorage | undefined, scope: string): Promise<void> {
@@ -128,6 +157,9 @@ function clearStorage(target: Storage | undefined): void {
   for (const key of keys) target.removeItem(key);
 }
 
+const isTimeout = (error: unknown) =>
+  error instanceof DatabaseUnavailableError && error.reason === 'timeout';
+
 /** Deletes all local data (see the header). Never rejects: failures are in `failed`. */
 export async function deleteAllData(
   overrides: Partial<DeleteAllDataDeps> = {},
@@ -142,12 +174,34 @@ export async function deleteAllData(
     log.warn('Delete all data: could not stop the data worker', { error });
   }
 
+  let databaseDeleted = false;
+  let pendingDatabase: Promise<boolean> | undefined;
   try {
-    await withTimeout(deps.deleteDatabase(), deps.timeoutMs);
+    await deps.lockDatabase();
+    const deletion = deleteDatabaseOnce(deps);
+    try {
+      await withTimeout(deletion, deps.timeoutMs);
+      databaseDeleted = true;
+    } catch (error) {
+      if (!isTimeout(error)) throw error;
+      log.warn('Delete all data: database deletion blocked (another tab?)');
+      pendingDatabase = deletion.then(
+        () => {
+          afterDatabaseDeleted(deps);
+          return true;
+        },
+        (late: unknown) => {
+          log.warn('Delete all data: blocked database deletion failed', { error: late });
+          deps.unlockDatabase();
+          return false;
+        },
+      );
+    }
   } catch (error) {
     log.warn('Delete all data: database not deleted', { error });
-    failed.push('database');
+    deps.unlockDatabase();
   }
+  if (!databaseDeleted) failed.push('database');
 
   try {
     await deleteCaches(deps.caches, deps.scope);
@@ -164,24 +218,9 @@ export async function deleteAllData(
     failed.push('storage');
   }
 
-  clearSecrets();
-  if (failed.length === 0) {
-    clearLogBuffer();
-  } else {
-    log.warn('Delete all data: partial failure', { failed });
-  }
-  return { failed };
+  if (databaseDeleted) afterDatabaseDeleted(deps);
+  else log.warn('Delete all data: partial failure', { failed });
+  return pendingDatabase
+    ? { failed, databaseDeleted, pendingDatabase }
+    : { failed, databaseDeleted };
 }
-
-/** Indirection so tests can observe the restart (jsdom cannot reload). */
-export const appRestart = {
-  /**
-   * Starts the app again on onboarding (HashRouter, ADR-007): the route is set without a
-   * `hashchange` (the current screens must not react to it), then the page reloads, which resets
-   * every in-memory store. The service worker serves the app shell.
-   */
-  restartOnOnboarding(): void {
-    window.history.replaceState(null, '', '#/onboarding');
-    window.location.reload();
-  },
-};

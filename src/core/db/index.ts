@@ -4,8 +4,13 @@ export {
   openDatabase,
   closeDatabase,
   wipeAll,
+  lockDatabase,
+  unlockDatabase,
+  isDatabaseLocked,
+  withTimeout,
   DatabaseUnavailableError,
   DatabaseClosedError,
+  DatabaseLockedError,
   type DatabaseUnavailableReason,
   type OpenDatabaseOptions,
 } from './database';

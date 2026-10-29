@@ -16,3 +16,11 @@ export {
   resetPlaybackForTests,
   subscribePlayback,
 } from './playback';
+// "Delete all data" across tabs and the restart on onboarding (SRC-10).
+export {
+  announceDataDeleted,
+  appRestart,
+  DATA_DELETED_MESSAGE,
+  dataDeletionChannelName,
+  watchDataDeletion,
+} from './dataDeletion';

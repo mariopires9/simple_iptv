@@ -4,6 +4,7 @@
 // Only loaded by the lazy add-source screen (static `@/core/db` imports are fine).
 import { sourcesRepo, type Source } from '@/core/db';
 import { log } from '@/core/log';
+import { t } from '@/i18n';
 import { sourceName } from '../sourceName';
 import { afterSourceSaved } from './saveM3uUrlSource';
 
@@ -25,7 +26,10 @@ export async function saveM3uFileSource(input: SaveM3uFileSourceInput): Promise<
   const source: Source = {
     id,
     kind: 'm3u-file',
-    name: sourceName(input.name, fileBaseName(input.fileName) || 'M3U'),
+    name: sourceName(
+      input.name,
+      fileBaseName(input.fileName) || t.sources.addM3uFile.fields.defaultName,
+    ),
     prefs: { liveFormat: 'auto' },
     createdAt: Date.now(),
     lastSyncStatus: 'never',

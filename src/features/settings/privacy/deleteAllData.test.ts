@@ -1,10 +1,18 @@
 // SRC-10: "Delete all data" — the real database deletion on fake-indexeddb (vault included), fake
-// Cache Storage and Web Storage, step order and partial failures.
+// Cache Storage and Web Storage, step order, the lock, a blocked deletion and partial failures.
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { credentialVault } from '@/core/crypto';
-import { DB_NAME, settingsRepo, sourcesRepo, wipeAll } from '@/core/db';
-import { getLogEntries, log, redact, registerSecret } from '@/core/log';
+import {
+  DatabaseLockedError,
+  DB_NAME,
+  isDatabaseLocked,
+  settingsRepo,
+  sourcesRepo,
+  unlockDatabase,
+  wipeAll,
+} from '@/core/db';
+import { clearSecrets, getLogEntries, log, redact, registerSecret } from '@/core/log';
 import {
   deleteAllData,
   isAppDataCache,
@@ -70,6 +78,7 @@ async function seed() {
 function deps(overrides: Partial<DeleteAllDataDeps> = {}): Partial<DeleteAllDataDeps> {
   return {
     stopWorker: vi.fn(() => Promise.resolve()),
+    announce: vi.fn(),
     caches: fakeCaches([]).cacheStorage,
     scope: SCOPE,
     localStorage: fakeStorage({}),
@@ -80,6 +89,7 @@ function deps(overrides: Partial<DeleteAllDataDeps> = {}): Partial<DeleteAllData
 }
 
 afterEach(async () => {
+  unlockDatabase();
   await wipeAll();
 });
 
@@ -98,12 +108,13 @@ describe('deleteAllData (SRC-10)', () => {
       [SCROLL_POSITIONS_KEY]: '{}',
       'other-app:state': 'y',
     });
+    const announce = vi.fn();
 
     const result = await deleteAllData(
-      deps({ caches: cacheStorage, localStorage: local, sessionStorage: session }),
+      deps({ caches: cacheStorage, localStorage: local, sessionStorage: session, announce }),
     );
 
-    expect(result).toEqual({ failed: [] });
+    expect(result).toEqual({ failed: [], databaseDeleted: true });
     expect(await databaseNames()).not.toContain(DB_NAME);
     // AC2: the app shell precache stays (the app keeps starting, also offline); other apps'
     // caches on the same origin are not touched; this app's data caches are gone.
@@ -114,28 +125,37 @@ describe('deleteAllData (SRC-10)', () => {
     expect(session.getItem('simple-iptv:chunk-reload-at')).toBeNull();
     expect(session.getItem(SCROLL_POSITIONS_KEY)).toBeNull();
     expect(session.getItem('other-app:state')).toBe('y');
+    // The other tabs are told (they lock and restart).
+    expect(announce).toHaveBeenCalledTimes(1);
   });
 
-  it('stops the data worker before deleting the database', async () => {
+  it('stops the data worker, then locks, then deletes the database', async () => {
     const order: string[] = [];
     await deleteAllData(
       deps({
         stopWorker: async () => void order.push('worker'),
+        lockDatabase: async () => void order.push('lock'),
         deleteDatabase: async () => void order.push('database'),
       }),
     );
-    expect(order).toEqual(['worker', 'database']);
+    expect(order).toEqual(['worker', 'lock', 'database']);
   });
 
-  it('a database reopened afterwards is empty: no list, setting or secret survives', async () => {
+  it('this tab cannot recreate the database afterwards (locked until reload)', async () => {
     await seed();
     await deleteAllData(deps());
+    expect(isDatabaseLocked()).toBe(true);
+    // A mounted screen writing now fails instead of recreating the database.
+    await expect(settingsRepo.set('theme', 'dark')).rejects.toBeInstanceOf(DatabaseLockedError);
+    expect(await databaseNames()).not.toContain(DB_NAME);
+    // After the restart (lock lifted) it is empty: no list, setting or secret survives.
+    unlockDatabase();
     expect(await sourcesRepo.list()).toEqual([]);
     expect(await settingsRepo.get('onboardingDone')).toBeUndefined();
     expect(await credentialVault.get('source:s1:url')).toBeUndefined();
   });
 
-  it('forgets the redactor secrets and the diagnostic log buffer', async () => {
+  it('forgets the redactor secrets and the log buffer once the database is gone', async () => {
     registerSecret('very-secret-token');
     log.info('before delete');
     await deleteAllData(deps());
@@ -143,29 +163,65 @@ describe('deleteAllData (SRC-10)', () => {
     expect(getLogEntries()).toEqual([]);
   });
 
-  it('AC3: a failing step is reported; the other steps still run', async () => {
+  it('AC3: a failed database deletion keeps redaction, unlocks the database; other steps run', async () => {
+    registerSecret('still-stored-secret');
     const { cacheStorage, store } = fakeCaches([RUNTIME]);
     const local = fakeStorage({ 'simple-iptv:theme': 'dark' });
+    const announce = vi.fn();
     const result = await deleteAllData(
       deps({
         deleteDatabase: () => Promise.reject(new Error('boom')),
         caches: cacheStorage,
         localStorage: local,
+        announce,
       }),
     );
-    expect(result).toEqual({ failed: ['database'] });
+    expect(result).toEqual({ failed: ['database'], databaseDeleted: false });
     expect(store.size).toBe(0);
     expect(local.getItem('simple-iptv:theme')).toBeNull();
+    // The data is still there: the app keeps working and keeps redacting.
+    expect(isDatabaseLocked()).toBe(false);
+    expect(redact('x still-stored-secret y')).not.toContain('still-stored-secret');
+    expect(announce).not.toHaveBeenCalled();
+    clearSecrets();
   });
 
-  it('a deletion blocked by another tab times out as a database failure', async () => {
-    const result = await deleteAllData(
-      deps({ deleteDatabase: () => new Promise<void>(() => undefined), timeoutMs: 20 }),
-    );
-    expect(result.failed).toEqual(['database']);
+  it('a blocked deletion is reported, stays pending, a retry reuses it; late success → restart', async () => {
+    registerSecret('pending-secret');
+    let finish: () => void = () => undefined;
+    const deleteDatabase = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    const announce = vi.fn();
+    const first = await deleteAllData(deps({ deleteDatabase, announce, timeoutMs: 20 }));
+    expect(first.failed).toEqual(['database']);
+    expect(first.databaseDeleted).toBe(false);
+    expect(first.pendingDatabase).toBeDefined();
+    // Still locked while the deletion is pending (the app must restart, not reopen it).
+    expect(isDatabaseLocked()).toBe(true);
+    expect(redact('pending-secret')).not.toContain('pending-secret');
+
+    // Retry: no second deletion, it waits for the same request.
+    const second = await deleteAllData(deps({ deleteDatabase, announce, timeoutMs: 20 }));
+    expect(deleteDatabase).toHaveBeenCalledTimes(1);
+    expect(second.failed).toEqual(['database']);
+
+    finish();
+    await expect(first.pendingDatabase).resolves.toBe(true);
+    await expect(second.pendingDatabase).resolves.toBe(true);
+    expect(redact('pending-secret')).toBe('pending-secret');
+    expect(announce).toHaveBeenCalled();
   });
 
-  it('cache and storage failures are reported separately', async () => {
+  it('a blocked deletion that fails later unlocks the database', async () => {
+    let fail: (error: Error) => void = () => undefined;
+    const deleteDatabase = () => new Promise<void>((_, reject) => (fail = reject));
+    const result = await deleteAllData(deps({ deleteDatabase, timeoutMs: 20 }));
+    expect(isDatabaseLocked()).toBe(true);
+    fail(new Error('aborted'));
+    await expect(result.pendingDatabase).resolves.toBe(false);
+    expect(isDatabaseLocked()).toBe(false);
+  });
+
+  it('cache and storage failures are reported separately (the database is still gone)', async () => {
     const failing = fakeStorage({ 'simple-iptv:theme': 'dark' });
     failing.removeItem = () => {
       throw new DOMException('denied', 'SecurityError');
@@ -177,7 +233,7 @@ describe('deleteAllData (SRC-10)', () => {
         localStorage: failing,
       }),
     );
-    expect(result.failed).toEqual(['caches', 'storage']);
+    expect(result).toEqual({ failed: ['caches', 'storage'], databaseDeleted: true });
   });
 
   it('works without Cache Storage or Web Storage (and when the worker cannot be stopped)', async () => {

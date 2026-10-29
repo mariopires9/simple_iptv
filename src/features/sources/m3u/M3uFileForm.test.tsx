@@ -2,7 +2,7 @@
 // is replaced by a direct call to `syncM3uFileSource` (jsdom has no module workers), with the same
 // progress and cancellation contract; the picked `File` is handed over as the worker would get it.
 import 'fake-indexeddb/auto';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +17,7 @@ import { invalidateSourcesPresence } from '../sourcesPresence';
 import { M3U_FILE_ACCEPT } from './filePicker';
 import { M3uFileForm, type M3uFileFormDeps } from './M3uFileForm';
 import type { RunM3uFileImport, SettleM3uImport } from './runM3uImport';
+import { saveM3uFileSource } from './saveM3uFileSource';
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -168,6 +169,18 @@ describe('AC1 — pick a file and import it through the streaming parser', () =>
     await user.click(submit());
     await screen.findByRole('heading', { name: urlText.result.title });
     expect((await sourcesRepo.list())[0]?.name).toBe('Kitchen');
+  });
+
+  it('a double submit saves and imports one list only', async () => {
+    const saveSource = vi.fn(saveM3uFileSource);
+    const { user } = renderForm({ saveSource });
+    await user.upload(fileInput(), m3uFile(LIST));
+    const form = submit().closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await screen.findByRole('heading', { name: urlText.result.title });
+    expect(saveSource).toHaveBeenCalledTimes(1);
+    expect(await sourcesRepo.list()).toHaveLength(1);
   });
 
   it('Import without a file → "Choose a file." and the picker button gets the focus', async () => {

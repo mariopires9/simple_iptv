@@ -285,8 +285,10 @@ async function storedStats(sourceId: string): Promise<SourceStats> {
   return { live, movies, series };
 }
 
-/** Where the list is read from. */
+/** Where the list is read from (as requested). */
 type ListOrigin = { kind: 'url' } | { kind: 'file'; file: Blob };
+/** Where the list is read from, resolved (the URL comes from the vault). */
+type ListLocation = { kind: 'url'; url: URL } | { kind: 'file'; file: Blob };
 
 /**
  * Downloads, parses and stores an M3U-URL source. Must run in the data worker (task `syncM3u` in
@@ -376,7 +378,6 @@ async function runSync(
     if (source.kind !== 'm3u-url') {
       throw new WorkerTaskError('failed', 'M3U sync: not an M3U URL source');
     }
-    if (!source.secretRef) throw new WorkerTaskError('failed', 'M3U sync: source has no list URL');
   } else if (source.kind !== 'm3u-file') {
     throw new WorkerTaskError('failed', 'M3U sync: not an M3U file source');
   }
@@ -428,23 +429,26 @@ async function runSync(
   }
 
   // --- List URL from the vault (never leaves the worker); a file has no URL nor secrets ---
-  let listUrl: URL | undefined;
+  let location: ListLocation;
   if (origin.kind === 'url') {
+    const { secretRef } = source;
+    if (!secretRef) throw new WorkerTaskError('failed', 'M3U sync: source has no list URL');
     try {
-      const raw = source.secretRef ? await vault.get(source.secretRef) : undefined;
+      const raw = await vault.get(secretRef);
       if (raw === undefined) return await fail('credentials-lost');
       const parsed = parseExternalUrl(raw, 'source');
       if (!parsed.ok) return await fail('invalid-url');
-      listUrl = parsed.url;
+      location = { kind: 'url', url: parsed.url };
     } catch (err) {
       if (err instanceof SourceRemovedError) throw err;
       return await fail(err instanceof VaultKeyLostError ? 'credentials-lost' : 'unknown');
     }
-  } else if (origin.file.size > MAX_BYTES) {
+  } else {
     // Known before reading a byte.
-    return fail('too-large');
+    if (origin.file.size > MAX_BYTES) return fail('too-large');
+    location = origin;
   }
-  const secrets = listUrl ? listUrlSecrets(listUrl) : [];
+  const secrets = location.kind === 'url' ? listUrlSecrets(location.url) : [];
   for (const secret of secrets) registerSecret(secret);
   const isStorableUrl = storableUrlCheck(secrets);
   builder = new M3uCatalogBuilder({ isStorableUrl });
@@ -493,9 +497,9 @@ async function runSync(
   try {
     ctx.throwIfCancelled();
     const read =
-      origin.kind === 'file'
-        ? await readM3uFile(origin.file, parser, { signal: abort.signal, onBytes, onChunk })
-        : await downloadM3u((listUrl as URL).href, parser, {
+      location.kind === 'file'
+        ? await readM3uFile(location.file, parser, { signal: abort.signal, onBytes, onChunk })
+        : await downloadM3u(location.url.href, parser, {
             signal: abort.signal,
             inactivityTimeoutMs: deps.inactivityTimeoutMs ?? DOWNLOAD_INACTIVITY_TIMEOUT_MS,
             ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),

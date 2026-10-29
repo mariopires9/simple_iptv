@@ -68,6 +68,8 @@ export function M3uFileForm({ doneTo, deps: depsOverride }: M3uFileFormProps) {
   const [askLarge, setAskLarge] = useState(false);
   /** The large file the user already agreed to import. */
   const confirmedLarge = useRef<File | undefined>(undefined);
+  /** Synchronous guard: `busy` only changes on the next render, a double submit is quicker. */
+  const importing = useRef(false);
 
   const pickButton = useRef<HTMLButtonElement>(null);
   const failureRef = useRef<HTMLDivElement>(null);
@@ -88,6 +90,16 @@ export function M3uFileForm({ doneTo, deps: depsOverride }: M3uFileFormProps) {
   }
 
   async function importFile(target: File) {
+    if (importing.current) return;
+    importing.current = true;
+    try {
+      await saveAndImport(target);
+    } finally {
+      importing.current = false;
+    }
+  }
+
+  async function saveAndImport(target: File) {
     let saved = source;
     if (!saved) {
       job.setFailure(undefined);
@@ -111,7 +123,7 @@ export function M3uFileForm({ doneTo, deps: depsOverride }: M3uFileFormProps) {
 
   /** Import (or retry) with the chosen file, after the large-file confirmation when needed. */
   function start() {
-    if (busy) return;
+    if (busy || importing.current) return;
     if (!file) {
       setFileError(text.validation.fileRequired);
       job.setFailure(undefined);

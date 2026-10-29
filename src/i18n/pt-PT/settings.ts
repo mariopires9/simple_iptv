@@ -93,8 +93,13 @@ export const settings = {
           caches: 'Ficheiros em cache',
           storage: 'Preferências guardadas pelo navegador (idioma, tema)',
         },
+        deletedNote:
+          'As suas listas, canais e definições foram apagados. A aplicação recomeça do início quando continuar.',
+        pendingNote:
+          'A eliminação aguarda que esta aplicação seja fechada noutros separadores ou janelas. Termina sozinha assim que forem fechados.',
         retry: 'Tentar novamente',
         close: 'Fechar',
+        continue: 'Continuar',
       },
     },
   },

@@ -1,7 +1,7 @@
 // SRC-10: Settings › Privacy › "Delete all data" — typed confirmation word, progress, restart on
 // success, report + retry on a partial failure.
 import 'fake-indexeddb/auto';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { t } from '@/i18n';
@@ -13,7 +13,9 @@ import { DeleteAllDataSection, matchesConfirmWord } from './DeleteAllDataSection
 
 const text = t.settings.privacy.deleteAll;
 
-function setup(results: DeleteAllDataResult[] = [{ failed: [] }]) {
+const OK: DeleteAllDataResult = { failed: [], databaseDeleted: true };
+
+function setup(results: DeleteAllDataResult[] = [OK]) {
   let call = 0;
   let release: () => void = () => undefined;
   const gate = { hold: false };
@@ -81,8 +83,8 @@ describe('Delete all data (SRC-10)', () => {
 
   it('AC3: a partial failure names what was not deleted and offers to retry', async () => {
     const { user, deleteAllData, restart } = setup([
-      { failed: ['database', 'caches'] },
-      { failed: [] },
+      { failed: ['database', 'caches'], databaseDeleted: false },
+      OK,
     ]);
     await user.click(screen.getByRole('button', { name: text.action }));
     await user.type(confirmField(), text.dialog.confirmWord);
@@ -102,7 +104,7 @@ describe('Delete all data (SRC-10)', () => {
   });
 
   it('after a failure, Close keeps the app as it is', async () => {
-    const { user, restart } = setup([{ failed: ['storage'] }]);
+    const { user, restart } = setup([{ failed: ['database'], databaseDeleted: false }]);
     await user.click(screen.getByRole('button', { name: text.action }));
     await user.type(confirmField(), text.dialog.confirmWord);
     await user.click(confirmButton());
@@ -110,5 +112,50 @@ describe('Delete all data (SRC-10)', () => {
     await user.click(screen.getByRole('button', { name: text.failed.close }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(restart).not.toHaveBeenCalled();
+  });
+
+  it('database deleted but a later step failed: report it, then Continue restarts', async () => {
+    const { user, restart } = setup([{ failed: ['caches'], databaseDeleted: true }]);
+    await user.click(screen.getByRole('button', { name: text.action }));
+    await user.type(confirmField(), text.dialog.confirmWord);
+    await user.click(confirmButton());
+    const failure = await screen.findByTestId('delete-all-failure');
+    expect(failure).toHaveTextContent(text.failed.parts.caches);
+    expect(failure).toHaveTextContent(text.failed.deletedNote);
+    expect(restart).not.toHaveBeenCalled();
+    // Escape cannot leave the app running on a deleted (locked) database either.
+    await user.keyboard('{Escape}');
+    expect(restart).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: text.failed.continue }));
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it('a deletion blocked by another tab restarts the app when it completes later', async () => {
+    let complete: (deleted: boolean) => void = () => undefined;
+    const pendingDatabase = new Promise<boolean>((resolve) => (complete = resolve));
+    const { user, restart } = setup([
+      { failed: ['database'], databaseDeleted: false, pendingDatabase },
+    ]);
+    await user.click(screen.getByRole('button', { name: text.action }));
+    await user.type(confirmField(), text.dialog.confirmWord);
+    await user.click(confirmButton());
+    const failure = await screen.findByTestId('delete-all-failure');
+    expect(failure).toHaveTextContent(text.failed.pendingNote);
+    expect(screen.getByRole('button', { name: text.failed.continue })).toBeInTheDocument();
+    expect(restart).not.toHaveBeenCalled();
+    complete(true);
+    await waitFor(() => expect(restart).toHaveBeenCalledTimes(1));
+  });
+
+  it('a double submit starts one deletion only', async () => {
+    const { user, deleteAllData, gate, release } = setup();
+    gate.hold = true;
+    await user.click(screen.getByRole('button', { name: text.action }));
+    await user.type(confirmField(), text.dialog.confirmWord);
+    const form = confirmButton().closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(deleteAllData).toHaveBeenCalledTimes(1);
+    release();
   });
 });

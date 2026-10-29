@@ -30,6 +30,18 @@ export class DatabaseClosedError extends Error {
   }
 }
 
+/**
+ * The database is locked because all data is being (or was) deleted (SRC-10): it is not reopened
+ * until the page reloads, so a mounted screen cannot recreate it or write to it.
+ */
+export class DatabaseLockedError extends Error {
+  override readonly name = 'DatabaseLockedError';
+
+  constructor() {
+    super('Database locked (all data deleted)');
+  }
+}
+
 export interface OpenDatabaseOptions {
   /** Alternative factory (tests with fake-indexeddb). Defaults to `globalThis.indexedDB`. */
   indexedDB?: IDBFactory;
@@ -45,12 +57,26 @@ let lastOptions: OpenDatabaseOptions = {};
 let opening: Promise<SimpleIptvDb> | undefined;
 /** Incremented on every close/wipe: an open from a previous generation never ends up in `current`. */
 let generation = 0;
+/** Set by `lockDatabase()` (or a deletion from another tab): no open until `unlockDatabase()`. */
+let locked = false;
+/**
+ * `wipeAll()` calls of this JS realm in progress: their `versionchange` is not a deletion by
+ * another tab. Kept on `globalThis` so every instance of this module in the realm shares it (one
+ * per realm in the app; tests may load the module twice).
+ */
+const ownDeletions: { count: number } = ((globalThis as Record<symbol, unknown>)[
+  Symbol.for('simple-iptv.db.ownDeletions')
+] ??= { count: 0 }) as { count: number };
 
 function classify(error: unknown): DatabaseUnavailableReason {
   return error instanceof Error && error.name === 'MissingAPIError' ? 'unsupported' : 'open-failed';
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+/**
+ * Rejects with `DatabaseUnavailableError('timeout')` when `promise` has not settled within `ms`
+ * (the promise itself keeps running).
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new DatabaseUnavailableError('timeout')), ms);
     promise.then(
@@ -91,9 +117,15 @@ async function doOpen(options: OpenDatabaseOptions, gen: number): Promise<Simple
     throw new DatabaseClosedError();
   }
   const opened = db;
-  // Unexpected close (e.g. another tab deleted the database): the next call reopens it.
+  // Unexpected close: the next call reopens it.
   opened.on('close', () => {
     if (current === opened) current = undefined;
+  });
+  // Another tab deletes the database ("Delete all data", SRC-10): Dexie closes this connection;
+  // it must not be reopened (it would recreate the database) until this page reloads. A deletion by
+  // this context's own `wipeAll()` (racing a late open) is not one: it locks explicitly if needed.
+  opened.on('versionchange', (event: IDBVersionChangeEvent) => {
+    if (event.newVersion === null && ownDeletions.count === 0) locked = true;
   });
   current = opened;
   return opened;
@@ -105,6 +137,7 @@ async function doOpen(options: OpenDatabaseOptions, gen: number): Promise<Simple
  * Options only take effect on the first open (or after `closeDatabase()`).
  */
 export function openDatabase(options: OpenDatabaseOptions = {}): Promise<SimpleIptvDb> {
+  if (locked) return Promise.reject(new DatabaseLockedError());
   if (current) return Promise.resolve(current);
   if (!opening) {
     lastOptions = options;
@@ -130,10 +163,33 @@ export async function closeDatabase(): Promise<void> {
   if (pending) await pending.catch(() => undefined);
 }
 
+/**
+ * SRC-10: closes the database and refuses to open it again (`DatabaseLockedError`) until
+ * `unlockDatabase()` or a page reload. `wipeAll()` still works while locked.
+ */
+export async function lockDatabase(): Promise<void> {
+  locked = true;
+  await closeDatabase();
+}
+
+/** Lifts `lockDatabase()` (the deletion failed and the data is still there; tests). */
+export function unlockDatabase(): void {
+  locked = false;
+}
+
+export function isDatabaseLocked(): boolean {
+  return locked;
+}
+
 /** Deletes the whole database (SRC-10 "Delete all data"). */
 export async function wipeAll(): Promise<void> {
-  await closeDatabase();
-  await createDb(lastOptions).delete();
+  ownDeletions.count += 1;
+  try {
+    await closeDatabase();
+    await createDb(lastOptions).delete();
+  } finally {
+    ownDeletions.count -= 1;
+  }
 }
 
 /** Used by the repositories: opens the database if it is not open yet. */
