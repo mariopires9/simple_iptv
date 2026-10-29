@@ -8,7 +8,7 @@
 import { VaultKeyLostError, credentialVault, type CredentialVault } from '@/core/crypto';
 import type { Movie, Source } from '@/core/db';
 import { parseExternalUrl } from '@/core/net';
-import type { StreamContainer, StreamDescriptor } from '@/player';
+import { declaredContainer, type ContainerOrDash, type StreamDescriptor } from '@/player';
 import { xtreamStreamId } from './movieInfo';
 
 export type ResolvedMovie =
@@ -29,33 +29,9 @@ export interface ResolveMovieDeps {
 /** Default Xtream VOD extension when neither the catalogue nor the details give one. */
 export const DEFAULT_VOD_EXT = 'mp4';
 
-const EXTENSION_CONTAINERS: Readonly<Record<string, StreamContainer | 'dash'>> = {
-  m3u8: 'hls',
-  m3u: 'hls',
-  ts: 'ts',
-  mp4: 'mp4',
-  m4v: 'mp4',
-  mkv: 'mkv',
-  webm: 'webm',
-  mov: 'mov',
-  flv: 'flv',
-  avi: 'avi',
-  mpd: 'dash',
-  // Container names an M3U entry may declare (`Movie.container`).
-  hls: 'hls',
-  dash: 'dash',
-  // Audio files play in the browser's own element (the native engine, as `mp4`).
-  mp3: 'mp4',
-  aac: 'mp4',
-  m4a: 'mp4',
-  ogg: 'mp4',
-  flac: 'mp4',
-};
-
 /** Container of an extension (`mkv`, `.MP4`…), `dash`, or `unknown`. */
-export function containerOf(ext: string | undefined): StreamContainer | 'dash' {
-  if (ext === undefined) return 'unknown';
-  return EXTENSION_CONTAINERS[ext.toLowerCase().replace(/^\./, '')] ?? 'unknown';
+export function containerOf(ext: string | undefined): ContainerOrDash {
+  return declaredContainer(ext?.replace(/^\./, '')) ?? 'unknown';
 }
 
 function extensionOf(path: string): string | undefined {

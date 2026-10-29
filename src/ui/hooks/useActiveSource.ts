@@ -1,5 +1,5 @@
-// React binding of the session active list (`@/core/session`, SRC-08 AC4) for the Movies screens.
-// Copied from features/live (features cannot import each other; candidate for a shared extraction).
+// React binding of the session's active list (`@/core/session`, SRC-08 AC4) for the catalogue
+// screens (Live, Movies, Series). Shared since TEC-02.
 import { useEffect, useSyncExternalStore } from 'react';
 import {
   getActiveSourceSnapshot,

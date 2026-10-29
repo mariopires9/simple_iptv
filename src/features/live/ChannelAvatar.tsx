@@ -2,36 +2,11 @@
 import Box from '@mui/material/Box';
 import { useTheme } from '@mui/material/styles';
 import { useState } from 'react';
-import { avatarPalette, radii, type AvatarColors } from '@/ui/theme/tokens';
+import { colorsForName } from '@/ui/colorHash';
+import { isLoadableImage } from '@/ui/images';
+import { avatarPalette, radii } from '@/ui/theme/tokens';
 
 export const AVATAR_SIZE = 40;
-
-/**
- * Whether the browser can load this logo. `https:` and `data:image/…` always; `http:` only when
- * the page itself is not served over HTTPS (mixed content would be blocked or upgraded and fail).
- */
-export function isLoadableLogo(
-  url: string | undefined,
-  pageProtocol: string = globalThis.location?.protocol ?? 'https:',
-): url is string {
-  if (url === undefined || url.trim() === '') return false;
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  switch (parsed.protocol) {
-    case 'https:':
-      return true;
-    case 'http:':
-      return pageProtocol !== 'https:';
-    case 'data:':
-      return parsed.pathname.startsWith('image/');
-    default:
-      return false;
-  }
-}
 
 /** Up to two initials: the first letter or digit of the first two words. */
 export function initialsOf(name: string): string {
@@ -41,18 +16,6 @@ export function initialsOf(name: string): string {
     .slice(0, 2);
   const initials = words.map((w) => Array.from(w)[0] ?? '').join('');
   return initials === '' ? '?' : initials.toLocaleUpperCase();
-}
-
-/** Stable palette entry for a name (FNV-1a hash), so a channel always gets the same color. */
-export function avatarColorsFor(name: string, palette: readonly AvatarColors[]): AvatarColors {
-  let hash = 0x811c9dc5;
-  for (const ch of name) {
-    hash ^= ch.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  const colors = palette[hash % palette.length];
-  if (colors === undefined) throw new RangeError('Empty avatar palette');
-  return colors;
 }
 
 export interface ChannelAvatarProps {
@@ -73,7 +36,7 @@ export function ChannelAvatar({ name, logo }: ChannelAvatarProps) {
     borderRadius: `${radii.sm}px`,
   } as const;
 
-  if (!failed && isLoadableLogo(logo)) {
+  if (!failed && isLoadableImage(logo)) {
     return (
       <Box
         component="img"
@@ -89,7 +52,7 @@ export function ChannelAvatar({ name, logo }: ChannelAvatarProps) {
       />
     );
   }
-  const colors = avatarColorsFor(name, avatarPalette[theme.palette.mode]);
+  const colors = colorsForName(name, avatarPalette[theme.palette.mode]);
   return (
     <Box
       aria-hidden="true"

@@ -21,6 +21,9 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 import { catalogRepo, favoritesRepo, normalizeName, type Channel } from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
+import { CategoryNav } from '@/ui/catalog/CategoryNav';
+import { useActiveSource } from '@/ui/hooks/useActiveSource';
+import { useFillHeight } from '@/ui/hooks/useFillHeight';
 import {
   ChannelListSkeleton,
   DelayedLoading,
@@ -34,7 +37,6 @@ import {
   categoryPath,
   type LiveCategory,
 } from './categories';
-import { CategoryNav } from './CategoryNav';
 import { keysPager } from './channelFilter';
 import { ChannelFilterField } from './ChannelFilterField';
 import { ChannelList, type ChannelListView } from './ChannelList';
@@ -55,10 +57,8 @@ import {
   type SavedLiveView,
 } from './liveState';
 import { NowNext } from './NowNext';
-import { useActiveSource } from './useActiveSource';
 import { PageCache } from './pageCache';
 import { createPager } from './pagers';
-import { useFillHeight } from './useFillHeight';
 import { neighbour } from './zapping';
 
 /** Minimum height of the Live layout (px); below it the page scrolls. */
@@ -675,6 +675,8 @@ export function LiveScreen() {
         categories={source.categories}
         selectedId={categoryId}
         variant={chips ? 'chips' : 'list'}
+        label={t.live.categories}
+        pathFor={categoryPath}
         // Browsing categories keeps the channel playing.
         search={channelKey !== undefined ? `?channel=${encodeURIComponent(channelKey)}` : ''}
       />

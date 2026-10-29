@@ -7,6 +7,8 @@ export type {
   PlayerEvents,
   PlayOptions,
 } from './controller';
+export { NATIVE_AUDIO_CONTAINER, containerOfExtension, declaredContainer } from './containers';
+export type { ContainerOrDash } from './containers';
 export { planPlayback, selectEngine } from './select';
 export type { EngineChoice, PlaybackCandidate, SelectionCapabilities } from './select';
 export { PlaybackError, isPlaybackError } from './types';
