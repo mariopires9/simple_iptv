@@ -4,7 +4,10 @@ import { lazyScreen } from '@/ui/lazyScreen';
 
 /** Top level (full screen, outside the AppShell). */
 export const onboardingRoutes: RouteObject[] = [
-  { path: '/onboarding', lazy: lazyScreen(() => import('./OnboardingScreen'), 'OnboardingScreen') },
+  {
+    path: '/onboarding',
+    lazy: lazyScreen(() => import('./OnboardingScreen'), 'OnboardingScreen', ['onboarding']),
+  },
 ];
 
 /**
@@ -12,5 +15,8 @@ export const onboardingRoutes: RouteObject[] = [
  * TODO(UX-04): moves to features/settings.
  */
 export const onboardingShellRoutes: RouteObject[] = [
-  { path: 'settings/privacy', lazy: lazyScreen(() => import('./PrivacyScreen'), 'PrivacyScreen') },
+  {
+    path: 'settings/privacy',
+    lazy: lazyScreen(() => import('./PrivacyScreen'), 'PrivacyScreen', ['onboarding']),
+  },
 ];

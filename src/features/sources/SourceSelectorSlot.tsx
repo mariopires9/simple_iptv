@@ -5,12 +5,15 @@
 // must never break because of it.
 import { Component, Suspense, lazy, type ComponentType, type ReactNode } from 'react';
 import { log } from '@/core/log';
+import { ensureMessages } from '@/i18n';
 
 const Nothing: ComponentType = () => null;
 
 const SourceSelector = lazy(async (): Promise<{ default: ComponentType }> => {
   try {
-    return { default: (await import('./SourceSelector')).SourceSelector };
+    // Its strings load with it (TEC-01): `sources` is not in the initial bundle.
+    const [module] = await Promise.all([import('./SourceSelector'), ensureMessages('sources')]);
+    return { default: module.SourceSelector };
   } catch (error) {
     log.warn('The list selector could not be loaded', { error });
     return { default: Nothing };

@@ -1,7 +1,7 @@
 // SRC-08 AC1: card texts — relative time (en / pt-PT), counts per type, status and reasons.
 import { describe, expect, it } from 'vitest';
 import type { Source } from '@/core/db';
-import { messages } from '@/i18n';
+import { messages } from '@/i18n/catalogs';
 import {
   describeContents,
   describeLastSync,

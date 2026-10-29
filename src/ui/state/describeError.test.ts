@@ -5,7 +5,7 @@ import { DatabaseUnavailableError, type DatabaseUnavailableReason } from '@/core
 import { clearSecrets, registerSecret } from '@/core/log';
 import { NetError, type NetErrorHint, type NetErrorKind } from '@/core/net';
 import { WorkerTaskError } from '@/core/worker';
-import { messages } from '@/i18n';
+import { messages } from '@/i18n/catalogs';
 import { describeError, errorDetails, MAX_DETAILS_LENGTH } from './describeError';
 
 const en = messages('en');
