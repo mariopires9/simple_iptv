@@ -27,8 +27,8 @@ Allowed statuses (exactly one per story):
 | SRC-02 | Xtream client: auth/account | E1 | Must | 3 | FND-06 | 2 | M1 | Done |
 | SRC-04 | Streaming M3U parser | E1 | Must | 5 | FND-07 | 2 | M1 | Done |
 | PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | Done |
-| FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | Backlog |
-| FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | Backlog |
+| FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | In Progress |
+| FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | In Progress |
 | PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | Backlog |
 | PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | Backlog |
 | QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Backlog |
@@ -51,19 +51,19 @@ Allowed statuses (exactly one per story):
 | LIV-01 | Categories and channel list | E4 | Must | 5 | FND-04, FND-05, UX-02, SRC-07 | 4 | M1 | Done |
 | VOD-01 | Movie grid | E5 | Must | 3 | FND-04, FND-05, UX-02, SRC-07 | 4 | M2 | Done |
 | PLY-03 | Fullscreen and PiP | E3 | Must | 3 | PLY-02 | 4 | M1 | Done |
-| SCH-01 | Search index | E8 | Must | 3 | FND-07, SRC-07 | 4 | M2 | Backlog |
+| SCH-01 | Search index | E8 | Must | 3 | FND-07, SRC-07 | 4 | M2 | In Progress |
 | LIV-02 | Play channel and zapping | E4 | Must | 5 | LIV-01, PLY-02 | 5 | M1 | Done |
 | LIV-04 | Quick channel filter | E4 | Must | 2 | LIV-01 | 5 | M1 | Done |
 | VOD-02 | Movie details | E5 | Must | 3 | VOD-01, PLY-02 | 5 | M2 | Done |
 | SER-01 | Series grid | E6 | Must | 2 | VOD-01 | 5 | M2 | Backlog |
 | EPG-01 | Xtream now/next | E7 | Must | 3 | LIV-01, SRC-02 | 5 | M2 | Done |
-| SCH-02 | Global search | E8 | Must | 3 | SCH-01, FND-04 | 5 | M2 | Backlog |
+| SCH-02 | Global search | E8 | Must | 3 | SCH-01, FND-04 | 5 | M2 | In Progress |
 | UX-04 | Settings and privacy | E11 | Must | 2 | FND-04, SRC-08 | 5 | M3 | Backlog |
 | LIV-03 | Remember last channel | E4 | Must | 2 | LIV-02, FND-05 | 6 | M1 | Done |
 | VOD-03 | VOD with resume | E5 | Must | 3 | VOD-02, FAV-02 | 6 | M2 | Backlog |
 | SER-02 | Series details | E6 | Must | 5 | SER-01, PLY-02 | 6 | M2 | Backlog |
 | SER-03 | Episode, resume, next | E6 | Must | 3 | SER-02, VOD-03 | 7 | M2 | Backlog |
-| FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | Backlog |
+| FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | In Progress |
 | UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | Backlog |
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
@@ -81,7 +81,7 @@ Allowed statuses (exactly one per story):
 | EXP-01 | Export/import settings | Should | 3 | SRC-08, FAV-03 | Backlog |
 | UX-05 | D-pad navigation | Should | 5 | UX-03 | Backlog |
 | MSS-01 | Media Session | Should | 1 | PLY-02 | Backlog |
-| TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | Backlog |
+| TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | In Progress |
 | SEC-03 | Parental control PIN | Could | 3 | LIV-01, VOD-01 | Backlog |
 | EPG-04 | EPG grid | Could | 8 | EPG-03 | Backlog |
 | PRF-01 | Multiple profiles | Could | 5 | FAV-03 | Backlog |
