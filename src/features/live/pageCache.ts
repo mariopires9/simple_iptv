@@ -8,6 +8,7 @@
 // LIV-02): each subscribes and pins its own active row; the cache stops storing results only
 // once the last subscriber has gone.
 import type { Channel } from '@/core/db';
+import { buildFilterIndex, type FilterIndex } from './channelFilter';
 import type { ChannelPager } from './pagers';
 
 export const PAGE_SIZE = 200;
@@ -23,6 +24,7 @@ export class PageCache {
   private center = 0;
   /** Pinned page per owner (each list pins its active row). */
   private readonly pinned = new Map<object, number>();
+  private filter: Promise<FilterIndex> | undefined;
 
   constructor(
     readonly pager: ChannelPager,
@@ -54,6 +56,21 @@ export class PageCache {
     return () => {
       this.subscribers.delete(subscriber);
     };
+  }
+
+  /**
+   * The category's quick-filter index (LIV-04), built on first use and then kept with this cache
+   * (one per category and sync). A failed build is not kept, so the next use tries again.
+   */
+  filterIndex(): Promise<FilterIndex> {
+    if (!this.filter) {
+      const building = buildFilterIndex(this.pager);
+      this.filter = building;
+      building.catch(() => {
+        if (this.filter === building) this.filter = undefined;
+      });
+    }
+    return this.filter;
   }
 
   /** Index of the channel `key` among the cached pages, or -1 (not cached or not here). */

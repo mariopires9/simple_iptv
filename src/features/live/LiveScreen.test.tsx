@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -13,6 +13,7 @@ import {
   type Favorite,
 } from '@/core/db';
 import { CHANNEL_ROW_HEIGHT } from '@/ui/state';
+import { clearLiveState } from './liveState';
 import { MAX_PAGES, PAGE_SIZE } from './pageCache';
 import {
   EMPTY_SOURCE_ID,
@@ -49,6 +50,9 @@ afterEach(async () => {
   const favorites: Favorite[] = await favoritesRepo.list(SOURCE_ID, 'live');
   await Promise.all(favorites.map((f) => favoritesRepo.remove(f.itemKey)));
   await settingsRepo.set('activeSourceId', SOURCE_ID);
+  // Unmount first: the screen flushes its saved view (LIV-03) when it goes away.
+  cleanup();
+  await clearLiveState();
 });
 
 function show(path?: string, width?: number) {

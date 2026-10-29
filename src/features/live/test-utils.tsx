@@ -71,11 +71,14 @@ export async function seedCatalog(): Promise<void> {
 
 /**
  * jsdom has no layout: give the listbox a 10-row viewport, and make `scrollTo` move `scrollTop`
- * and fire `scroll` as a browser would. Returns a restore function.
+ * and fire `scroll` as a browser would. With `scrollHeight`, the listbox also reports its content
+ * height (the virtual sizer's inline height), so the virtualizer can scroll to an offset instead of clamping it
+ * to 0 (LIV-03 restore). Returns a restore function.
  */
-export function installScrollMetrics(): () => void {
+export function installScrollMetrics({ scrollHeight = false } = {}): () => void {
   const proto = HTMLElement.prototype;
   const originals = {
+    scrollHeight: Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight'),
     clientHeight: Object.getOwnPropertyDescriptor(proto, 'clientHeight'),
     clientWidth: Object.getOwnPropertyDescriptor(proto, 'clientWidth'),
     scrollTop: Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop'),
@@ -89,6 +92,19 @@ export function installScrollMetrics(): () => void {
       return isList(this) ? VIEWPORT_ROWS * CHANNEL_ROW_HEIGHT : 0;
     },
   });
+  if (scrollHeight) {
+    Object.defineProperty(Element.prototype, 'scrollHeight', {
+      configurable: true,
+      get(this: Element) {
+        if (!isList(this)) return 0;
+        // The sizer (first child) carries the virtual height inline.
+        const content = parseFloat(
+          (this.firstElementChild as HTMLElement | null)?.style.height ?? '',
+        );
+        return Math.max(Number.isNaN(content) ? 0 : content, VIEWPORT_ROWS * CHANNEL_ROW_HEIGHT);
+      },
+    });
+  }
   Object.defineProperty(proto, 'clientWidth', {
     configurable: true,
     get(this: HTMLElement) {
@@ -116,6 +132,7 @@ export function installScrollMetrics(): () => void {
   return () => {
     for (const [name, descriptor] of Object.entries(originals)) {
       const target = name.startsWith('client') ? proto : Element.prototype;
+      if (name === 'scrollHeight' && !scrollHeight) continue;
       if (descriptor) Object.defineProperty(target, name, descriptor);
       else delete (target as unknown as Record<string, unknown>)[name];
     }

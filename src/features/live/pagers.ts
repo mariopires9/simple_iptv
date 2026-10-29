@@ -10,6 +10,11 @@ export interface ChannelPager {
   load(offset: number, limit: number): Promise<Channel[]>;
   /** Position of `channel` in this category, or -1 (LIV-02: zapping after a reload). */
   locate(channel: Channel): Promise<number>;
+  /**
+   * Every row in display order, one source category at a time (LIV-04 filter index): a single
+   * index walk per category instead of `offset` pages, which IndexedDB skips one by one.
+   */
+  scan?(onRows: (rows: readonly Channel[]) => void): Promise<void>;
 }
 
 /**
@@ -32,6 +37,10 @@ function memoryPager(channels: readonly Channel[]): ChannelPager {
     total: channels.length,
     load: (offset, limit) => Promise.resolve(channels.slice(offset, offset + limit)),
     locate: (channel) => Promise.resolve(channels.findIndex((c) => c.key === channel.key)),
+    scan: (onRows) => {
+      onRows(channels);
+      return Promise.resolve();
+    },
   };
 }
 
@@ -41,6 +50,7 @@ function categoryPager(key: string, total: number): ChannelPager {
     total,
     load: (offset, limit) => catalogRepo.listByCategory('live', key, { offset, limit }),
     locate: (channel) => indexIn(key, channel),
+    scan: async (onRows) => onRows(await catalogRepo.listByCategory('live', key)),
   };
 }
 
@@ -87,6 +97,9 @@ export function concatPager(segments: readonly { key: string; count: number }[])
       if (!segment) return -1;
       const local = await indexIn(segment.key, channel);
       return local < 0 ? -1 : segment.start + local;
+    },
+    async scan(onRows) {
+      for (const s of placed) onRows(await catalogRepo.listByCategory('live', s.key));
     },
   };
 }

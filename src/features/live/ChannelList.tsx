@@ -6,6 +6,10 @@
 //   reaches them; a row whose page is still loading renders as a placeholder.
 // - Keyboard: a single tab stop (`role="listbox"`) with `aria-activedescendant`; options carry
 //   `aria-setsize`/`aria-posinset` because most of them are not in the DOM.
+// - LIV-03: the list can start at a saved scroll offset and reports its view (selection and
+//   offset) so the screen can persist it.
+// - EPG-01: with an EPG service, the visible rows (not the overscan) show their current programme;
+//   it is requested once the viewport has been still for SCROLL_DEBOUNCE_MS.
 import StarBorderRounded from '@mui/icons-material/StarBorderRounded';
 import StarRounded from '@mui/icons-material/StarRounded';
 import Box from '@mui/material/Box';
@@ -22,11 +26,15 @@ import {
   type MouseEvent,
 } from 'react';
 import type { Channel } from '@/core/db';
+import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { CHANNEL_ROW_HEIGHT, visuallyHidden } from '@/ui/state';
 import { focusRing } from '@/ui/theme/tokens';
 import { ChannelAvatar } from './ChannelAvatar';
+import { SCROLL_DEBOUNCE_MS, currentProgramme, type EpgService } from './epg';
 import type { PageCache } from './pageCache';
+
+const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
 
 /** Rows rendered above and below the viewport. */
 export const OVERSCAN = 6;
@@ -47,6 +55,24 @@ export interface ChannelListProps {
   initialIndex?: number | undefined;
   /** Focus the listbox on mount (e.g. the "Channels" panel). */
   focusOnMount?: boolean;
+  /**
+   * Scroll offset (px) restored on mount (LIV-03): what the user last saw. Without it, the
+   * initial row is centred.
+   */
+  initialScrollTop?: number | undefined;
+  /** Selection or scroll changed (LIV-03 persistence). */
+  onViewChange?: ((view: ChannelListView) => void) | undefined;
+  /** Current programme on the visible rows (EPG-01). */
+  epg?: EpgService | undefined;
+  /** DOM id of the listbox (so a filter field can point at it). */
+  id?: string | undefined;
+}
+
+export interface ChannelListView {
+  index: number;
+  /** Key of the selected channel, when its page is loaded. */
+  key: string | undefined;
+  scrollTop: number;
 }
 
 export function ChannelList({
@@ -59,14 +85,19 @@ export function ChannelList({
   onError,
   initialIndex = 0,
   focusOnMount = false,
+  initialScrollTop,
+  onViewChange,
+  epg,
+  id,
 }: ChannelListProps) {
-  const listId = useId();
+  const generatedId = useId();
+  const listId = id ?? generatedId;
   const hintId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selected, setActive] = useState(initialIndex);
   // Clamped to the current total (the list may shrink under the selection).
   const active = Math.max(0, Math.min(cache.total - 1, selected));
-  const [, pageArrived] = useReducer((n: number) => n + 1, 0);
+  const [pageVersion, pageArrived] = useReducer((n: number) => n + 1, 0);
   const total = cache.total;
 
   useEffect(() => cache.subscribe(pageArrived, onError), [cache, onError]);
@@ -110,12 +141,15 @@ export function ChannelList({
     if (lastIndex >= 0) cache.ensure(firstIndex, lastIndex);
   }, [cache, pinOwner, firstIndex, lastIndex, active, total]);
 
-  // Mount only: start at the initial row (the playing channel in the "Channels" panel).
+  // Mount only: start at the saved offset (LIV-03) or at the initial row (the playing channel in
+  // the "Channels" panel).
   const initialActive = useRef(active);
+  const initialTop = useRef(initialScrollTop);
   useEffect(() => {
-    if (initialActive.current > 0) {
-      virtualizer.scrollToIndex(initialActive.current, { align: 'center' });
-    }
+    const index = initialActive.current;
+    const top = initialTop.current;
+    if (top !== undefined) virtualizer.scrollToOffset(top);
+    else if (index > 0) virtualizer.scrollToIndex(index, { align: 'center' });
     if (focusOnMount) scrollRef.current?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, []);
@@ -180,6 +214,36 @@ export function ChannelList({
     else onPlay(channel, index);
   };
 
+  // LIV-03: report the view (selection, scroll offset) on every change.
+  const activeKey = cache.get(active)?.key;
+  const reportRef = useRef(onViewChange);
+  useEffect(() => {
+    reportRef.current = onViewChange;
+  });
+  const viewRef = useRef({ index: active, key: activeKey });
+  useEffect(() => {
+    viewRef.current = { index: active, key: activeKey };
+    if (total > 0) {
+      reportRef.current?.({
+        index: active,
+        key: activeKey,
+        scrollTop: scrollRef.current?.scrollTop ?? 0,
+      });
+    }
+  }, [active, activeKey, total]);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return undefined;
+    const onScroll = () =>
+      reportRef.current?.({ ...viewRef.current, scrollTop: element.scrollTop });
+    element.addEventListener('scroll', onScroll, { passive: true });
+    return () => element.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const visibleStart = visible?.startIndex ?? 0;
+  const visibleEnd = visible ? visible.endIndex : -1;
+  const epgVersion = useVisibleEpg(epg, cache, visibleStart, visibleEnd, pageVersion);
+
   const activeRendered = rows.some((r) => r.index === active);
 
   return (
@@ -189,6 +253,7 @@ export function ChannelList({
       </Box>
       <Box
         ref={scrollRef}
+        id={listId}
         role="listbox"
         aria-label={label}
         aria-describedby={hintId}
@@ -212,7 +277,11 @@ export function ChannelList({
           },
         }}
       >
-        <Box sx={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
+        {/* Inline height: it changes with every count, so no new CSS class per list size. */}
+        <Box
+          style={{ height: virtualizer.getTotalSize() }}
+          sx={{ width: '100%', position: 'relative' }}
+        >
           {rows.map((row) => {
             const channel = cache.get(row.index);
             return (
@@ -226,6 +295,7 @@ export function ChannelList({
                 active={row.index === active}
                 favorite={channel !== undefined && favorites.has(channel.key)}
                 playing={channel !== undefined && channel.key === playingKey}
+                now={channel && epg ? nowTitle(epg, channel, epgVersion) : undefined}
               />
             );
           })}
@@ -233,6 +303,49 @@ export function ChannelList({
       </Box>
     </>
   );
+}
+
+/** Current programme title of `channel`, if cached (`_version` ties the call to a re-render). */
+function nowTitle(epg: EpgService, channel: Channel, _version: number): string | undefined {
+  return currentProgramme(epg.peek(channel), Date.now())?.title;
+}
+
+/**
+ * EPG of the visible rows `[start, end]` (EPG-01 AC2): requested once the range has been still for
+ * SCROLL_DEBOUNCE_MS; rows that leave the viewport cancel their queued requests. Returns a counter
+ * bumped whenever programmes arrive.
+ */
+function useVisibleEpg(
+  epg: EpgService | undefined,
+  cache: PageCache,
+  start: number,
+  end: number,
+  /** Bumped when a page arrives: rows whose page was still loading are requested too. */
+  pages: number,
+): number {
+  const [version, bump] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => (epg ? epg.subscribe(bump) : undefined), [epg]);
+  useEffect(() => {
+    if (!epg || end < start) return undefined;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      for (let index = start; index <= end; index++) {
+        const channel = cache.get(index);
+        if (!channel || epg.peek(channel) !== undefined) continue;
+        epg.load(channel, { signal: controller.signal }).catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+          log.warn('live: loading the EPG of a row failed', {
+            error: error instanceof Error ? error.name : 'unknown',
+          });
+        });
+      }
+    }, SCROLL_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [epg, cache, start, end, pages]);
+  return version;
 }
 
 interface ChannelRowProps {
@@ -244,6 +357,8 @@ interface ChannelRowProps {
   active: boolean;
   favorite: boolean;
   playing: boolean;
+  /** Title of the programme on air (EPG-01). */
+  now: string | undefined;
 }
 
 function ChannelRow({
@@ -255,6 +370,7 @@ function ChannelRow({
   active,
   favorite,
   playing,
+  now,
 }: ChannelRowProps) {
   return (
     <Box
@@ -310,23 +426,32 @@ function ChannelRow({
           <ChannelAvatar name={channel.name} logo={channel.logo} />
           <Box
             component="span"
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
+            sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
           >
-            {channel.number !== undefined && (
-              <Box component="span" sx={visuallyHidden}>
-                {`${channel.number} `}
-              </Box>
-            )}
-            {channel.name}
-            {favorite && (
-              <Box component="span" sx={visuallyHidden}>
-                {`, ${t.live.favorite}`}
+            <Box component="span" sx={ellipsis}>
+              {channel.number !== undefined && (
+                <Box component="span" sx={visuallyHidden}>
+                  {`${channel.number} `}
+                </Box>
+              )}
+              {channel.name}
+              {favorite && (
+                <Box component="span" sx={visuallyHidden}>
+                  {`, ${t.live.favorite}`}
+                </Box>
+              )}
+            </Box>
+            {now !== undefined && (
+              // One muted line under the name (docs/UX_UI.md §4.6).
+              <Box
+                component="span"
+                data-testid="row-now"
+                sx={{ ...ellipsis, typography: 'body2', color: 'text.secondary' }}
+              >
+                <Box component="span" sx={visuallyHidden}>
+                  {`, ${t.live.epg.rowNow} `}
+                </Box>
+                {now}
               </Box>
             )}
           </Box>
