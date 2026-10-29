@@ -46,8 +46,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # WebKit does not gate CI (nor the deploy that waits for it) until it has passed once: its
-    # first run (PR #3) failed on two open issues, see docs/progress/QA-02.md (iPhone bottom bar
-    # never clickable; live channel stuck on "Loading…"). Remove `experimental` once it is green.
+    # runs on PR #3 failed on two open issues, see docs/progress/QA-02.md (on iPhone the sync toast
+    # covers the bottom bar; slow sync / live stuck on "Loading…"). Remove `experimental` once green.
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
