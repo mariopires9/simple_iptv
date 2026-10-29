@@ -3,7 +3,7 @@
 // entries and the `?channel=` URL. PlayerView is mocked (its props are captured); the real one is
 // covered by src/player/ui.
 import 'fake-indexeddb/auto';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VaultKeyLostError, credentialVault } from '@/core/crypto';
@@ -20,6 +20,7 @@ import {
 import { clearLogBuffer, getLogEntries, toLogJson } from '@/core/log';
 import { PlaybackError, type PlayerEvents, type StreamDescriptor } from '@/player';
 import type { PlayerViewProps } from '@/player/ui';
+import { clearLiveState } from './liveState';
 import { PAGE_SIZE } from './pageCache';
 import { resolveStream, type ResolvedStream } from './resolveStream';
 import { installScrollMetrics, renderLive } from './test-utils';
@@ -84,6 +85,12 @@ const emitAttempt = (url: string) =>
       cb({ engine: 'mpegts', attempt: 0, descriptor: { url, kind: 'live', container: 'ts' } });
     }
   });
+
+// No now/next requests here (EPG-01 has its own tests, with MSW).
+vi.mock('./epg', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./epg')>();
+  return { ...actual, createEpgService: () => undefined };
+});
 
 vi.mock('./resolveStream', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./resolveStream')>();
@@ -207,6 +214,9 @@ afterEach(async () => {
   vi.restoreAllMocks();
   const recent = await historyRepo.listRecent(XTREAM, 'live', 100);
   await Promise.all(recent.map((h) => historyRepo.remove(h.itemKey)));
+  // Unmount first: the screen flushes its saved view (LIV-03) when it goes away.
+  cleanup();
+  await clearLiveState();
 });
 
 function show(path: string, width?: number) {

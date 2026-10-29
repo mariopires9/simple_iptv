@@ -1,4 +1,5 @@
-// Live TV (LIV-01, LIV-02): categories, channel list, its states and the live player.
+// Live TV (LIV-01..04, EPG-01): categories, channel list and filter, its states, the live player
+// and the now/next programme guide.
 export const live = {
   title: 'Live TV',
   categories: 'Categories',
@@ -16,6 +17,30 @@ export const live = {
   favoriteFailed: (name: string) => `Couldn't update favorites for ${name}`,
   loadingRow: 'Loading…',
   keyboardHint: 'Arrow keys move, Enter plays, F adds or removes a favorite.',
+  filter: {
+    label: 'Filter channels',
+    placeholder: 'Filter channels…',
+    hint: 'Type part of a name or a channel number. Esc clears the filter.',
+    clear: 'Clear filter',
+    /** Announced politely after each change of the filter. */
+    results: (count: number) =>
+      count === 0
+        ? 'No channels match'
+        : count === 1
+          ? '1 channel matches'
+          : `${count} channels match`,
+    noMatches: (query: string) => `No channels match “${query}”`,
+  },
+  epg: {
+    /** Accessible name of the now/next block under the player. */
+    region: 'Program guide',
+    now: 'Now',
+    next: 'Next',
+    times: (start: string, end: string) => `${start}–${end}`,
+    progress: (title: string) => `Progress of ${title}`,
+    /** Visually hidden prefix of the current programme on a channel row. */
+    rowNow: 'Now:',
+  },
   noSource: {
     title: "You don't have any IPTV lists yet",
     message: 'Add a list to see its live channels here.',

@@ -82,6 +82,16 @@ describe('concatPager ("All")', () => {
     expect(names(await pager.load(0, 100))).toEqual(['a1', 'a3', 'a6', 'c2', 'c4', 'c5', 'c7']);
   });
 
+  it('scan() yields every row in display order, one category at a time (LIV-04)', async () => {
+    const batches: string[][] = [];
+    await all().scan?.((rows) => batches.push(names([...rows])));
+    // The empty category "b" is skipped (count 0).
+    expect(batches).toEqual([
+      ['a1', 'a3', 'a6'],
+      ['c2', 'c4', 'c5', 'c7'],
+    ]);
+  });
+
   it('maps a page that spans two categories to the right local offsets', async () => {
     expect(names(await all().load(2, 3))).toEqual(['a6', 'c2', 'c4']);
     expect(names(await all().load(5, 10))).toEqual(['c5', 'c7']);

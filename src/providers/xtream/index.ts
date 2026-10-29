@@ -42,5 +42,7 @@ export type {
   HttpsAttempt,
   XtreamConnectionReport,
 } from './types';
+export { decodeBase64Utf8, fetchShortEpg, parseShortEpg } from './shortEpg';
+export type { ShortEpgProgramme } from './shortEpg';
 export { fetchVodInfo, parseVodInfo } from './vodInfo';
 export type { VodInfo } from './vodInfo';

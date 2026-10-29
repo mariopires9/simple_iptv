@@ -1,18 +1,24 @@
-// Live TV screen (LIV-01, LIV-02): categories, virtualised channel list and the live player.
+// Live TV screen (LIV-01..04, EPG-01): categories, virtualised channel list with a quick filter,
+// the live player with now/next, and the navigation state restored on the next visit.
 //   < 600 px     → 16:9 player on top (while playing), category chips, list (docs/UX_UI.md §4.3)
 //   600–1199 px  → categories | channels; while playing: chips + list | player (§8)
 //   ≥ 1200 px    → categories | channels | player panel (docs/UX_UI.md §4.4)
 // The playing channel is in the URL (`?channel=<key>`, replaced — not pushed — on every change),
 // so a reload restores it; closing the player removes it.
+//
+// LIV-03: per source, the category, the selected row and the scroll offset are saved (debounced)
+// and restored when the list of that category is shown again; entering bare `/live` (the Live tab,
+// or the app opened on it) goes back to the saved category — and, with "Play last channel on
+// open", to the last played channel. Explicit deep links (`/live/category/…`) are never redirected.
 import LiveTvRounded from '@mui/icons-material/LiveTvRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { catalogRepo, favoritesRepo, type Channel } from '@/core/db';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { catalogRepo, favoritesRepo, normalizeName, type Channel } from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import {
@@ -29,8 +35,11 @@ import {
   type LiveCategory,
 } from './categories';
 import { CategoryNav } from './CategoryNav';
-import { ChannelList } from './ChannelList';
+import { keysPager } from './channelFilter';
+import { ChannelFilterField } from './ChannelFilterField';
+import { ChannelList, type ChannelListView } from './ChannelList';
 import { ChannelsOverlay } from './ChannelsOverlay';
+import { createEpgService, type EpgService } from './epg';
 import {
   LivePlayer,
   type LivePlayerHandle,
@@ -38,6 +47,14 @@ import {
   type SelectionVia,
 } from './LivePlayer';
 import { loadLiveSource, type LiveSourceState } from './liveSource';
+import {
+  createViewSaver,
+  loadLiveStartup,
+  saveLastChannel,
+  type LiveStartup,
+  type SavedLiveView,
+} from './liveState';
+import { NowNext } from './NowNext';
 import { useActiveSource } from './useActiveSource';
 import { PageCache } from './pageCache';
 import { createPager } from './pagers';
@@ -51,6 +68,32 @@ type PagerState =
   | { key: string; base: string; status: 'ready'; cache: PageCache }
   | { key: string; base: string; status: 'error'; error: unknown };
 
+/** Results of the quick filter (LIV-04) for one pager and query. */
+interface FilterResult {
+  /** Key of the category pager it filters. */
+  forKey: string;
+  query: string;
+  key: string;
+  cache: PageCache;
+}
+
+/** Saved state read for one source (and one entry on bare `/live`), LIV-03. */
+interface Startup {
+  sourceId: string;
+  bareKey: string | undefined;
+  data: LiveStartup;
+  /** The category whose first list is restored. */
+  openedOn: string;
+}
+
+/** Where the list of a restored category starts (LIV-03). */
+interface InitialView {
+  startup: Startup;
+  pagerKey: string;
+  index: number;
+  scrollTop: number | undefined;
+}
+
 interface Selection extends LiveSelection {
   /** Row of the channel in the pager `pagerKey`, when known (zapping starts from it). */
   index: number | undefined;
@@ -58,9 +101,11 @@ interface Selection extends LiveSelection {
 }
 
 export function LiveScreen() {
-  const { categoryId = DEFAULT_CATEGORY_ID } = useParams();
+  const { categoryId: routeCategoryId } = useParams();
+  const categoryId = routeCategoryId ?? DEFAULT_CATEGORY_ID;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
   const isTablet = useMediaQuery(theme.breakpoints.up('sm'), { noSsr: true });
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'), { noSsr: true });
@@ -132,9 +177,205 @@ export function LiveScreen() {
     (error: unknown) => setPager({ key: pagerKey, base: pagerBase, status: 'error', error }),
     [pagerKey, pagerBase],
   );
+  const readyPager = currentPager?.status === 'ready' ? currentPager : undefined;
+  const sourceId = ready?.source.id;
+  const channelKey = searchParams.get('channel') ?? undefined;
+
+  // --- saved navigation state (LIV-03) -------------------------------------------------------
+  // Debounced persistence of the list view; flushed when leaving or hiding the page.
+  const [saver] = useState(createViewSaver);
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') saver.flush();
+    };
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', saver.flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', saver.flush);
+      saver.flush();
+    };
+  }, [saver]);
+
+  // The category shown when the saved state arrives (on bare `/live`: the one it redirects to):
+  // only the first list of that category is restored.
+  const routeCategoryRef = useRef(routeCategoryId);
+  useEffect(() => {
+    routeCategoryRef.current = routeCategoryId;
+  });
+  // Each entry on bare `/live` (e.g. the Live tab while this screen stays mounted) reads the
+  // state again: what was saved since the screen opened is the place to go back to.
+  const bareKey = routeCategoryId === undefined ? location.key : undefined;
+  const [startup, setStartup] = useState<Startup>();
+  const startupRef = useRef(startup);
+  useEffect(() => {
+    startupRef.current = startup;
+  });
+  useEffect(() => {
+    if (sourceId === undefined) return undefined;
+    if (bareKey === undefined && startupRef.current?.sourceId === sourceId) return undefined;
+    // A pending debounced save must be written before it is read back.
+    saver.flush();
+    let cancelled = false;
+    void loadLiveStartup(sourceId).then((data) => {
+      if (cancelled) return;
+      const openedOn = routeCategoryRef.current ?? data.view?.categoryId ?? DEFAULT_CATEGORY_ID;
+      setStartup({ sourceId, bareKey, data, openedOn });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceId, bareKey, saver]);
+  const current =
+    startup &&
+    startup.sourceId === sourceId &&
+    (bareKey === undefined || startup.bareKey === bareKey)
+      ? startup
+      : undefined;
+  const saved = current?.data;
+
+  // Bare `/live`: back to the saved category (and the last channel, if enabled). Computed, then
+  // applied by the effect below; the screen shows its skeleton meanwhile.
+  let entry: 'pending' | string | undefined;
+  if (routeCategoryId === undefined && ready) {
+    if (!saved) entry = 'pending';
+    else {
+      const { view } = saved;
+      // "All" is what bare `/live` shows anyway: no redirect needed for it.
+      const target =
+        view &&
+        view.categoryId !== DEFAULT_CATEGORY_ID &&
+        ready.categories.some((c) => c.id === view.categoryId)
+          ? view.categoryId
+          : undefined;
+      const play =
+        channelKey === undefined && saved.playLastChannelOnOpen ? saved.lastChannelKey : undefined;
+      if (target !== undefined || play !== undefined) {
+        const keep = play ?? channelKey;
+        entry = `${target !== undefined ? categoryPath(target) : '/live'}${
+          keep !== undefined ? `?channel=${encodeURIComponent(keep)}` : ''
+        }`;
+      }
+    }
+  }
+  useEffect(() => {
+    if (entry !== undefined && entry !== 'pending') navigate(entry, { replace: true });
+  }, [entry, navigate]);
+
+  // The first list of the saved category starts at the saved row and offset. The saved row is
+  // checked by key: after a sync moved it, the channel is located again (and centred).
+  const [initialView, setInitialView] = useState<InitialView>();
+  const savedView = saved?.view;
+  const wantsRestore =
+    current !== undefined &&
+    initialView?.startup !== current &&
+    savedView !== undefined &&
+    savedView.categoryId === categoryId &&
+    current.openedOn === categoryId;
+  useEffect(() => {
+    if (!wantsRestore || !current || !savedView || !readyPager || readyPager.key !== pagerKey) {
+      return undefined;
+    }
+    let cancelled = false;
+    const { cache, key } = readyPager;
+    const view = savedView;
+    const settle = (index: number, scrollTop: number | undefined) => {
+      if (!cancelled) setInitialView({ startup: current, pagerKey: key, index, scrollTop });
+    };
+    const fallback = Math.max(0, Math.min(view.selectedIndex, cache.total - 1));
+    const locate = async (): Promise<number> => {
+      if (view.selectedKey === undefined) return -1;
+      const channel = await catalogRepo.get('live', view.selectedKey);
+      return channel && channel.sourceId === sourceId ? cache.pager.locate(channel) : -1;
+    };
+    locate().then(
+      (found) => {
+        if (found >= 0 && found !== view.selectedIndex) settle(found, undefined);
+        else settle(fallback, view.scrollTop);
+      },
+      (error: unknown) => {
+        log.warn('live: restoring the list position failed', {
+          error: error instanceof Error ? error.name : 'unknown',
+        });
+        settle(0, undefined);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsRestore, current, savedView, readyPager, pagerKey, sourceId]);
+
+  // --- quick filter (LIV-04) -----------------------------------------------------------------
+  const [filterInput, setFilterInput] = useState<{ base: string; text: string }>({
+    base: '',
+    text: '',
+  });
+  // A new category (or source) starts unfiltered.
+  const filterText = filterInput.base === pagerBase ? filterInput.text : '';
+  const query = normalizeName(filterText);
+  const setFilterText = useCallback(
+    (text: string) => setFilterInput({ base: pagerBase, text }),
+    [pagerBase],
+  );
+  const [filterResult, setFilterResult] = useState<FilterResult>();
+  useEffect(() => {
+    if (query === '' || !readyPager) return undefined;
+    let cancelled = false;
+    const { cache, key } = readyPager;
+    cache.filterIndex().then(
+      (index) => {
+        if (cancelled) return;
+        const keys = index.match(query);
+        setFilterResult({
+          forKey: key,
+          query,
+          key: `${key}\nfilter\n${query}`,
+          cache: new PageCache(keysPager(keys)),
+        });
+        setAnnouncement(t.live.filter.results(keys.length));
+      },
+      (error: unknown) => {
+        if (!cancelled) setPager({ key, base: pagerBase, status: 'error', error });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [query, readyPager, pagerBase]);
+  const filtering = query !== '';
+  // The results of this pager (latest query first; an older query's results stay up meanwhile).
+  const shownFilter =
+    filtering && filterResult?.forKey === readyPager?.key ? filterResult : undefined;
+  const prefetchFilterIndex = useCallback(() => {
+    readyPager?.cache.filterIndex().catch(() => undefined);
+  }, [readyPager]);
+
+  const canSaveView = saved !== undefined && !wantsRestore && !filtering;
+  const onViewChange = useCallback(
+    (view: ChannelListView) => {
+      if (sourceId === undefined || !canSaveView) return;
+      const record: SavedLiveView = {
+        categoryId,
+        selectedIndex: view.index,
+        scrollTop: Math.max(0, Math.round(view.scrollTop)),
+        savedAt: Date.now(),
+      };
+      if (view.key !== undefined) record.selectedKey = view.key;
+      saver.schedule(sourceId, record);
+    },
+    [sourceId, canSaveView, categoryId, saver],
+  );
+
+  // --- EPG (EPG-01) --------------------------------------------------------------------------
+  // One service per loaded source; leaving the screen (or the source) cancels what is in flight.
+  const readySource = ready?.source;
+  const epgService = useMemo(
+    () => (readySource ? createEpgService(readySource) : undefined),
+    [readySource],
+  );
+  useEffect(() => () => epgService?.cancel(), [epgService]);
 
   // --- playing channel (LIV-02) ------------------------------------------------------------
-  const channelKey = searchParams.get('channel') ?? undefined;
   const [selection, setSelection] = useState<Selection>();
   const [channelsOpen, setChannelsOpen] = useState(false);
   // Latest values for the zapping queue (it runs across renders).
@@ -160,10 +401,17 @@ export function LiveScreen() {
     [navigate, categoryId],
   );
 
+  // A filtered row's index is not its row in the category: zapping locates it instead.
   const onPlay = useCallback(
-    (channel: Channel, index: number) => select(channel, index, 'pick'),
-    [select],
+    (channel: Channel, index: number) => select(channel, filtering ? undefined : index, 'pick'),
+    [select, filtering],
   );
+
+  // LIV-03: the last played channel ("Play last channel on open").
+  const playedKey = selection?.channel.key;
+  useEffect(() => {
+    if (playedKey !== undefined) void saveLastChannel(playedKey);
+  }, [playedKey]);
 
   const closePlayer = useCallback(() => {
     selectionRef.current = undefined;
@@ -195,7 +443,6 @@ export function LiveScreen() {
   }, [active.known, active.id]);
 
   // Restore (reload, deep link) or follow an outside change of `?channel=`.
-  const sourceId = ready?.source.id;
   useEffect(() => {
     if (channelKey === undefined) {
       if (selectionRef.current) {
@@ -320,7 +567,7 @@ export function LiveScreen() {
   };
 
   let content;
-  if (source.status === 'loading') {
+  if (source.status === 'loading' || entry !== undefined) {
     content = (
       <DelayedLoading>
         <ChannelListSkeleton />
@@ -350,9 +597,14 @@ export function LiveScreen() {
     const playing = channelKey !== undefined ? selection : undefined;
     // Tablet while playing: list | video, with the categories as chips above the list.
     const chips = !isTablet || (playing !== undefined && !isDesktop);
-    const readyPager = currentPager?.status === 'ready' ? currentPager : undefined;
     const player = playing && (
-      <Box sx={isTablet ? { minWidth: 0 } : { position: 'sticky', top: 0, zIndex: 1 }}>
+      <Box
+        sx={
+          isTablet
+            ? { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }
+            : { position: 'sticky', top: 0, zIndex: 1, bgcolor: 'background.default' }
+        }
+      >
         <LivePlayer
           source={source.source}
           selection={playing}
@@ -379,6 +631,7 @@ export function LiveScreen() {
             )
           }
         />
+        {epgService && <NowNext epg={epgService} channel={playing.channel} />}
       </Box>
     );
     const nav = (
@@ -390,27 +643,48 @@ export function LiveScreen() {
         search={channelKey !== undefined ? `?channel=${encodeURIComponent(channelKey)}` : ''}
       />
     );
+    const showFilter =
+      category !== undefined &&
+      readyPager !== undefined &&
+      (readyPager.cache.total > 0 || filtering);
     const list = (
-      <Box
-        sx={{
-          flex: 1,
-          minHeight: 0,
-          bgcolor: 'tokens.surface1',
-          borderRadius: 3,
-          overflow: 'hidden',
-        }}
-      >
-        <ChannelPane
-          category={category}
-          pager={currentPager}
-          favorites={favorites}
-          playingKey={channelKey}
-          onPlay={onPlay}
-          onToggleFavorite={onToggleFavorite}
-          onPageError={onPageError}
-          onRetry={() => setPagerAttempt((n) => n + 1)}
-        />
-      </Box>
+      <>
+        {showFilter && (
+          <ChannelFilterField
+            value={filterText}
+            onChange={setFilterText}
+            listId={LIST_ID}
+            onFocus={prefetchFilterIndex}
+          />
+        )}
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            bgcolor: 'tokens.surface1',
+            borderRadius: 3,
+            overflow: 'hidden',
+          }}
+        >
+          <ChannelPane
+            category={category}
+            pager={currentPager}
+            waiting={saved === undefined || wantsRestore}
+            initialView={initialView?.pagerKey === currentPager?.key ? initialView : undefined}
+            filter={filtering ? (shownFilter ?? 'pending') : undefined}
+            filterText={filterText}
+            onClearFilter={() => setFilterText('')}
+            onViewChange={onViewChange}
+            epg={epgService}
+            favorites={favorites}
+            playingKey={channelKey}
+            onPlay={onPlay}
+            onToggleFavorite={onToggleFavorite}
+            onPageError={onPageError}
+            onRetry={() => setPagerAttempt((n) => n + 1)}
+          />
+        </Box>
+      </>
     );
     const column = { display: 'flex', flexDirection: 'column', gap: 1, minHeight: 0 } as const;
     if (!isTablet) {
@@ -472,9 +746,21 @@ export function LiveScreen() {
   );
 }
 
+/** DOM id of the main channel listbox (the filter field controls it). */
+const LIST_ID = 'live-channel-list';
+
 interface ChannelPaneProps {
   category: LiveCategory | undefined;
   pager: PagerState | undefined;
+  /** The saved view is still being read/resolved (LIV-03): keep the skeleton. */
+  waiting: boolean;
+  initialView: InitialView | undefined;
+  /** Quick-filter results; 'pending' while the category's index is built (LIV-04). */
+  filter: FilterResult | 'pending' | undefined;
+  filterText: string;
+  onClearFilter: () => void;
+  onViewChange: (view: ChannelListView) => void;
+  epg: EpgService | undefined;
   favorites: ReadonlySet<string>;
   playingKey: string | undefined;
   onPlay: (channel: Channel, index: number) => void;
@@ -486,6 +772,13 @@ interface ChannelPaneProps {
 function ChannelPane({
   category,
   pager,
+  waiting,
+  initialView,
+  filter,
+  filterText,
+  onClearFilter,
+  onViewChange,
+  epg,
   favorites,
   playingKey,
   onPlay,
@@ -508,14 +801,39 @@ function ChannelPane({
       />
     );
   }
-  if (!pager) {
+  if (pager?.status === 'error') return <LoadError error={pager.error} onRetry={onRetry} />;
+  if (!pager || waiting || filter === 'pending') {
     return (
       <DelayedLoading>
         <ChannelListSkeleton />
       </DelayedLoading>
     );
   }
-  if (pager.status === 'error') return <LoadError error={pager.error} onRetry={onRetry} />;
+  if (filter) {
+    if (filter.cache.total === 0) {
+      return (
+        <StateView
+          variant="empty"
+          title={t.live.filter.noMatches(filterText.trim())}
+          actions={<Button onClick={onClearFilter}>{t.live.filter.clear}</Button>}
+        />
+      );
+    }
+    return (
+      <ChannelList
+        key={filter.key}
+        id={LIST_ID}
+        cache={filter.cache}
+        label={t.live.channelsIn(category.name)}
+        favorites={favorites}
+        playingKey={playingKey}
+        onPlay={onPlay}
+        onToggleFavorite={onToggleFavorite}
+        onError={onPageError}
+        epg={epg}
+      />
+    );
+  }
   if (pager.cache.total === 0) {
     if (category.kind === 'favorites') {
       return (
@@ -549,6 +867,7 @@ function ChannelPane({
     <ChannelList
       // A new list (scroll and selection reset) per category and pager.
       key={pager.key}
+      id={LIST_ID}
       cache={pager.cache}
       label={t.live.channelsIn(category.name)}
       favorites={favorites}
@@ -556,6 +875,10 @@ function ChannelPane({
       onPlay={onPlay}
       onToggleFavorite={onToggleFavorite}
       onError={onPageError}
+      initialIndex={initialView?.index}
+      initialScrollTop={initialView?.scrollTop}
+      onViewChange={onViewChange}
+      epg={epg}
     />
   );
 }

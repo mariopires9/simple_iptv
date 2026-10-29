@@ -14,6 +14,27 @@ export const live = {
   favoriteFailed: (name: string) => `Não foi possível atualizar os favoritos de ${name}`,
   loadingRow: 'A carregar…',
   keyboardHint: 'Setas para mover, Enter para reproduzir, F para adicionar ou remover favorito.',
+  filter: {
+    label: 'Filtrar canais',
+    placeholder: 'Filtrar canais…',
+    hint: 'Escreva parte de um nome ou um número de canal. Esc limpa o filtro.',
+    clear: 'Limpar filtro',
+    results: (count: number) =>
+      count === 0
+        ? 'Nenhum canal corresponde'
+        : count === 1
+          ? '1 canal corresponde'
+          : `${count} canais correspondem`,
+    noMatches: (query: string) => `Nenhum canal corresponde a «${query}»`,
+  },
+  epg: {
+    region: 'Guia de programação',
+    now: 'Agora',
+    next: 'A seguir',
+    times: (start: string, end: string) => `${start}–${end}`,
+    progress: (title: string) => `Progresso de ${title}`,
+    rowNow: 'Agora:',
+  },
   noSource: {
     title: 'Ainda não tem listas IPTV',
     message: 'Adicione uma lista para ver aqui os canais em direto.',
