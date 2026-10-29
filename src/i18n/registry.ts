@@ -8,6 +8,22 @@ export type NamespaceLoaders<L, Loc extends string> = {
   readonly [K in keyof L]: Readonly<Record<Loc, () => Promise<L[K]>>>;
 };
 
+/**
+ * Outcome of `setLocale`: `switched` (strings swapped, subscribers notified), `unchanged` (already
+ * the active locale) or `superseded` (a later `setLocale` call took over before this one finished
+ * loading; nothing was changed by this call).
+ */
+export type LocaleSwitchResult = 'switched' | 'unchanged' | 'superseded';
+
+/**
+ * What a read of a lazy namespace that is not loaded does:
+ * - `throw` (development builds, tests): a clear error, so a missing route declaration is caught.
+ * - `fallback` (production): never breaks the screen. It starts loading the namespace, reports
+ *   it through `onMissing`, and returns the active locale's or the fallback locale's strings if
+ *   they have already been loaded, else placeholder messages that read as empty strings.
+ */
+export type GuardMode = 'throw' | 'fallback';
+
 export interface MessageRegistry<E, L, Loc extends string> {
   /** The messages: eager namespaces always, lazy ones once loaded for the active locale. */
   readonly t: E & L;
@@ -25,9 +41,10 @@ export interface MessageRegistry<E, L, Loc extends string> {
   getLocale(): Loc;
   /**
    * Switches the locale: reloads every loaded namespace for it, then swaps all strings on `t` at
-   * once and notifies the subscribers. A later call supersedes one still loading.
+   * once and notifies the subscribers. A later call supersedes one still loading (see
+   * `LocaleSwitchResult`). Rejects, changing nothing, if a namespace cannot be loaded.
    */
-  setLocale(locale: Loc): Promise<void>;
+  setLocale(locale: Loc): Promise<LocaleSwitchResult>;
   /** Called after each locale switch; returns the unsubscribe function. */
   subscribe(listener: () => void): () => void;
 }
@@ -36,9 +53,23 @@ export interface MessageRegistryOptions<E, L, Loc extends string> {
   locale: Loc;
   eager: Readonly<Record<Loc, E>>;
   lazy: NamespaceLoaders<L, Loc>;
-  /** Throw on a read of a lazy namespace that is not loaded (development builds and tests). */
-  guard: boolean;
+  guard: GuardMode;
+  /** `fallback` mode: locale whose already loaded strings stand in for a missing namespace. */
+  fallbackLocale?: Loc;
+  /** `fallback` mode: called once per namespace read before it was loaded (and on its error). */
+  onMissing?: (namespace: string, error?: unknown) => void;
 }
+
+/** Placeholder for any message: reads, calls and string conversions all give `''`. */
+const emptyMessages: unknown = new Proxy(() => '', {
+  get(_target, key) {
+    if (key === Symbol.toPrimitive || key === 'toString' || key === 'valueOf') return () => '';
+    if (key === 'then') return undefined; // never look like a promise
+    if (typeof key === 'symbol') return undefined;
+    return emptyMessages;
+  },
+  apply: () => '',
+});
 
 export function createMessageRegistry<E extends object, L extends object, Loc extends string>(
   options: MessageRegistryOptions<E, L, Loc>,
@@ -52,33 +83,56 @@ export function createMessageRegistry<E extends object, L extends object, Loc ex
   const loaded = new Set<Namespace>();
   /** In-flight or settled module loads, per locale and namespace (dedupes concurrent loads). */
   const modules = new Map<string, Promise<unknown>>();
+  /** Modules that have resolved, per locale and namespace (synchronous fallback reads). */
+  const settled = new Map<string, unknown>();
+  /** Namespaces already reported through `onMissing`. */
+  const reported = new Set<string>();
   const listeners = new Set<() => void>();
   const lazyNames = new Set<string>(Object.keys(options.lazy));
+  const moduleKey = (forLocale: Loc, namespace: string) => `${forLocale}\u0000${namespace}`;
 
-  const t = (
-    options.guard
-      ? new Proxy(target, {
-          get(object, key, receiver) {
-            if (typeof key === 'string' && lazyNames.has(key) && !loaded.has(key as Namespace)) {
-              throw new Error(
-                `i18n: namespace "${key}" read before ensureMessages('${key}'). Declare it in the ` +
-                  `route's lazyScreen namespaces (or await ensureMessages before rendering).`,
-              );
-            }
-            return Reflect.get(object, key, receiver) as unknown;
-          },
-        })
-      : target
-  ) as E & L;
+  function missing(namespace: Namespace): unknown {
+    if (options.guard === 'throw') {
+      throw new Error(
+        `i18n: namespace "${namespace}" read before ensureMessages('${namespace}'). Declare it ` +
+          `in the route's lazyScreen namespaces (or await ensureMessages before rendering).`,
+      );
+    }
+    if (!reported.has(namespace)) {
+      reported.add(namespace);
+      options.onMissing?.(namespace);
+    }
+    ensureOne(namespace).catch((error: unknown) => options.onMissing?.(namespace, error));
+    for (const candidate of [locale, options.fallbackLocale]) {
+      const key = candidate === undefined ? undefined : moduleKey(candidate, namespace);
+      if (key !== undefined && settled.has(key)) return settled.get(key);
+    }
+    return emptyMessages;
+  }
+
+  const t = new Proxy(target, {
+    get(object, key, receiver) {
+      if (typeof key === 'string' && lazyNames.has(key) && !loaded.has(key as Namespace)) {
+        return missing(key as Namespace);
+      }
+      return Reflect.get(object, key, receiver) as unknown;
+    },
+  }) as E & L;
 
   function loadModule(forLocale: Loc, namespace: Namespace): Promise<unknown> {
-    const key = `${forLocale}\u0000${namespace}`;
+    const key = moduleKey(forLocale, namespace);
     let pending = modules.get(key);
     if (!pending) {
-      pending = options.lazy[namespace][forLocale]().catch((error: unknown) => {
-        modules.delete(key); // let a later call retry (e.g. offline right after an update)
-        throw error;
-      });
+      pending = options.lazy[namespace][forLocale]().then(
+        (module) => {
+          settled.set(key, module);
+          return module;
+        },
+        (error: unknown) => {
+          modules.delete(key); // let a later call retry (e.g. offline right after an update)
+          throw error;
+        },
+      );
       modules.set(key, pending);
     }
     return pending;
@@ -111,21 +165,23 @@ export function createMessageRegistry<E extends object, L extends object, Loc ex
     getLocale: () => locale,
     async setLocale(next) {
       const token = ++switchToken;
-      if (next === locale) return;
+      if (next === locale) return 'unchanged';
       for (;;) {
         const names = [...loaded];
         const loadedModules = await Promise.all(names.map((ns) => loadModule(next, ns)));
-        if (token !== switchToken) return; // superseded by a later switch
+        if (token !== switchToken) return 'superseded';
         // A namespace loaded (for the old locale) meanwhile: reload it for the new one too.
         if ([...loaded].some((ns) => !names.includes(ns))) continue;
         locale = next;
         Object.assign(target, options.eager[next]);
+        // Only namespaces still loaded now: one unloaded meanwhile stays unloaded.
         names.forEach((ns, i) => {
-          target[ns] = loadedModules[i];
+          if (loaded.has(ns)) target[ns] = loadedModules[i];
         });
         break;
       }
       for (const listener of [...listeners]) listener();
+      return 'switched';
     },
     subscribe(listener) {
       listeners.add(listener);

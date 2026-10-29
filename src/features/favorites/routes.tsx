@@ -4,5 +4,5 @@ import type { RouteObject } from 'react-router';
 import { lazyScreen } from '@/ui/lazyScreen';
 
 export const favoritesRoutes: RouteObject[] = [
-  { path: 'favorites', lazy: lazyScreen(() => import('./FavoritesScreen'), 'FavoritesScreen') },
+  { path: 'favorites', lazy: lazyScreen(() => import('./FavoritesScreen'), 'FavoritesScreen', []) },
 ];

@@ -40,10 +40,25 @@ describe('lazyScreen', () => {
     await expect(route).resolves.toEqual({ Component: Screen });
   });
 
-  it('without namespaces resolves with the chunk alone', async () => {
-    const route = resolveLazy(lazyScreen(() => Promise.resolve({ Screen }), 'Screen'));
+  it('with no namespaces ([]) resolves with the chunk alone', async () => {
+    const route = resolveLazy(lazyScreen(() => Promise.resolve({ Screen }), 'Screen', []));
     await expect(route).resolves.toEqual({ Component: Screen });
     expect(ensure).toHaveBeenCalledWith();
+  });
+
+  it('every call starts both loads again (a retry after a failure re-runs them)', async () => {
+    ensure.mockRejectedValueOnce(new Error('offline'));
+    const load = vi.fn(() => Promise.resolve({ Screen }));
+    const lazy = lazyScreen(load, 'Screen', ['movies']);
+    await expect(resolveLazy(lazy)).rejects.toThrow('offline');
+    await expect(resolveLazy(lazy)).resolves.toEqual({ Component: Screen });
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(ensure).toHaveBeenCalledTimes(2);
+  });
+
+  it('the namespaces are required (each route states them, [] when none)', () => {
+    // @ts-expect-error — the third argument is mandatory.
+    expect(typeof lazyScreen(() => Promise.resolve({ Screen }), 'Screen')).toBe('function');
   });
 
   it('fails (route error boundary) when the strings cannot be loaded', async () => {

@@ -4,5 +4,5 @@ import type { RouteObject } from 'react-router';
 import { lazyScreen } from '@/ui/lazyScreen';
 
 export const settingsRoutes: RouteObject[] = [
-  { path: 'settings', lazy: lazyScreen(() => import('./SettingsScreen'), 'SettingsScreen') },
+  { path: 'settings', lazy: lazyScreen(() => import('./SettingsScreen'), 'SettingsScreen', []) },
 ];

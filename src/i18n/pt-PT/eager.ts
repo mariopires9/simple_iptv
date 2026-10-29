@@ -3,8 +3,11 @@ import type { enEager } from '../en/eager';
 import type { MessageShape } from '../types';
 import { app } from './app';
 import { db } from './db';
+import { lists } from './lists';
 import { nav } from './nav';
 import { routes } from './routes';
 import { state } from './state';
 
-export const ptPTEager = { app, db, nav, routes, state } satisfies MessageShape<typeof enEager>;
+export const ptPTEager = { app, db, lists, nav, routes, state } satisfies MessageShape<
+  typeof enEager
+>;

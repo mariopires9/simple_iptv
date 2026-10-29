@@ -17,7 +17,7 @@ import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { ThemeModeProvider } from '@/ui/theme';
 import { appRoutes } from './router';
 
-const text = t.sources.selector;
+const text = t.lists.selector;
 
 function list(id: string, name: string, createdAt: number): Source {
   return {
@@ -112,11 +112,17 @@ describe('SRC-08 — top-bar list selector', () => {
     const { user, router } = renderApp('/live/category/a1');
     expect(await screen.findByRole('link', { name: 'Alpha news' })).toBeInTheDocument();
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    vi.spyOn(settingsRepo, 'set').mockRejectedValueOnce(new Error('quota'));
+    // Only the active-list write fails: Live persists its own view state through the same repo
+    // (LIV-03), and a blanket `mockRejectedValueOnce` could be consumed by that write instead.
+    const realSet = settingsRepo.set.bind(settingsRepo);
+    vi.spyOn(settingsRepo, 'set').mockImplementation(((key, value) =>
+      key === 'activeSourceId'
+        ? Promise.reject(new Error('quota'))
+        : realSet(key, value)) as typeof settingsRepo.set);
     await user.click(await selector('Alpha list'));
     await user.click(await screen.findByRole('menuitemradio', { name: 'Bravo list' }));
 
-    expect(await screen.findAllByText(t.sources.myLists.toasts.switchFailed)).not.toHaveLength(0);
+    expect(await screen.findAllByText(t.lists.switchFailed)).not.toHaveLength(0);
     expect(router.state.location.pathname).toBe('/live/category/a1');
     expect(await selector('Alpha list')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Alpha news' })).toBeInTheDocument();
@@ -139,9 +145,7 @@ describe('SRC-08 — top-bar list selector', () => {
     const { user } = renderApp('/');
     await user.click(await selector('Alpha list'));
     await user.click(await screen.findByRole('menuitem', { name: text.add }));
-    expect(
-      await screen.findByRole('dialog', { name: t.sources.myLists.chooser.title }),
-    ).toBeVisible();
+    expect(await screen.findByRole('dialog', { name: t.lists.chooser.title })).toBeVisible();
   });
 
   it('is part of the top bar on mobile too', async () => {

@@ -18,7 +18,7 @@ import { ensureMessages, type LazyNamespace } from '@/i18n';
 export function lazyScreen<M, K extends keyof M & string>(
   load: () => Promise<M>,
   exportName: K & (M[K] extends ComponentType ? K : never),
-  namespaces: readonly LazyNamespace[] = [],
+  namespaces: readonly LazyNamespace[],
 ): LazyRouteFunction<RouteObject> {
   return async () => {
     const [module] = await Promise.all([load(), ensureMessages(...namespaces)]);

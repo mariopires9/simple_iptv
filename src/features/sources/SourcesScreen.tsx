@@ -79,7 +79,7 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
     } catch (failure) {
       pendingFocusId.current = undefined;
       log.warn('Switching the active source failed', { error: failure });
-      toast.show({ message: text.toasts.switchFailed, severity: 'error' });
+      toast.show({ message: t.lists.switchFailed, severity: 'error' });
     }
   }
 
