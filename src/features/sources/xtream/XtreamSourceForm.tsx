@@ -29,6 +29,7 @@ import {
 } from '@/providers/xtream';
 import { describeError, ProgressPanel, StateView, useToast } from '@/ui/state';
 import { readXtreamPassword, sourceName, updateXtreamSource } from '../manage';
+import { cancelSourceSync } from '../sourceSync';
 import { startInitialSync, type InitialSyncDispatch, type StartInitialSync } from '../sync';
 import { MAX_SOURCE_NAME_LENGTH, saveXtreamSource } from './saveXtreamSource';
 import { TextInput } from './TextInput';
@@ -48,6 +49,8 @@ export interface XtreamSourceFormDeps {
   updateSource: typeof updateXtreamSource;
   /** Edit mode: the stored password, to re-test changed server/username without retyping it. */
   readPassword: typeof readXtreamPassword;
+  /** Edit mode: stops a running sync of the list (it uses the old settings) and waits for it. */
+  cancelSync: (sourceId: string) => Promise<void>;
 }
 
 const defaultDeps: XtreamSourceFormDeps = {
@@ -56,6 +59,7 @@ const defaultDeps: XtreamSourceFormDeps = {
   startInitialSync,
   updateSource: updateXtreamSource,
   readPassword: readXtreamPassword,
+  cancelSync: cancelSourceSync,
 };
 
 export interface XtreamSourceFormProps {
@@ -355,6 +359,9 @@ export function XtreamSourceForm({
   ) {
     setStep('saving');
     try {
+      // A sync still running with the old server/account would overwrite the catalogue after
+      // ours: stop it first, then apply, then sync again with the new settings.
+      if (change.resync) await deps.cancelSync(source.id);
       await deps.updateSource({
         id: source.id,
         name: change.name,
@@ -362,7 +369,8 @@ export function XtreamSourceForm({
         username: change.username,
         password: change.password,
       });
-      // New server or account: reload the catalogue (not awaited beyond the dispatch).
+      // New server or account: reload the catalogue (not awaited beyond the dispatch). Only
+      // "started" claims that channels are loading.
       const dispatch = change.resync
         ? await deps.startInitialSync(source.id).catch((): InitialSyncDispatch => 'unavailable')
         : undefined;

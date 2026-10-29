@@ -4,13 +4,16 @@
 import { log } from '@/core/log';
 import { startSourceSync } from './sourceSync';
 
-/** `started`: the worker task was dispatched; `unavailable`: it could not be started. */
-export type InitialSyncDispatch = 'started' | 'unavailable';
+/**
+ * `started`: the worker task was dispatched; `unavailable`: it could not be started; `busy`: a
+ * sync of this list was already running (or the list is being removed), so none was started.
+ */
+export type InitialSyncDispatch = 'started' | 'unavailable' | 'busy';
 
 export type StartInitialSync = (sourceId: string) => Promise<InitialSyncDispatch>;
 
 /**
- * Dispatches the first sync of a newly added Xtream source (or the re-sync after its server or
+ * Dispatches a sync of an Xtream source (first sync after adding it, or after its server or
  * credentials changed) to the data worker and resolves as soon as the task has been started (not
  * when it finishes), so the UI only claims "loading" when it is. Never rejects: a failure to
  * start or a failed sync is logged (the source records the outcome in `lastSyncStatus` and My
@@ -19,9 +22,6 @@ export type StartInitialSync = (sourceId: string) => Promise<InitialSyncDispatch
 export const startInitialSync: StartInitialSync = async (sourceId) => {
   const run = await startSourceSync({ id: sourceId, kind: 'xtream' });
   switch (run.dispatch) {
-    case 'unavailable':
-      log.warn('Initial sync could not be started', { sourceId, error: run.error });
-      return 'unavailable';
     case 'started':
       void run.done.then((outcome) => {
         if (outcome.status === 'failed') {
@@ -29,8 +29,10 @@ export const startInitialSync: StartInitialSync = async (sourceId) => {
         }
       });
       return 'started';
+    case 'unavailable':
+      log.warn('Initial sync could not be started', { sourceId, error: run.error });
+      return 'unavailable';
     default:
-      // Already syncing (e.g. a refresh is running): that sync covers it.
-      return 'started';
+      return 'busy';
   }
 };

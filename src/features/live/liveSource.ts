@@ -1,6 +1,6 @@
 // Active source of the Live screen: `activeSourceId` from settings, falling back to the first
 // source, with its categories and favourite channels. Switching lists (SRC-08) persists the
-// setting first; the app shell then remounts the screen, which reads it again here.
+// setting first and then notifies `@/core/session`; the Live screen then loads again from here.
 import { catalogRepo, favoritesRepo, settingsRepo, sourcesRepo, type Source } from '@/core/db';
 import { buildCategories, type LiveCategory } from './categories';
 

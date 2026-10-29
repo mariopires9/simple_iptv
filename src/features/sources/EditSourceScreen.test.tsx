@@ -11,6 +11,7 @@ import { testConnection } from '@/providers/xtream';
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
 import { forgetActiveSource } from './activeSource';
+import { updateXtreamSource } from './manage';
 import { EditSourceScreen } from './EditSourceScreen';
 import { forgetSources } from './sourcesList';
 import { makeSource, renderRoutes, seedSource } from './test-utils';
@@ -136,6 +137,47 @@ describe('SRC-08 AC2 — Xtream credentials are re-tested before applying', () =
       secretRef: REF,
     });
     expect(await screen.findAllByText(text.toasts.syncing)).not.toHaveLength(0);
+  });
+
+  // Review fix 1: a sync still running with the old settings is stopped before applying, and
+  // the toast only claims "loading" when a new sync really started.
+  it('a sync running with the old settings is cancelled first, then the edit, then a new sync', async () => {
+    await seedSource(xtream(), 'old-password');
+    const calls: string[] = [];
+    const cancelSync = vi.fn(async () => {
+      calls.push('cancel');
+    });
+    const updateSource = vi.fn(async (input: Parameters<typeof updateXtreamSource>[0]) => {
+      calls.push('update');
+      await updateXtreamSource(input);
+    });
+    const { user, router, startInitialSync } = show('tv', { cancelSync, updateSource });
+    startInitialSync.mockImplementation(async () => {
+      calls.push('sync');
+      return 'started';
+    });
+    await user.type(
+      await screen.findByLabelText(text.fields.password, { exact: false, selector: 'input' }),
+      PASS,
+    );
+    await user.click(screen.getByRole('button', { name: text.edit.save }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings/sources'));
+    expect(calls).toEqual(['cancel', 'update', 'sync']);
+    expect(cancelSync).toHaveBeenCalledWith('tv');
+  });
+
+  it('when no new sync could be started, the toast does not claim channels are loading', async () => {
+    await seedSource(xtream(), 'old-password');
+    const { user, router, startInitialSync } = show('tv', { cancelSync: async () => undefined });
+    startInitialSync.mockResolvedValue('busy');
+    await user.type(
+      await screen.findByLabelText(text.fields.password, { exact: false, selector: 'input' }),
+      PASS,
+    );
+    await user.click(screen.getByRole('button', { name: text.edit.save }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings/sources'));
+    expect(await screen.findAllByText(text.myLists.toasts.updated)).not.toHaveLength(0);
+    expect(screen.queryByText(text.toasts.syncing)).toBeNull();
   });
 
   it('a failed test applies nothing and explains why (no "save anyway" when editing)', async () => {

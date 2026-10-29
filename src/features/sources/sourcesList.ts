@@ -21,6 +21,8 @@ export interface SourcesListSnapshot {
 let snapshot: SourcesListSnapshot = { sources: undefined, error: undefined, readAt: 0, version: 0 };
 let latestRead = 0;
 let inFlight: Promise<readonly Source[]> | undefined;
+/** A read queued behind the one in flight (see `reloadSources('fresh')`). */
+let queued: Promise<readonly Source[]> | undefined;
 const listeners = new Set<() => void>();
 
 function publish(sources: readonly Source[] | undefined, error: unknown): void {
@@ -37,8 +39,25 @@ export function subscribeSourcesList(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Reads every list from storage and publishes it; the latest read wins. */
-export function reloadSources(): Promise<readonly Source[]> {
+/**
+ * Reads every list from storage and publishes it.
+ * - `fresh` (default, after a change): the answer reflects storage as of this call — a read already
+ *   in flight may predate the change, so one more read is queued behind it (and shared by every
+ *   caller that asks meanwhile).
+ * - `shared` (a screen opening, the menu opening): joins a read already in flight.
+ * At most one read runs at a time; the latest one wins.
+ */
+export function reloadSources(mode: 'fresh' | 'shared' = 'fresh'): Promise<readonly Source[]> {
+  if (inFlight) {
+    if (mode === 'shared') return inFlight;
+    queued ??= inFlight.then(startRead, startRead);
+    return queued;
+  }
+  return startRead();
+}
+
+function startRead(): Promise<readonly Source[]> {
+  queued = undefined;
   const read = ++latestRead;
   const current = (async () => {
     const { sourcesRepo } = await import('@/core/db');
@@ -69,6 +88,7 @@ export function reloadSourcesIfLoaded(): void {
 export function forgetSources(): void {
   latestRead++;
   inFlight = undefined;
+  queued = undefined;
   publish(undefined, undefined);
 }
 
@@ -77,7 +97,7 @@ export function useSourcesList(enabled = true): SourcesListSnapshot {
   const current = useSyncExternalStore(subscribeSourcesList, getSourcesListSnapshot);
   const needsRead = enabled && current.sources === undefined && current.error === undefined;
   useEffect(() => {
-    if (needsRead && inFlight === undefined) reloadSources().catch(() => undefined);
+    if (needsRead) reloadSources('shared').catch(() => undefined);
   }, [needsRead]);
   return current;
 }
