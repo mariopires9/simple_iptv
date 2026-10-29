@@ -4,8 +4,8 @@ import { redirect, type RouteObject } from 'react-router';
 import type { LazyNamespace } from '@/i18n';
 import { lazyScreen } from '@/ui/lazyScreen';
 
-/** Strings the Live screens read, loaded with them (TEC-01); the player overlay reads `player`. */
-const LIVE_STRINGS: readonly LazyNamespace[] = ['live', 'player'];
+/** Strings the Live screens read, loaded with them (TEC-01); `player` loads with `@/player/ui`. */
+const LIVE_STRINGS: readonly LazyNamespace[] = ['live'];
 
 export const liveRoutes: RouteObject[] = [
   { path: 'live', lazy: lazyScreen(() => import('./LiveScreen'), 'LiveScreen', LIVE_STRINGS) },

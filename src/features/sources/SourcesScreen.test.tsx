@@ -360,7 +360,7 @@ describe('SRC-08 — "Add list" chooser', () => {
     await seedAll();
     const { user, router } = show();
     await user.click(await screen.findByRole('button', { name: text.add }));
-    const dialog = await screen.findByRole('dialog', { name: text.chooser.title });
+    const dialog = await screen.findByRole('dialog', { name: t.lists.chooser.title });
     expect(within(dialog).getByRole('link', { name: /Xtream Codes/ })).toHaveAttribute(
       'href',
       '/settings/sources/add/xtream',

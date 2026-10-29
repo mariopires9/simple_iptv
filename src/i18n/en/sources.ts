@@ -311,7 +311,6 @@ export const sources = {
     },
     toasts: {
       switched: (name: string) => `Now using “${name}”.`,
-      switchFailed: 'Could not change the active list.',
       removed: (name: string) => `“${name}” removed.`,
       removeFailed: (name: string) => `Could not remove “${name}”.`,
       refreshed: (name: string) => `“${name}” updated.`,
@@ -326,20 +325,6 @@ export const sources = {
         'Its channels, movies, series, favorites and history are deleted from this device. Your subscription is not affected.',
       confirm: 'Remove',
     },
-    chooser: {
-      title: 'Add list',
-      xtream: { title: 'Xtream Codes', subtitle: 'Server, username and password (recommended)' },
-      m3uUrl: { title: 'M3U list (URL)', subtitle: 'The address of an M3U list' },
-      m3uFile: { title: 'Local M3U file', subtitle: 'Coming soon' },
-    },
-  },
-  /** SRC-08: the active list selector in the top bar. */
-  selector: {
-    label: (name: string) => `Active list: ${name}`,
-    none: 'No list',
-    noneLabel: 'Lists: no list yet',
-    manage: 'Manage lists…',
-    add: 'Add list',
   },
   /** SRC-08: edit a list (rename; Xtream server and credentials). */
   edit: {

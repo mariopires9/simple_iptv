@@ -26,7 +26,7 @@ function screen(route: RouteObject): RouteObject {
 
 const homeRoute: RouteObject = {
   index: true,
-  lazy: lazyScreen(() => import('./routes/HomeScreen'), 'HomeScreen'),
+  lazy: lazyScreen(() => import('./routes/HomeScreen'), 'HomeScreen', []),
 };
 
 /** The whole route tree; exported for tests (memory router). */

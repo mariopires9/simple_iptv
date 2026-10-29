@@ -6,17 +6,38 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 
 // Module boundaries (docs/ARCHITECTURE.md §2): features → worker/player/providers/core/ui;
 // worker → providers/core; core imports nothing above it.
-const forbid = (...groups) => ({
-  'no-restricted-imports': [
-    'error',
-    {
-      patterns: groups.map((g) => ({
-        group: [`@/${g}`, `@/${g}/**`],
-        message: `Import forbidden by module boundaries (see docs/ARCHITECTURE.md §2): ${g}`,
-      })),
-    },
-  ],
-});
+// TEC-01: the full string catalogs (every namespace, statically imported) are for tests and
+// tooling only; app code reads `t` from `@/i18n`, which loads feature strings lazily.
+const CATALOGS_PATTERN = {
+  group: ['@/i18n/catalogs', '**/i18n/catalogs', './catalogs', '../catalogs'],
+  message: 'The full string catalogs are for tests and tooling only (TEC-01); use `t` from @/i18n.',
+};
+const TEST_FILES = ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/**/test-utils/**'];
+
+/** `no-restricted-imports` for the boundary groups, plus the catalogs outside tests. */
+const restrict = (groups, { catalogs }) => {
+  const patterns = groups.map((g) => ({
+    group: [`@/${g}`, `@/${g}/**`],
+    message: `Import forbidden by module boundaries (see docs/ARCHITECTURE.md §2): ${g}`,
+  }));
+  if (catalogs) patterns.push(CATALOGS_PATTERN);
+  return { 'no-restricted-imports': patterns.length ? ['error', { patterns }] : 'off' };
+};
+
+/**
+ * A layer's import rules: its boundaries everywhere, and no full catalogs outside its tests. (One
+ * rule, so the test override restates the boundaries: a later config replaces the options.)
+ */
+const forbid = (files, ...groups) => [
+  { files, rules: restrict(groups, { catalogs: true }) },
+  {
+    files: files.flatMap((glob) => [
+      glob.replace(/\*\*$/, '**/*.test.{ts,tsx}'),
+      glob.replace(/\*\*$/, '**/test-utils/**'),
+    ]),
+    rules: restrict(groups, { catalogs: false }),
+  },
+];
 
 // HTML-string sinks (SEC-01 AC3): external metadata is rendered as text only.
 const HTML_SINK_MESSAGE =
@@ -90,16 +111,16 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
-  {
-    files: ['src/core/**'],
-    rules: forbid('app', 'ui', 'features', 'player', 'providers', 'worker'),
-  },
-  { files: ['src/providers/**'], rules: forbid('app', 'ui', 'features', 'player', 'worker') },
+  // Everything in src (app, i18n, main…): no full catalogs outside tests and test helpers.
+  { files: ['src/**'], rules: restrict([], { catalogs: true }) },
+  { files: TEST_FILES, rules: restrict([], { catalogs: false }) },
+  ...forbid(['src/core/**'], 'app', 'ui', 'features', 'player', 'providers', 'worker'),
+  ...forbid(['src/providers/**'], 'app', 'ui', 'features', 'player', 'worker'),
   // Data worker composition root (task registry + entry point): may use core and providers.
-  { files: ['src/worker/**'], rules: forbid('app', 'ui', 'features', 'player') },
-  { files: ['src/player/**'], rules: forbid('app', 'features', 'providers') },
-  { files: ['src/ui/**'], rules: forbid('app', 'features') },
-  { files: ['src/features/**'], rules: forbid('app', 'features') },
+  ...forbid(['src/worker/**'], 'app', 'ui', 'features', 'player'),
+  ...forbid(['src/player/**'], 'app', 'features', 'providers'),
+  ...forbid(['src/ui/**'], 'app', 'features'),
+  ...forbid(['src/features/**'], 'app', 'features'),
   // The logger (core/log) is the only place allowed to write to the console.
   { files: ['src/core/log/**'], rules: { 'no-console': 'off' } },
   {

@@ -4,8 +4,8 @@ import { redirect, type RouteObject } from 'react-router';
 import type { LazyNamespace } from '@/i18n';
 import { lazyScreen } from '@/ui/lazyScreen';
 
-/** Strings the Movies screens read, loaded with them (TEC-01); the player overlay reads `player`. */
-const MOVIES_STRINGS: readonly LazyNamespace[] = ['movies', 'player'];
+/** Strings the Movies screens read, loaded with them (TEC-01); `player` loads with `@/player/ui`. */
+const MOVIES_STRINGS: readonly LazyNamespace[] = ['movies'];
 
 export const moviesRoutes: RouteObject[] = [
   {

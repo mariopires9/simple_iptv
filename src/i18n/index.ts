@@ -5,13 +5,15 @@
 // the initial bundle. Feature namespaces load with their feature: routes declare them in
 // `lazyScreen(load, name, namespaces)`, which awaits `ensureMessages` with the screen chunk.
 // Feature code keeps reading `t.<namespace>.<key>`.
+import { log } from '@/core/log';
 import type { Messages } from './en';
 import { enEager } from './en/eager';
 import { ptPTEager } from './pt-PT/eager';
-import { createMessageRegistry, type NamespaceLoaders } from './registry';
+import { createMessageRegistry, type LocaleSwitchResult, type NamespaceLoaders } from './registry';
 import type { Locale } from './types';
 
 export type { Messages } from './en';
+export type { LocaleSwitchResult } from './registry';
 export type { Locale } from './types';
 
 export const LOCALES: readonly Locale[] = ['en', 'pt-PT'];
@@ -72,12 +74,18 @@ const registry = createMessageRegistry<EagerMessages, LazyMessages, Locale>({
   locale: detectLocale(),
   eager,
   lazy,
-  guard: import.meta.env.DEV,
+  // Development and tests: an undeclared namespace fails loudly. Production: it heals itself (loads
+  // the namespace, shows already loaded English strings or empty ones meanwhile) and is logged.
+  guard: import.meta.env.DEV ? 'throw' : 'fallback',
+  fallbackLocale: 'en',
+  onMissing: (namespace, error) =>
+    log.error('i18n: a feature namespace was read before it was loaded', { namespace, error }),
 });
 
 /**
  * The messages of the active locale. A lazy namespace is only present once
- * `ensureMessages(namespace)` has resolved (development builds throw on an early read).
+ * `ensureMessages(namespace)` has resolved (development builds throw on an early read;
+ * production falls back, see `GuardMode` in ./registry).
  */
 export const t: Messages = registry.t;
 
@@ -106,8 +114,11 @@ export function activeLocale(): Locale {
   return registry.getLocale();
 }
 
-/** Switches `t` to another locale: reloads loaded namespaces, then notifies the subscribers. */
-export function setLocale(locale: Locale): Promise<void> {
+/**
+ * Switches `t` to another locale: reloads loaded namespaces, then notifies the subscribers.
+ * Resolves `'superseded'` when a later call took over (see `LocaleSwitchResult`).
+ */
+export function setLocale(locale: Locale): Promise<LocaleSwitchResult> {
   return registry.setLocale(locale);
 }
 

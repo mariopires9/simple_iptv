@@ -1,6 +1,6 @@
 // TEC-01: lazily registered message namespaces (load, dedupe, locale reload, dev guard).
 import { describe, expect, it, vi } from 'vitest';
-import { createMessageRegistry } from './registry';
+import { createMessageRegistry, type GuardMode } from './registry';
 
 type Loc = 'en' | 'pt';
 interface Eager {
@@ -22,7 +22,8 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function setup(guard = true) {
+function setup(guard: GuardMode = 'throw') {
+  const onMissing = vi.fn();
   const loaders = {
     live: {
       en: vi.fn(() => Promise.resolve({ title: 'Live TV' })),
@@ -38,8 +39,10 @@ function setup(guard = true) {
     eager: { en: { app: { name: 'App' } }, pt: { app: { name: 'Aplicação' } } },
     lazy: loaders,
     guard,
+    fallbackLocale: 'en',
+    onMissing,
   });
-  return { registry, loaders };
+  return { registry, loaders, onMissing };
 }
 
 describe('createMessageRegistry — eager namespaces', () => {
@@ -108,24 +111,73 @@ describe('ensureMessages', () => {
   });
 });
 
-describe('dev guard', () => {
+describe('guard: throw (development and tests)', () => {
   it('throws a clear error when a lazy namespace is read before ensureMessages', () => {
-    const { registry } = setup(true);
+    const { registry, onMissing } = setup('throw');
     expect(() => registry.t.live.title).toThrow(
       'i18n: namespace "live" read before ensureMessages(\'live\')',
     );
+    expect(onMissing).not.toHaveBeenCalled();
   });
 
   it('does not affect eager namespaces, "in" checks or unknown keys', () => {
-    const { registry } = setup(true);
+    const { registry } = setup('throw');
     expect(registry.t.app.name).toBe('App');
     expect('live' in registry.t).toBe(false);
     expect((registry.t as unknown as Record<string, unknown>).other).toBeUndefined();
   });
+});
 
-  it('without the guard (production) an unloaded namespace is just absent', () => {
-    const { registry } = setup(false);
-    expect((registry.t as Partial<Lazy>).live).toBeUndefined();
+describe('guard: fallback (production)', () => {
+  it('never throws: empty strings, reported once, and the namespace loads itself', async () => {
+    const { registry, loaders, onMissing } = setup('fallback');
+    const live = registry.t.live;
+    expect(() => `${live.title}`).not.toThrow();
+    expect(`${live.title}`).toBe('');
+    expect(String(registry.t.live.title)).toBe('');
+    // Nested reads and message functions do not throw either.
+    const deep = registry.t.live as unknown as {
+      a: { b: { c: (n: number) => string } };
+    };
+    expect(deep.a.b.c(1)).toBe('');
+    // Never mistaken for a promise (e.g. by `await`).
+    expect((registry.t.live as unknown as { then?: unknown }).then).toBeUndefined();
+    expect(onMissing).toHaveBeenCalledTimes(1);
+    expect(onMissing).toHaveBeenCalledWith('live');
+    expect(loaders.live.en).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(registry.isLoaded('live')).toBe(true));
+    expect(registry.t.live.title).toBe('Live TV');
+  });
+
+  it('serves the active locale first when its module has already been loaded', async () => {
+    const { registry } = setup('fallback');
+    await registry.ensureMessages('live');
+    registry.unloadAll();
+    expect(registry.t.live.title).toBe('Live TV');
+  });
+
+  it('falls back to English when the active locale has never loaded the namespace', async () => {
+    const { registry, loaders } = setup('fallback');
+    await registry.ensureMessages('live'); // en live loaded
+    registry.unloadAll();
+    const ptLoad = deferred<{ title: string }>();
+    loaders.live.pt.mockReturnValueOnce(ptLoad.promise);
+    await registry.setLocale('pt'); // nothing loaded: no lazy reload
+    expect(registry.t.live.title).toBe('Live TV');
+    ptLoad.resolve({ title: 'TV em direto' });
+    await vi.waitFor(() => expect(registry.isLoaded('live')).toBe(true));
+    expect(registry.t.live.title).toBe('TV em direto');
+  });
+
+  it('reports a failed self-heal load through onMissing, and retries on the next read', async () => {
+    const { registry, loaders, onMissing } = setup('fallback');
+    const error = new Error('offline');
+    loaders.live.en.mockRejectedValueOnce(error);
+    expect(`${registry.t.live.title}`).toBe('');
+    await vi.waitFor(() => expect(onMissing).toHaveBeenCalledWith('live', error));
+    expect(`${registry.t.live.title}`).toBe('');
+    await vi.waitFor(() => expect(registry.isLoaded('live')).toBe(true));
+    expect(loaders.live.en).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -169,8 +221,37 @@ describe('setLocale', () => {
     const { registry } = setup();
     const listener = vi.fn();
     registry.subscribe(listener);
-    await registry.setLocale('en');
+    await expect(registry.setLocale('en')).resolves.toBe('unchanged');
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('resolves "switched" after a switch', async () => {
+    const { registry } = setup();
+    await expect(registry.setLocale('pt')).resolves.toBe('switched');
+  });
+
+  it('commits only namespaces still loaded at commit time (unload during a switch)', async () => {
+    const { registry, loaders } = setup();
+    await registry.ensureMessages('live');
+    const ptLive = deferred<{ title: string }>();
+    loaders.live.pt.mockReturnValueOnce(ptLive.promise);
+    const switching = registry.setLocale('pt');
+    registry.unloadAll();
+    ptLive.resolve({ title: 'TV em direto' });
+    await expect(switching).resolves.toBe('switched');
+    expect(registry.getLocale()).toBe('pt');
+    expect(registry.isLoaded('live')).toBe(false);
+    expect(() => registry.t.live).toThrow(/ensureMessages\('live'\)/);
+    expect(registry.t.app.name).toBe('Aplicação');
+  });
+
+  it('rejects, changing nothing, when a namespace cannot be loaded for the new locale', async () => {
+    const { registry, loaders } = setup();
+    await registry.ensureMessages('live');
+    loaders.live.pt.mockRejectedValueOnce(new Error('offline'));
+    await expect(registry.setLocale('pt')).rejects.toThrow('offline');
+    expect(registry.getLocale()).toBe('en');
+    expect(registry.t.live.title).toBe('Live TV');
   });
 
   it('a namespace loading during the switch ends up in the new locale', async () => {
@@ -197,7 +278,8 @@ describe('setLocale', () => {
     const toPt = registry.setLocale('pt');
     const backToEn = registry.setLocale('en');
     slow.resolve({ title: 'TV em direto' });
-    await Promise.all([toPt, backToEn]);
+    await expect(toPt).resolves.toBe('superseded');
+    await expect(backToEn).resolves.toBe('unchanged');
     expect(registry.getLocale()).toBe('en');
     expect(registry.t.live.title).toBe('Live TV');
     expect(listener).not.toHaveBeenCalled();

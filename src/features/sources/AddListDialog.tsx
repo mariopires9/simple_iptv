@@ -23,7 +23,7 @@ export interface AddListDialogProps {
 }
 
 export function AddListDialog({ open, onClose }: AddListDialogProps) {
-  const text = t.sources.myLists.chooser;
+  const text = t.lists.chooser;
   const titleId = useId();
   const options = [
     { key: 'xtream', to: ADD_XTREAM_PATH, ...text.xtream },

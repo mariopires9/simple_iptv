@@ -12,7 +12,7 @@ import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { t } from '@/i18n';
+import { activeLocale, t } from '@/i18n';
 import { DelayedLoading, PosterGridSkeleton, StateView, errorDetails } from '@/ui/state';
 import { ALL_CATEGORY_ID, categoryPath, type MovieCategory } from './categories';
 import { rememberBrowse } from './browseState';
@@ -126,7 +126,7 @@ export function MoviesScreen() {
   const cache = useMemo(
     () =>
       loaded
-        ? new MoviePageCache(sortedKeys(loaded.rows, effectiveSort, t.player.locale))
+        ? new MoviePageCache(sortedKeys(loaded.rows, effectiveSort, activeLocale()))
         : undefined,
     [loaded, effectiveSort],
   );

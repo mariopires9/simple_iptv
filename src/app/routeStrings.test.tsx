@@ -2,9 +2,11 @@
 // the routes declare their namespaces, so the dev guard on `t` never fires.
 import 'fake-indexeddb/auto';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { wipeAll } from '@/core/db';
+import { settingsRepo, sourcesRepo, wipeAll } from '@/core/db';
+import { forgetActiveSource } from '@/core/session';
 import { invalidateSourcesPresence, setSourcesPresent } from '@/features/sources';
 import {
   isMessagesLoaded,
@@ -29,6 +31,7 @@ afterEach(async () => {
   media?.restore();
   media = undefined;
   invalidateSourcesPresence();
+  forgetActiveSource();
   await wipeAll();
   await loadAllMessages();
 });
@@ -50,11 +53,36 @@ describe('route strings (TEC-01)', () => {
     for (const namespace of LAZY_NAMESPACES) expect(isMessagesLoaded(namespace)).toBe(false);
   });
 
-  // First render of the shell in this file: the selector's `React.lazy` loads (once per module).
-  it('the top-bar list selector loads the sources strings with its chunk', async () => {
+  it('the top-bar list selector renders with eager strings only (no `sources` load)', async () => {
+    await sourcesRepo.put({
+      id: 'a',
+      kind: 'm3u-url',
+      name: 'Alpha list',
+      prefs: { liveFormat: 'auto' },
+      createdAt: 1,
+      lastSyncStatus: 'ok',
+      stats: { live: 0, movies: 0, series: 0 },
+    });
+    await settingsRepo.set('activeSourceId', 'a');
     renderRoute('/series');
     await screen.findByRole('heading', { level: 1 });
-    await waitFor(() => expect(isMessagesLoaded('sources')).toBe(true));
+    const button = await screen.findByRole('button', {
+      name: t.lists.selector.label('Alpha list'),
+    });
+    await userEvent.click(button);
+    await userEvent.click(await screen.findByRole('menuitem', { name: t.lists.selector.add }));
+    expect(await screen.findByRole('dialog', { name: t.lists.chooser.title })).toBeInTheDocument();
+    expect(isMessagesLoaded('sources')).toBe(false);
+  });
+
+  it('/live renders without the player strings; they load with the player UI', async () => {
+    renderRoute('/live');
+    await screen.findByRole('heading', { level: 1 });
+    expect(isMessagesLoaded('live')).toBe(true);
+    expect(isMessagesLoaded('player')).toBe(false);
+    const ui = await import('@/player/ui');
+    expect(ui.PlayerView).toBeTypeOf('function');
+    await waitFor(() => expect(isMessagesLoaded('player')).toBe(true));
   });
 
   it.each([
@@ -85,13 +113,18 @@ describe('route strings (TEC-01)', () => {
   });
 
   it.each([
-    ['/live', ['live', 'player']],
-    ['/movies', ['movies', 'player']],
+    ['/live', ['live']],
+    ['/movies', ['movies']],
     ['/onboarding', ['onboarding']],
     ['/onboarding/xtream', ['sources']],
-  ] as const)('%s loads %j with the screen', async (path, namespaces) => {
+    ['/series', []],
+  ] as const)('%s loads exactly %j with the screen', async (path, namespaces) => {
     renderRoute(path);
     await screen.findByRole('heading', { level: 1 });
-    for (const namespace of namespaces) expect(isMessagesLoaded(namespace)).toBe(true);
+    for (const namespace of LAZY_NAMESPACES) {
+      expect(isMessagesLoaded(namespace)).toBe(
+        (namespaces as readonly string[]).includes(namespace),
+      );
+    }
   });
 });

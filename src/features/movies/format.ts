@@ -1,10 +1,10 @@
-// Number/time formatting of the Movies screens, in the active UI locale (`t.player.locale`).
+// Number/time formatting of the Movies screens, in the active UI locale (`activeLocale()`).
 // Kept here rather than importing `formatTime` from `@/player/ui`: a static import of the player
 // UI would pull it into this chunk (PLY-02 lazy boundary).
-import { t } from '@/i18n';
+import { activeLocale, t } from '@/i18n';
 
 function format(value: number, options: Intl.NumberFormatOptions): string {
-  return new Intl.NumberFormat(t.player.locale, options).format(value);
+  return new Intl.NumberFormat(activeLocale(), options).format(value);
 }
 
 /** `m:ss` below one hour, `h:mm:ss` from one hour (the player's own format). */

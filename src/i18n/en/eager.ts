@@ -3,8 +3,9 @@
 // feature (`ensureMessages`, src/i18n/index.ts).
 import { app } from './app';
 import { db } from './db';
+import { lists } from './lists';
 import { nav } from './nav';
 import { routes } from './routes';
 import { state } from './state';
 
-export const enEager = { app, db, nav, routes, state };
+export const enEager = { app, db, lists, nav, routes, state };

@@ -75,7 +75,7 @@ function SelectorMenu({
   sources: readonly Source[];
   activeId: string | undefined;
 }) {
-  const text = t.sources.selector;
+  const text = t.lists.selector;
   const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -96,7 +96,7 @@ function SelectorMenu({
       await setActiveSource(id);
     } catch (error) {
       log.warn('Switching the active source failed', { error });
-      toast.show({ message: t.sources.myLists.toasts.switchFailed, severity: 'error' });
+      toast.show({ message: t.lists.switchFailed, severity: 'error' });
       return;
     }
     if (target !== undefined) void navigate(target, { replace: true });
