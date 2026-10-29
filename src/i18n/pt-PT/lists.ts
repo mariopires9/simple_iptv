@@ -17,6 +17,9 @@ export const lists = {
       subtitle: 'Servidor, utilizador e palavra-passe (recomendado)',
     },
     m3uUrl: { title: 'Lista M3U (URL)', subtitle: 'O endereço de uma lista M3U' },
-    m3uFile: { title: 'Ficheiro M3U local', subtitle: 'Brevemente' },
+    m3uFile: {
+      title: 'Ficheiro M3U local',
+      subtitle: 'Um ficheiro de lista guardado neste dispositivo',
+    },
   },
 } satisfies MessageShape<typeof base>;

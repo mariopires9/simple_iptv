@@ -8,7 +8,7 @@ import { SettingsSection } from '../SettingsSection';
 
 /**
  * Settings › Privacy (UX-04 AC1): the summary and the Privacy and data page (what is stored).
- * "Delete all data" is SRC-10 and lands on that page.
+ * "Delete all data" (SRC-10) is on that page.
  */
 export function PrivacySection() {
   const text = t.settings.privacy;

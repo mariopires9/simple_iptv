@@ -144,22 +144,22 @@ describe('UX-01 AC2 — onboarding screen', () => {
     await heading(ONBOARDING);
   });
 
-  it.each([['m3uFile', t.sources.comingSoon.m3uFile]] as const)(
-    '%s option → "coming soon" with a way back',
-    async (id, text) => {
-      const user = userEvent.setup();
-      const router = renderRoute('/onboarding');
-      await heading(ONBOARDING);
-      await user.click(
-        screen.getByRole('link', { name: startsWith(t.onboarding.options[id].title) }),
-      );
-      await heading(text.title);
-      expect(screen.getByText(text.message)).toBeInTheDocument();
-      await user.click(screen.getByRole('link', { name: t.sources.comingSoon.back }));
-      await heading(ONBOARDING);
-      expect(router.state.location.pathname).toBe('/onboarding');
-    },
-  );
+  it('m3uFile option → the add-local-file screen (SRC-06) with a way back', async () => {
+    const user = userEvent.setup();
+    const router = renderRoute('/onboarding');
+    await heading(ONBOARDING);
+    await user.click(
+      screen.getByRole('link', { name: startsWith(t.onboarding.options.m3uFile.title) }),
+    );
+    await heading(t.sources.addM3uFile.title);
+    expect(router.state.location.pathname).toBe('/onboarding/m3u-file');
+    expect(
+      screen.getByRole('button', { name: t.sources.addM3uFile.fields.choose }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: t.sources.addM3uFile.back }));
+    await heading(ONBOARDING);
+    expect(router.state.location.pathname).toBe('/onboarding');
+  });
 });
 
 describe('UX-01 AC3 — first source saved → onboardingDone and Home', () => {

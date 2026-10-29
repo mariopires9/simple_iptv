@@ -107,6 +107,7 @@ function renderForm(deps: Partial<M3uUrlFormDeps> = {}) {
           <M3uUrlForm
             doneTo="/"
             xtreamTo="/onboarding/xtream"
+            fileTo="/onboarding/m3u-file"
             deps={{ runImport: directImport, settleImport: directSettle, ...deps }}
           />
         ),
@@ -271,7 +272,12 @@ describe('AC3/AC4 — failures', () => {
     const failure = await screen.findByTestId('m3u-failure');
     expect(failure).toHaveTextContent(t.sources.problems['blocked-cors'].title);
     expect(failure).toHaveTextContent(t.sources.fixes['use-local-file']);
-    expect(failure).toHaveTextContent(text.localFileSoon);
+    // SRC-06: the local-file import is offered.
+    expect(failure).toHaveTextContent(text.localFile.message);
+    expect(screen.getByRole('link', { name: text.localFile.action })).toHaveAttribute(
+      'href',
+      '/onboarding/m3u-file',
+    );
     await waitFor(() => expect(failure).toHaveFocus());
     // The fields are locked while the saved list is pending a decision.
     expect(urlInput()).toBeDisabled();

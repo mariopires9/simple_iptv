@@ -1,7 +1,7 @@
 // Sources (SRC-03, docs/UX_UI.md §4.2): the add-Xtream form, its connection test, problem and
 // suggested-fix texts (mapped from the stable codes of the connection report), the add-M3U-by-URL
-// import (SRC-05), the "coming soon" placeholder for the local M3U file (SRC-06), and the "My lists"
-// page, the top-bar list selector and the edit-list screen (SRC-08).
+// import (SRC-05), the local M3U file import (SRC-06), and the "My lists" page, the top-bar list
+// selector and the edit-list screen (SRC-08).
 export const sources = {
   addXtream: {
     title: 'Add Xtream list',
@@ -90,13 +90,67 @@ export const sources = {
         message: 'The device storage refused the data (it may be full).',
       },
     },
-    /** Shown with the blocked (CORS / mixed content) messages. */
-    localFileSoon: 'Adding a local file is coming soon.',
+    /** Shown with the blocked (CORS / mixed content) messages: the local-file import (SRC-06). */
+    localFile: {
+      message:
+        'This browser cannot download the list. Download it with another app, then add the file.',
+      action: 'Add a local file',
+    },
     retry: 'Try again',
     delete: 'Delete this list',
     toasts: {
       imported: 'List imported.',
       deleted: 'List deleted.',
+    },
+  },
+  /** SRC-06: add an M3U list from a file on this device (shares `addM3uUrl` result/retry texts). */
+  addM3uFile: {
+    title: 'Add local M3U file',
+    intro:
+      'Choose an M3U or M3U8 file saved on this device. It is read on this device only, and only the channels found in it are kept.',
+    back: 'Back',
+    fields: {
+      file: 'List file',
+      choose: 'Choose file',
+      change: 'Choose another file',
+      none: 'No file chosen',
+      /** Name and size (already formatted) of the chosen file. */
+      chosen: (name: string, size: string) => `${name} (${size})`,
+      fileHelp: 'An .m3u or .m3u8 file.',
+      name: 'Name (optional)',
+      nameHelp: 'If empty, the file name is used.',
+    },
+    validation: {
+      fileRequired: 'Choose a file.',
+    },
+    submit: 'Import',
+    steps: {
+      saving: 'Saving…',
+      read: 'Reading file…',
+      write: 'Saving channels…',
+    },
+    /** Arguments are already formatted. */
+    progress: {
+      readOf: (size: string, total: string) => `${size} of ${total} read`,
+    },
+    /** SRC-06 AC2: files over 50 MB. `size` is already formatted. */
+    largeFile: {
+      title: 'Large file',
+      message: (size: string) =>
+        `This file is ${size}. Reading it may take several minutes and use a lot of memory, and on some devices it may not finish.`,
+      confirm: 'Import anyway',
+    },
+    /** Error codes whose text differs from the URL import (`addM3uUrl.errors`). */
+    errors: {
+      'not-m3u': {
+        title: 'Not an M3U list',
+        message: 'The file is not an M3U list.',
+      },
+      'file-unreadable': {
+        title: 'Could not read the file',
+        message:
+          'The file could not be read. It may have been moved, deleted or changed. Choose it again.',
+      },
     },
   },
   fields: {
@@ -218,14 +272,6 @@ export const sources = {
     'use-local-file': 'Download the M3U list and add it as a local file.',
     'use-proxy': 'Use a proxy that serves this server over HTTPS.',
   },
-  comingSoon: {
-    m3uFile: {
-      title: 'Local M3U file',
-      message: 'Adding a local M3U file is coming soon.',
-    },
-    back: 'Back',
-  },
-
   /** SRC-08: the "My lists" page (docs/UX_UI.md §4.1b). */
   myLists: {
     title: 'My lists',
@@ -281,6 +327,7 @@ export const sources = {
       'empty-list': 'the list has no usable entries',
       'too-large': 'the list is too large',
       'invalid-url': 'invalid list address',
+      'file-unreadable': 'the file could not be read — refresh it with the file',
       unknown: 'unknown error',
     },
     actions: {
@@ -300,6 +347,7 @@ export const sources = {
       'series-categories': 'Loading series categories…',
       series: 'Loading series…',
       download: 'Downloading list…',
+      read: 'Reading file…',
       parse: 'Reading list…',
       write: 'Saving channels…',
       done: 'Finishing…',
@@ -313,6 +361,13 @@ export const sources = {
       refreshFailed: (name: string) => `Could not update “${name}”.`,
       refreshUnavailable: 'The update could not be started.',
       updated: 'List updated.',
+    },
+    /** SRC-06 AC3: a list from a file has no address, so "Refresh" asks for the file again. */
+    refreshFile: {
+      title: (name: string) => `Refresh “${name}”`,
+      message:
+        'This list was added from a file, so it cannot be downloaded again. Choose the updated file to refresh it. Favorites and history are kept.',
+      choose: 'Choose file',
     },
     remove: {
       title: (name: string) => `Remove “${name}”?`,

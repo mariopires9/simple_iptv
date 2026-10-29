@@ -13,6 +13,6 @@ export const lists = {
     title: 'Add list',
     xtream: { title: 'Xtream Codes', subtitle: 'Server, username and password (recommended)' },
     m3uUrl: { title: 'M3U list (URL)', subtitle: 'The address of an M3U list' },
-    m3uFile: { title: 'Local M3U file', subtitle: 'Coming soon' },
+    m3uFile: { title: 'Local M3U file', subtitle: 'A list file saved on this device' },
   },
 };

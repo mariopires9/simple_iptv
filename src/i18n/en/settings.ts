@@ -69,6 +69,36 @@ export const settings = {
     },
     notSent:
       'Nothing is sent to us: the app only talks to the servers of the lists you add. To remove a list and its data, use My lists.',
+    /** SRC-10: delete everything the app stored on this device. */
+    deleteAll: {
+      title: 'Delete all data',
+      description:
+        'Removes every list, password, channel, favorite, watch history entry and setting from this device. The app stays installed. This cannot be undone.',
+      action: 'Delete all data…',
+      dialog: {
+        title: 'Delete all data?',
+        message:
+          'Everything this app stored on this device is deleted and the app starts again from the beginning. Your subscriptions are not affected.',
+        /** The word to type to confirm (localized). */
+        confirmWord: 'DELETE',
+        confirmLabel: (word: string) => `Type ${word} to confirm`,
+        confirm: 'Delete everything',
+        deleting: 'Deleting…',
+      },
+      failed: {
+        title: 'Some data could not be deleted',
+        message:
+          'Try again. If it keeps failing, close this app in other tabs or windows first, then try again.',
+        partsTitle: 'Not deleted:',
+        parts: {
+          database: 'Lists, channels, favorites and settings',
+          caches: 'Cached files',
+          storage: 'Preferences kept by the browser (language, theme)',
+        },
+        retry: 'Try again',
+        close: 'Close',
+      },
+    },
   },
   about: {
     version: 'Version',

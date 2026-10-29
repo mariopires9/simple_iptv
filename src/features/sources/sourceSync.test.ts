@@ -77,12 +77,29 @@ describe('startSourceSync', () => {
     expect(fake.runTask).toHaveBeenCalledTimes(1);
   });
 
-  it('a local M3U file cannot be refreshed', async () => {
+  it('a local M3U file cannot be refreshed without a new file (SRC-06 AC3)', async () => {
     const fake = fakeWorker();
     expect((await startSourceSync({ id: 'f', kind: 'm3u-file' }, fake.worker)).dispatch).toBe(
       'unsupported',
     );
     expect(fake.runTask).not.toHaveBeenCalled();
+  });
+
+  it('a local M3U file with a new file → syncM3uFile with that file, tracked like any sync', async () => {
+    const fake = fakeWorker();
+    const file = new File(['#EXTM3U\n'], 'new.m3u');
+    const run = await startSourceSync({ id: 'f', kind: 'm3u-file' }, fake.worker, { file });
+    expect(run.dispatch).toBe('started');
+    expect(fake.runTask).toHaveBeenCalledWith(
+      'syncM3uFile',
+      { sourceId: 'f', file },
+      expect.any(Object),
+    );
+    fake.pending[0]?.options.onProgress?.({ phase: 'read', done: 5, total: 8 });
+    expect(getSourceSyncSnapshot().get('f')).toMatchObject({ phase: 'read', done: 5, total: 8 });
+    fake.pending[0]?.resolve({ status: 'ok' });
+    if (run.dispatch !== 'started') throw new Error('not started');
+    await expect(run.done).resolves.toEqual({ status: 'ok' });
   });
 
   it('cancel: aborts, waits until the worker is idle, outcome "cancelled"', async () => {

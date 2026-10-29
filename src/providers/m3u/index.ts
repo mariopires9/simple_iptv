@@ -1,5 +1,6 @@
 // Module providers/m3u — see docs/ARCHITECTURE.md §3. Streaming M3U parser (SRC-04) and the
-// import/refresh of M3U-by-URL sources (SRC-05). Only the data worker runs the sync.
+// import/refresh of M3U sources by URL (SRC-05) or from a local file (SRC-06). Only the data worker
+// runs the sync.
 export {
   M3U_SKIP_REASONS,
   MAX_ATTRIBUTE_LENGTH,
@@ -51,6 +52,8 @@ export type {
   M3uClassificationRules,
 } from './classify';
 export { DOWNLOAD_INACTIVITY_TIMEOUT_MS, downloadM3u } from './download';
+export { FileReadError, readM3uFile } from './readFile';
+export type { ReadFileOptions, ReadFileResult } from './readFile';
 export type { DownloadOptions, DownloadResult } from './download';
 export {
   MAX_BYTES,
@@ -58,6 +61,7 @@ export {
   isM3uSourceSyncing,
   listUrlSecrets,
   storableUrlCheck,
+  syncM3uFileSource,
   syncM3uSource,
   waitForM3uSourceIdle,
 } from './sync';
@@ -66,6 +70,7 @@ export type {
   M3uSyncPhase,
   M3uSyncProgress,
   SyncM3uDeps,
+  SyncM3uFileInput,
   SyncM3uInput,
   SyncM3uResult,
 } from './sync';

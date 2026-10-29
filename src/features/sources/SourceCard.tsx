@@ -80,7 +80,6 @@ export function SourceCard({
     ? { tone: 'neutral' as const, text: text.status.syncing }
     : describeStatus(source, t, locale);
   const StatusIcon = STATUS_ICONS[status.tone];
-  const refreshable = source.kind !== 'm3u-file';
 
   return (
     <Box
@@ -152,16 +151,15 @@ export function SourceCard({
             {text.actions.use}
           </Button>
         )}
-        {refreshable && (
-          <Button
-            variant="outlined"
-            onClick={() => onRefresh(source)}
-            disabled={sync !== undefined}
-            aria-describedby={headingId}
-          >
-            {text.actions.refresh}
-          </Button>
-        )}
+        {/* A local-file list asks for the file again (SRC-06 AC3). */}
+        <Button
+          variant="outlined"
+          onClick={() => onRefresh(source)}
+          disabled={sync !== undefined}
+          aria-describedby={headingId}
+        >
+          {text.actions.refresh}
+        </Button>
         <Button
           component={Link}
           to={`/settings/sources/${encodeURIComponent(source.id)}/edit`}

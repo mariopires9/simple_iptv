@@ -1,7 +1,14 @@
-// M3U-by-URL import / refresh (SRC-04 + SRC-05). Runs inside the data worker as task `syncM3u`.
+// M3U import / refresh (SRC-04 + SRC-05 by URL, SRC-06 from a local file). Runs inside the data
+// worker as tasks `syncM3u` (URL) and `syncM3uFile` (file).
 //
-// Flow: source row → vault (list URL) → streaming download + parse (bytes and entries reported as
-// they arrive) → catalogue rows → one guarded transaction for all three types → source status.
+// Flow (URL): source row → vault (list URL) → streaming download + parse (bytes and entries
+// reported as they arrive) → catalogue rows → one guarded transaction for all three types → source
+// status.
+// Flow (file): the same, except that the `File` picked by the user arrives with the task input
+// (structured clone) and is read with `file.stream()` (`readM3uFile`, phase `read` instead of
+// `download`). A file source has no URL and nothing in the vault; the file itself is never stored,
+// only the parsed catalogue. Its stored URLs go through the same credential filter (without list
+// secrets, since there is no list URL to take them from).
 //
 // Credentials: the list URL often embeds them (`get.php?username=…&password=…`, tokens). It is
 // read from the vault *inside the worker* and never crosses postMessage: the task input is
@@ -26,6 +33,7 @@
 //   write phase starts it completes (the UI then reports the real outcome).
 // - Source removed meanwhile: the existence check runs inside the write transaction; nothing is
 //   written and the task rejects with `WorkerTaskError('cancelled', '… (source-removed)')`.
+// - File unreadable (moved, deleted or changed after it was picked): `file-unreadable`.
 // - Accepted bodies: first meaningful line `#EXTM3U` or `#EXTINF`, or valid entries found within
 //   SNIFF_BYTES; anything else (HTML, JSON, empty) is `not-m3u`.
 // - Concurrency: imports of the same source are serialised (per-source queue in this worker).
@@ -51,16 +59,18 @@ import { WorkerTaskError, type TaskContext, type TaskProgress } from '@/core/wor
 import { M3uCatalogBuilder } from './catalog';
 import { downloadM3u, DOWNLOAD_INACTIVITY_TIMEOUT_MS } from './download';
 import { M3uParser, type M3uSkipReason } from './parser';
+import { FileReadError, readM3uFile } from './readFile';
 
 /**
- * Progress phases. Download and parsing are streamed together, so while the list downloads two
+ * Progress phases. Download (or file read) and parsing are streamed together, so meanwhile two
  * kinds of message alternate (at most one every {@link PROGRESS_INTERVAL_MS}, so the worker's
  * latest-wins progress throttle does not drop either kind):
- * - `download`: `done` = bytes read, `total` = Content-Length when known;
+ * - `download` (URL): `done` = bytes read, `total` = Content-Length when known;
+ * - `read` (file, instead of `download`): `done` = bytes read, `total` = the file size;
  * - `parse`: `done` = valid entries parsed so far.
  * Then `write` (`done`/`total` = rows: items plus the episodes of grouped shows) and `done`.
  */
-export type M3uSyncPhase = 'download' | 'parse' | 'write' | 'done';
+export type M3uSyncPhase = 'download' | 'read' | 'parse' | 'write' | 'done';
 
 export interface M3uSyncProgress extends TaskProgress {
   phase: M3uSyncPhase;
@@ -73,6 +83,12 @@ export interface SyncM3uInput {
   sourceId: string;
 }
 
+/** Input of task `syncM3uFile` (SRC-06): the file picked by the user, sent by structured clone. */
+export interface SyncM3uFileInput {
+  sourceId: string;
+  file: Blob;
+}
+
 /**
  * Error codes (never sensitive): `NetErrorKind`s (`offline`, `timeout`, `blocked`, `http`, `auth`,
  * `parse`) plus:
@@ -81,6 +97,7 @@ export interface SyncM3uInput {
  * - `too-large`: more than {@link MAX_ENTRIES} entries or {@link MAX_BYTES} bytes
  * - `invalid-url`: the stored list URL is not an acceptable http(s) URL
  * - `credentials-lost`: the vault cannot decrypt the list URL
+ * - `file-unreadable`: the local file could not be read (moved, deleted or changed since picked)
  * - `storage`: writing to IndexedDB failed (e.g. quota); nothing was changed
  * - `internal`: a non-network exception (bug); the task also rejects with `failed`
  * - `unknown`
@@ -92,6 +109,7 @@ export type M3uSyncErrorCode =
   | 'too-large'
   | 'invalid-url'
   | 'credentials-lost'
+  | 'file-unreadable'
   | 'storage'
   | 'internal'
   | 'unknown';
@@ -267,16 +285,44 @@ async function storedStats(sourceId: string): Promise<SourceStats> {
   return { live, movies, series };
 }
 
+/** Where the list is read from. */
+type ListOrigin = { kind: 'url' } | { kind: 'file'; file: Blob };
+
 /**
  * Downloads, parses and stores an M3U-URL source. Must run in the data worker (task `syncM3u` in
  * src/worker/tasks.ts); also callable directly in tests.
  */
-export async function syncM3uSource(
+export function syncM3uSource(
   input: SyncM3uInput,
   ctx: TaskContext,
   deps: SyncM3uDeps = {},
 ): Promise<SyncM3uResult> {
-  const sourceId = input?.sourceId;
+  return syncSource(input?.sourceId, { kind: 'url' }, ctx, deps);
+}
+
+/**
+ * Reads, parses and stores a local M3U file into an `m3u-file` source (SRC-06): the first import
+ * and every refresh (which needs the file again — there is no URL). Must run in the data worker
+ * (task `syncM3uFile` in src/worker/tasks.ts); also callable directly in tests.
+ */
+export function syncM3uFileSource(
+  input: SyncM3uFileInput,
+  ctx: TaskContext,
+  deps: SyncM3uDeps = {},
+): Promise<SyncM3uResult> {
+  const file: unknown = input?.file;
+  if (!(file instanceof Blob)) {
+    return Promise.reject(new WorkerTaskError('failed', 'M3U file sync: no file'));
+  }
+  return syncSource(input.sourceId, { kind: 'file', file }, ctx, deps);
+}
+
+async function syncSource(
+  sourceId: unknown,
+  origin: ListOrigin,
+  ctx: TaskContext,
+  deps: SyncM3uDeps,
+): Promise<SyncM3uResult> {
   const pollMs = deps.cancelPollMs ?? 50;
   ctx.throwIfCancelled();
   if (typeof sourceId !== 'string' || sourceId === '') {
@@ -285,7 +331,7 @@ export async function syncM3uSource(
   const release = await acquireSource(sourceId, ctx, pollMs);
   let result: SyncM3uResult;
   try {
-    result = await runSync(sourceId, ctx, deps, pollMs);
+    result = await runSync(sourceId, origin, ctx, deps, pollMs);
   } catch (err) {
     if (err instanceof SourceRemovedError) {
       log.info('m3u sync: source removed during sync', { sourceId });
@@ -310,6 +356,7 @@ function notifyAfterSync(deps: SyncM3uDeps, sourceId: string): void {
 
 async function runSync(
   sourceId: string,
+  origin: ListOrigin,
   ctx: TaskContext,
   deps: SyncM3uDeps,
   pollMs: number,
@@ -319,13 +366,20 @@ async function runSync(
   const startedAt = now();
 
   const progress = (p: M3uSyncProgress) => ctx.progress(p);
-  progress({ phase: 'download', done: 0 });
+  /** Phase of the bytes being read: `download` (URL) or `read` (local file). */
+  const readPhase = origin.kind === 'file' ? 'read' : 'download';
+  progress({ phase: readPhase, done: 0 });
 
   const source = await sourcesRepo.get(sourceId);
   if (!source) throw new WorkerTaskError('failed', 'M3U sync: source not found');
-  if (source.kind !== 'm3u-url')
-    throw new WorkerTaskError('failed', 'M3U sync: not an M3U URL source');
-  if (!source.secretRef) throw new WorkerTaskError('failed', 'M3U sync: source has no list URL');
+  if (origin.kind === 'url') {
+    if (source.kind !== 'm3u-url') {
+      throw new WorkerTaskError('failed', 'M3U sync: not an M3U URL source');
+    }
+    if (!source.secretRef) throw new WorkerTaskError('failed', 'M3U sync: source has no list URL');
+  } else if (source.kind !== 'm3u-file') {
+    throw new WorkerTaskError('failed', 'M3U sync: not an M3U file source');
+  }
 
   let builder = new M3uCatalogBuilder();
   const parser = new M3uParser({ onEntry: (entry) => builder.add(entry) });
@@ -373,19 +427,24 @@ async function runSync(
     return result('error', await storedStats(sourceId), { error: code, ...extra });
   }
 
-  // --- List URL from the vault (never leaves the worker) ---
-  let listUrl: URL;
-  try {
-    const raw = await vault.get(source.secretRef);
-    if (raw === undefined) return await fail('credentials-lost');
-    const parsed = parseExternalUrl(raw, 'source');
-    if (!parsed.ok) return await fail('invalid-url');
-    listUrl = parsed.url;
-  } catch (err) {
-    if (err instanceof SourceRemovedError) throw err;
-    return await fail(err instanceof VaultKeyLostError ? 'credentials-lost' : 'unknown');
+  // --- List URL from the vault (never leaves the worker); a file has no URL nor secrets ---
+  let listUrl: URL | undefined;
+  if (origin.kind === 'url') {
+    try {
+      const raw = source.secretRef ? await vault.get(source.secretRef) : undefined;
+      if (raw === undefined) return await fail('credentials-lost');
+      const parsed = parseExternalUrl(raw, 'source');
+      if (!parsed.ok) return await fail('invalid-url');
+      listUrl = parsed.url;
+    } catch (err) {
+      if (err instanceof SourceRemovedError) throw err;
+      return await fail(err instanceof VaultKeyLostError ? 'credentials-lost' : 'unknown');
+    }
+  } else if (origin.file.size > MAX_BYTES) {
+    // Known before reading a byte.
+    return fail('too-large');
   }
-  const secrets = listUrlSecrets(listUrl);
+  const secrets = listUrl ? listUrlSecrets(listUrl) : [];
   for (const secret of secrets) registerSecret(secret);
   const isStorableUrl = storableUrlCheck(secrets);
   builder = new M3uCatalogBuilder({ isStorableUrl });
@@ -401,8 +460,8 @@ async function runSync(
   let parseNext = false;
   const downloadMessage = (): M3uSyncProgress =>
     total !== undefined
-      ? { phase: 'download', done: bytes, total }
-      : { phase: 'download', done: bytes };
+      ? { phase: readPhase, done: bytes, total }
+      : { phase: readPhase, done: bytes };
   /** Alternates `download` (bytes) and `parse` (entries) messages; real time, not `deps.now`. */
   const report = () => {
     const t = Date.now();
@@ -420,29 +479,38 @@ async function runSync(
   /** Accepted as a playlist: `#EXTM3U` / `#EXTINF` first, or valid entries found anyway. */
   const looksLikeM3u = () =>
     parser.firstLine === 'header' || parser.firstLine === 'extinf' || parser.stats.entries > 0;
+  const onBytes = (n: number, length: number | undefined) => {
+    bytes = n;
+    total = length;
+  };
+  const onChunk = () => {
+    report();
+    if (ctx.cancelled) return false;
+    if (!looksLikeM3u() && bytes >= SNIFF_BYTES) stop = 'not-m3u';
+    else if (parser.stats.entries > MAX_ENTRIES || bytes > MAX_BYTES) stop = 'too-large';
+    return stop === undefined;
+  };
   try {
     ctx.throwIfCancelled();
-    const download = await downloadM3u(listUrl.href, parser, {
-      signal: abort.signal,
-      inactivityTimeoutMs: deps.inactivityTimeoutMs ?? DOWNLOAD_INACTIVITY_TIMEOUT_MS,
-      ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
-      onBytes: (n, length) => {
-        bytes = n;
-        total = length;
-      },
-      onChunk: () => {
-        report();
-        if (ctx.cancelled) return false;
-        if (!looksLikeM3u() && bytes >= SNIFF_BYTES) stop = 'not-m3u';
-        else if (parser.stats.entries > MAX_ENTRIES || bytes > MAX_BYTES) stop = 'too-large';
-        return stop === undefined;
-      },
-    });
-    bytes = download.bytes;
+    const read =
+      origin.kind === 'file'
+        ? await readM3uFile(origin.file, parser, { signal: abort.signal, onBytes, onChunk })
+        : await downloadM3u((listUrl as URL).href, parser, {
+            signal: abort.signal,
+            inactivityTimeoutMs: deps.inactivityTimeoutMs ?? DOWNLOAD_INACTIVITY_TIMEOUT_MS,
+            ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+            onBytes,
+            onChunk,
+          });
+    bytes = read.bytes;
     ctx.throwIfCancelled();
     if (stop === undefined && !looksLikeM3u()) stop = 'not-m3u';
   } catch (err) {
     ctx.throwIfCancelled();
+    if (err instanceof FileReadError) {
+      log.warn('m3u sync: file not readable', { sourceId, error: err.cause });
+      return await fail('file-unreadable');
+    }
     if (err instanceof NetError) {
       const kind = err.kind;
       if (kind !== 'aborted') {

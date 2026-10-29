@@ -1,5 +1,6 @@
 // "My lists" (SRC-08, docs/UX_UI.md §4.1b): every saved list as a card — active first, then by
-// name — with use / refresh / edit / remove, and "Add list". No limit on the number of lists.
+// name — with use / refresh / edit / remove, and "Add list". No limit on the number of lists. A list
+// added from a local file is refreshed with a newly picked file (SRC-06 AC3).
 import AddRounded from '@mui/icons-material/AddRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -15,6 +16,7 @@ import { DelayedLoading, SkeletonContainer, StateView, errorDetails, useToast } 
 import { setActiveSource, useActiveSource } from './activeSource';
 import { AddListDialog } from './AddListDialog';
 import { removeSource } from './manage';
+import { RefreshFileDialog } from './RefreshFileDialog';
 import { RemoveSourceDialog } from './RemoveSourceDialog';
 import { SourceCard } from './SourceCard';
 import {
@@ -44,6 +46,8 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
   const [removing, setRemoving] = useState<Source | undefined>();
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removed, setRemoved] = useState(false);
+  /** A local-file list whose "Refresh" waits for the new file. */
+  const [refreshingFile, setRefreshingFile] = useState<Source | undefined>();
   const headings = useRef(new Map<string, HTMLHeadingElement>());
   const titleRef = useRef<HTMLHeadingElement>(null);
   /**
@@ -83,8 +87,13 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
     }
   }
 
-  async function refresh(source: Source) {
-    const run = await startSourceSync(source, worker);
+  async function refresh(source: Source, file?: File) {
+    if (source.kind === 'm3u-file' && file === undefined) {
+      // No URL to download again: ask for the file (SRC-06 AC3).
+      setRefreshingFile(source);
+      return;
+    }
+    const run = await startSourceSync(source, worker, file ? { file } : {});
     if (run.dispatch === 'unavailable') {
       log.warn('Refresh could not be started', { sourceId: source.id, error: run.error });
       toast.show({ message: text.toasts.refreshUnavailable, severity: 'error' });
@@ -212,6 +221,15 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
       </Box>
       {content}
       <AddListDialog open={adding} onClose={() => setAdding(false)} />
+      <RefreshFileDialog
+        name={refreshingFile?.name}
+        onCancel={() => setRefreshingFile(undefined)}
+        onPick={(file) => {
+          const target = refreshingFile;
+          setRefreshingFile(undefined);
+          if (target) void refresh(target, file);
+        }}
+      />
       <RemoveSourceDialog
         name={removing?.name}
         busy={removeBusy}

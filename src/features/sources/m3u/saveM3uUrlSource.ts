@@ -1,7 +1,7 @@
 // Persists an M3U-URL source (SRC-05 AC5): the list URL (it often embeds credentials) in the
 // credential vault, the source row without it, and the first-run flags (UX-01 AC3) — the same
-// steps as the Xtream flow. Also removes such a source when its first import is abandoned (through
-// the same path as "Remove" on My lists, SRC-08).
+// steps as the Xtream flow. Also removes an M3U source (URL or file) when its first import is
+// abandoned (through the same path as "Remove" on My lists, SRC-08).
 // Only loaded by the lazy add-source screen (static `@/core/db` / `@/core/crypto` imports are fine).
 import { credentialVault } from '@/core/crypto';
 import { settingsRepo, sourcesRepo, type Source } from '@/core/db';
@@ -49,8 +49,18 @@ export async function saveM3uUrlSource(input: SaveM3uUrlSourceInput): Promise<So
     });
     throw error;
   }
-  setSourcesPresent(true);
+  await afterSourceSaved(id);
+  log.info('M3U URL source saved', { sourceId: id, https: input.url.startsWith('https:') });
+  return source;
+}
 
+/**
+ * Once a new list's row is stored: the onboarding guard learns there is a list, the first list
+ * becomes the active one (and storage persistence is requested, PWA-05 AC1), onboarding is marked
+ * done (UX-01 AC3), and the selector and "My lists" pick it up. Never rejects.
+ */
+export async function afterSourceSaved(id: string): Promise<void> {
+  setSourcesPresent(true);
   try {
     if ((await settingsRepo.get('activeSourceId')) === undefined) {
       await settingsRepo.set('activeSourceId', id);
@@ -64,8 +74,6 @@ export async function saveM3uUrlSource(input: SaveM3uUrlSourceInput): Promise<So
   // The selector and "My lists" pick up the new list (and the first-run active list).
   refreshActiveSource().catch(() => undefined);
   reloadSourcesIfLoaded();
-  log.info('M3U URL source saved', { sourceId: id, https: input.url.startsWith('https:') });
-  return source;
 }
 
 /**
