@@ -319,6 +319,7 @@ export const sources = {
       refresh: 'Atualizar',
       edit: 'Editar',
       remove: 'Remover',
+      diagnostics: 'Diagnóstico',
     },
     phases: {
       starting: 'A iniciar a atualização…',

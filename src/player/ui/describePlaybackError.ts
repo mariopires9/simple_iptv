@@ -22,6 +22,11 @@ export interface DescribeContext {
   requiredHeaders?: boolean;
   /** The stream had already played when it failed (a drop rather than a refusal). */
   afterStart?: boolean;
+  /**
+   * The browser reports no network (PWA-04): network-type failures are explained as "no
+   * connection" (format and codec errors keep their own message).
+   */
+  offline?: boolean;
 }
 
 /**
@@ -45,6 +50,9 @@ export function describePlaybackError(
   const texts = t.player.errors;
   const rejected = error.kind === 'auth' || error.status === 401 || error.status === 403;
   if (rejected && context.requiredHeaders === true) return texts.restricted;
+  if (context.offline === true && (error.kind === 'network' || error.kind === 'blocked')) {
+    return texts.offline;
+  }
 
   if (context.afterStart === true && isTransientFailure(error, true)) {
     return context.kind === 'live' ? texts.networkLive : texts.network;

@@ -25,6 +25,22 @@ export const sourcesRoutes: RouteObject[] = [
     path: 'settings/sources/:sourceId/edit',
     lazy: lazyScreen(() => import('./EditSourceScreen'), 'EditSourceScreen', ['sources']),
   },
+  // SRC-09: compatibility diagnostics of a list, or of the active one (player error action).
+  {
+    path: 'settings/sources/:sourceId/diagnostics',
+    lazy: lazyScreen(() => import('./diagnostics/DiagnosticsScreen'), 'DiagnosticsScreen', [
+      'sources',
+      'diagnostics',
+    ]),
+  },
+  {
+    path: 'settings/sources/diagnostics',
+    lazy: lazyScreen(
+      () => import('./diagnostics/DiagnosticsScreen'),
+      'ActiveSourceDiagnosticsScreen',
+      ['sources', 'diagnostics'],
+    ),
+  },
 ];
 
 /** Full screen, in the onboarding flow (UX-01): one route per source type. */

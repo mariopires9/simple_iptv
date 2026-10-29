@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link } from 'react-router';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
-import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
+import { StateView, useDelayedFlag, useNetworkBlocked, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
 import { AUDIO_CHECK_DELAY_MS, audioMissing } from './audioCheck';
@@ -55,10 +55,11 @@ export const LIVE_RECONNECT_DELAYS_MS: readonly number[] = [1000, 2000, 4000];
 /** Seconds of playback progress after which the reconnect attempts start again from zero. */
 export const SUSTAINED_PLAYBACK_S = 10;
 /**
- * Where the overlay's "Connection diagnostics" action leads (SRC-09 will add its own page).
+ * Where the overlay's "Connection diagnostics" action leads: the diagnostics of the active list
+ * (SRC-09).
  * The action is a router link: PlayerView is always rendered inside the app's router.
  */
-export const DIAGNOSTICS_PATH = '/settings/sources';
+export const DIAGNOSTICS_PATH = '/settings/sources/diagnostics';
 /** How long the "Starting from the beginning" notice stays (VOD-03 AC4). */
 export const RESUME_NOTICE_MS = 6_000;
 
@@ -463,9 +464,16 @@ export function PlayerView({
     }
   }, [autoFocus, region]);
 
+  // PWA-04: a failure while the browser reports no network is explained as such.
+  const offline = useNetworkBlocked();
   const errorText =
     error && failure
-      ? describePlaybackError(error, { kind, requiredHeaders, afterStart: failure.started })
+      ? describePlaybackError(error, {
+          kind,
+          requiredHeaders,
+          afterStart: failure.started,
+          offline,
+        })
       : undefined;
   const showUnmute = autoplayMuted && silent && error === undefined;
   const shown = (w: TrackWarning | undefined) =>

@@ -12,6 +12,7 @@ import { ThemeModeProvider } from '@/ui/theme';
 import { installChunkReload } from './chunkReload';
 import { installDataDeletionWatch } from './dataDeletionWatch';
 import { DatabaseUnavailableScreen, useDatabaseCheck } from './DatabaseUnavailableScreen';
+import { installResumeOnReconnect } from './pwa/resumeOnReconnect';
 import { UpdatePrompt } from './pwa/UpdatePrompt';
 import { AppRouter, getAppRouter } from './router';
 import { StartupIndicator } from './StartupIndicator';
@@ -55,6 +56,8 @@ export function App() {
   useEffect(() => installDataDeletionWatch(), []);
   // One "player open" signal (TEC-03): the one that also holds app updates (PWA-03).
   useEffect(() => installLanguagePreference(isPlaybackActive, subscribePlayback), []);
+  // PWA-04 AC2: scheduled syncs skipped while offline start when the connection returns.
+  useEffect(() => installResumeOnReconnect(), []);
 
   const routerReady = db.status === 'ready' && languageRestored;
   useEffect(() => {

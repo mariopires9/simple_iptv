@@ -8,6 +8,19 @@ export type {
   ExternalUrlResult,
   SafeExternalLink,
 } from './url';
+export {
+  DEFAULT_FAILURE_THRESHOLD,
+  DEFAULT_UNREACHABLE_RESET_MS,
+  connectivity,
+  createConnectivityStore,
+  isNetworkBlocked,
+} from './connectivity';
+export type {
+  ConnectivityEnv,
+  ConnectivityStatus,
+  ConnectivityStore,
+  ConnectivityStoreOptions,
+} from './connectivity';
 export { DEFAULT_TIMEOUT_MS, fetchJson, fetchStream, fetchText, identityRewriter } from './http';
 export type {
   FetchImpl,

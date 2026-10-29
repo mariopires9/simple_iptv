@@ -6,6 +6,12 @@ export const state = {
   cancel: 'Cancel',
   cancelling: 'Cancelling…',
   dismiss: 'Close',
+  /** Persistent connection banner (PWA-04). Never promises offline playback. */
+  connection: {
+    offline: 'No connection. You can browse your lists, but not play, refresh or add lists.',
+    unreachable: 'The network is not responding. Check your connection.',
+    retry: 'Try again',
+  },
   progress: {
     /** Count of processed items when the total is unknown. Arguments are already formatted. */
     count: (count: string) => `${count} processed`,

@@ -1,6 +1,6 @@
 // One list on "My lists" (SRC-08, docs/UX_UI.md §4.1b): name, ACTIVE badge, type and counts,
 // last sync, status with a short reason, and the actions (use, refresh with progress, edit,
-// remove). Status is conveyed by text and icon, never by colour alone.
+// remove, diagnostics — SRC-09). Status is conveyed by text and icon, never by colour alone.
 import CheckCircleOutlineRounded from '@mui/icons-material/CheckCircleOutlineRounded';
 import ErrorOutlineRounded from '@mui/icons-material/ErrorOutlineRounded';
 import InfoOutlined from '@mui/icons-material/InfoOutlined';
@@ -14,7 +14,7 @@ import { useId, type Ref } from 'react';
 import { Link } from 'react-router';
 import type { Source } from '@/core/db';
 import { activeLocale, t, type Locale } from '@/i18n';
-import { ProgressPanel } from '@/ui/state';
+import { ProgressPanel, useNetworkBlocked } from '@/ui/state';
 import {
   describeContents,
   describeLastSync,
@@ -80,6 +80,8 @@ export function SourceCard({
     ? { tone: 'neutral' as const, text: text.status.syncing }
     : describeStatus(source, t, locale);
   const StatusIcon = STATUS_ICONS[status.tone];
+  // PWA-04: a refresh needs the network — except for a local file, which asks for the file again.
+  const offline = useNetworkBlocked() && source.kind !== 'm3u-file';
 
   return (
     <Box
@@ -155,7 +157,7 @@ export function SourceCard({
         <Button
           variant="outlined"
           onClick={() => onRefresh(source)}
-          disabled={sync !== undefined}
+          disabled={sync !== undefined || offline}
           aria-describedby={headingId}
         >
           {text.actions.refresh}
@@ -166,6 +168,13 @@ export function SourceCard({
           aria-describedby={headingId}
         >
           {text.actions.edit}
+        </Button>
+        <Button
+          component={Link}
+          to={`/settings/sources/${encodeURIComponent(source.id)}/diagnostics`}
+          aria-describedby={headingId}
+        >
+          {text.actions.diagnostics}
         </Button>
         <Button color="error" onClick={() => onRemove(source)} aria-describedby={headingId}>
           {text.actions.remove}

@@ -1,4 +1,5 @@
-// Top bar: app name, source selector slot, search and the overflow menu (theme; Settings on mobile).
+// Top bar: app name, source selector slot, search and the overflow menu (theme; Settings on mobile),
+// with the connection banner (PWA-04) underneath.
 import CheckRounded from '@mui/icons-material/CheckRounded';
 import MoreVertRounded from '@mui/icons-material/MoreVertRounded';
 import AppBar from '@mui/material/AppBar';
@@ -16,6 +17,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { NavLink } from 'react-router';
 import { SearchAction } from '@/features/search';
 import { t } from '@/i18n';
+import { ConnectionBanner } from '@/ui/state';
 import { THEME_PREFERENCES, useThemeMode } from '@/ui/theme';
 import { navSize } from '@/ui/theme/tokens';
 import { SETTINGS_NAV_ITEM } from './navItems';
@@ -70,6 +72,8 @@ export function TopBar({
           <MoreVertRounded />
         </IconButton>
       </Toolbar>
+      {/* PWA-04: inside the sticky header, so it stays visible while the page scrolls. */}
+      <ConnectionBanner />
       <Menu
         id={menuId}
         anchorEl={menuAnchor}

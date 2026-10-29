@@ -1,4 +1,6 @@
+import Box from '@mui/material/Box';
 import { Outlet, ScrollRestoration } from 'react-router';
+import { ConnectionBanner } from '@/ui/state';
 import { AppShell } from '../AppShell';
 import { FullScreen } from './FullScreen';
 import { OnboardingGuard } from './onboardingGuard';
@@ -23,10 +25,16 @@ export function ShellLayout() {
 /** Full-screen routes without the AppShell (onboarding, docs/UX_UI.md §3). */
 export function FullScreenLayout() {
   return (
-    <FullScreen>
-      <ScrollRestoration />
-      <Outlet />
-    </FullScreen>
+    <>
+      {/* PWA-04: the onboarding flows add lists, which needs the network. */}
+      <Box sx={{ position: 'sticky', top: 0, zIndex: 'appBar' }}>
+        <ConnectionBanner />
+      </Box>
+      <FullScreen>
+        <ScrollRestoration />
+        <Outlet />
+      </FullScreen>
+    </>
   );
 }
 
