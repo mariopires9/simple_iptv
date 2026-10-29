@@ -7,7 +7,6 @@ export {
   MAX_NAME_LENGTH,
   MAX_OPTIONS_PER_ENTRY,
   M3uParser,
-  classifyUrl,
   cleanText,
   containerFromUrl,
   feedM3uStream,
@@ -32,8 +31,25 @@ export {
   entryBaseId,
   groupCategoryId,
   hash64,
+  showSeriesId,
 } from './catalog';
 export type { M3uCatalog, M3uCatalogOptions } from './catalog';
+export {
+  DEFAULT_M3U_RULES,
+  M3uClassifier,
+  classifyEntry,
+  classifyGroup,
+  episodeMarker,
+  strongEpisodeMarker,
+} from './classify';
+export type {
+  ClassifyInput,
+  ClassifyReason,
+  Classification,
+  EpisodeInfo,
+  GroupKind,
+  M3uClassificationRules,
+} from './classify';
 export { DOWNLOAD_INACTIVITY_TIMEOUT_MS, downloadM3u } from './download';
 export type { DownloadOptions, DownloadResult } from './download';
 export {

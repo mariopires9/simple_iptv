@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeDatabase, getDb } from '../database';
-import { categoryKey, itemKey } from '../keys';
+import { categoryKey, episodeItemKey, itemKey } from '../keys';
 import { openFreshDatabase } from '../test-utils';
-import type { CatalogItemInput, CategoryInput } from '../types';
+import type { CatalogItemInput, CategoryInput, SeriesDetailsInput } from '../types';
 import { catalogRepo, onCatalogWrite } from './catalog';
 import { sourcesRepo } from './sources';
 
@@ -450,5 +450,84 @@ describe('catalogRepo.replaceAllForExistingSource (SRC-04/05 review)', () => {
     expect(await catalogRepo.count('s1', 'live')).toBe(5);
     expect(await catalogRepo.count('s1', 'movie')).toBe(4);
     expect(await catalogRepo.count('s1', 'series')).toBe(3);
+  });
+
+  // VOD-04: grouped M3U shows store their seasons/episodes with the catalogue.
+  const details = (...ids: string[]): SeriesDetailsInput[] =>
+    ids.map((id) => ({
+      seriesExternalId: id,
+      seasons: [
+        {
+          number: 1,
+          episodes: [
+            {
+              externalId: `e${id}`,
+              season: 1,
+              number: 1,
+              title: 'Pilot',
+              streamPath: '',
+              streamUrl: `https://cdn.example.test/${id}.mp4`,
+            },
+          ],
+        },
+      ],
+    }));
+
+  it('replaces the stored series details of the source in the same write', async () => {
+    await putSource('s1');
+    await putSource('s2');
+    await catalogRepo.replaceAllForExistingSource('s2', {
+      ...all(0, 0, 1),
+      seriesDetails: details('1'),
+    });
+    await catalogRepo.replaceAllForExistingSource('s1', {
+      ...all(0, 0, 3),
+      seriesDetails: details('1', '2'),
+    });
+    const key = itemKey('s1', 'series', '1');
+    expect(await catalogRepo.getSeriesDetails(key)).toMatchObject({
+      seriesKey: key,
+      sourceId: 's1',
+      seasons: [{ number: 1, episodes: [{ key: episodeItemKey(key, 'e1'), title: 'Pilot' }] }],
+    });
+
+    // Series 1 lost its details; details of a series not in the catalogue are not written.
+    await catalogRepo.replaceAllForExistingSource('s1', {
+      ...all(0, 0, 2),
+      seriesDetails: details('2', '9'),
+    });
+    expect(await catalogRepo.getSeriesDetails(key)).toBeUndefined();
+    expect(await catalogRepo.getSeriesDetails(itemKey('s1', 'series', '2'))).toBeDefined();
+    expect(await catalogRepo.getSeriesDetails(itemKey('s1', 'series', '9'))).toBeUndefined();
+    // Other sources are untouched.
+    expect(await catalogRepo.getSeriesDetails(itemKey('s2', 'series', '1'))).toBeDefined();
+    // Without `seriesDetails`, stored details are left as they are.
+    await catalogRepo.replaceAllForExistingSource('s1', all(0, 0, 2));
+    expect(await catalogRepo.getSeriesDetails(itemKey('s1', 'series', '2'))).toBeDefined();
+  });
+
+  it('a failed write keeps the previous series details', async () => {
+    await putSource('s1');
+    await catalogRepo.replaceAllForExistingSource('s1', {
+      ...all(0, 0, 1),
+      seriesDetails: details('1'),
+    });
+    const db = await getDb();
+    const proto = Object.getPrototypeOf(db.seriesDetails) as {
+      bulkPut: (...a: unknown[]) => unknown;
+    };
+    const original = proto.bulkPut;
+    vi.spyOn(proto, 'bulkPut').mockImplementation(function (this: { name: string }, ...args) {
+      if (this.name === 'seriesDetails') return Promise.reject(new Error('QuotaExceededError'));
+      return original.apply(this, args);
+    });
+    await expect(
+      catalogRepo.replaceAllForExistingSource('s1', {
+        ...all(0, 0, 1),
+        seriesDetails: details('1'),
+      }),
+    ).rejects.toThrow();
+    vi.restoreAllMocks();
+    expect(await catalogRepo.getSeriesDetails(itemKey('s1', 'series', '1'))).toBeDefined();
   });
 });

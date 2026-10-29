@@ -10,6 +10,14 @@
 //   `#EXTGRP` go to a synthetic per-source category with the fixed id
 //   {@link UNCATEGORIZED_CATEGORY_ID} (AC9), so every item has a `categoryKey`.
 // - Categories are per content type, in order of first appearance in the list.
+// - Series episodes (VOD-04 AC3): entries classified as series with an episode marker are grouped
+//   into one series row per show — `externalId` = `s` + hash of the normalised show name + "\n" +
+//   the group without season tokens (the same show in two unrelated groups stays two series; "Show
+//   T1" / "Show T2" groups are one) — placed where its first episode
+//   appears. Its seasons/episodes are returned in `seriesDetails` and stored with the catalogue
+//   (read by the Series details screen, no network call). An episode's `externalId` is the entry's
+//   own id above (url + name), so its history key (`episodeItemKey`) does not depend on list order
+//   and resume survives a re-import. Series entries without a marker stay one row each, as before.
 //
 // Storage: M3U items keep the full stream URL once, in plain text, in `streamUrl` (ARCHITECTURE.md
 // §5 / SECURITY.md §2); the required `streamPath` of channels/movies is left empty (players read
@@ -20,9 +28,12 @@ import type {
   CatalogReplacement,
   CategoryInput,
   ContentType,
+  EpisodeInput,
+  SeriesDetailsInput,
   StreamContainer,
 } from '@/core/db';
 import { parseExternalUrl } from '@/core/net';
+import { showGroupIdentity, showIdentity } from './classify';
 import type { M3uEntry } from './parser';
 
 /** Category id of entries without a group (AC9). Never collides with `g…` hashed ids. */
@@ -55,6 +66,19 @@ export function entryBaseId(url: string, name: string): string {
   return hash64(`${url}\n${name}`);
 }
 
+/**
+ * External id of a grouped show (VOD-04): its normalised name within its group, the group without
+ * season tokens ("T1", "S02", "Season 2", "Temporada 2").
+ */
+export function showSeriesId(
+  show: string,
+  group: string | undefined,
+  groupIdentity: string = showGroupIdentity(group),
+): string {
+  // Season tokens of the group are ignored ("Show T1" / "Show T2" groups: one show).
+  return `s${hash64(`${showIdentity(show)}\n${groupIdentity}`)}`;
+}
+
 /** External id of a group (category). */
 export function groupCategoryId(group: string): string {
   return `g${hash64(group)}`;
@@ -65,7 +89,16 @@ export interface M3uCatalogOptions {
   isStorableUrl?: (href: string) => boolean;
 }
 
-export type M3uCatalog = { [T in ContentType]: CatalogReplacement<T> };
+export type M3uCatalog = { [T in ContentType]: CatalogReplacement<T> } & {
+  /** Seasons/episodes of the grouped shows (VOD-04 AC3), sorted by number. */
+  seriesDetails: SeriesDetailsInput[];
+};
+
+/** A grouped show while the list is read. */
+interface Show {
+  item: CatalogItemInput<'series'>;
+  seasons: Map<number, EpisodeInput[]>;
+}
 
 interface Building<T extends ContentType> {
   categories: CategoryInput[];
@@ -101,6 +134,10 @@ export class M3uCatalogBuilder {
   private readonly movie = building<'movie'>();
   private readonly series = building<'series'>();
   private readonly seen = new Map<string, number>();
+  private readonly shows = new Map<string, Show>();
+  private readonly showIds = new Map<string, string>();
+  /** Group → identity without season tokens (computed once per group). */
+  private readonly groupIds = new Map<string, string>();
   private readonly isStorableUrl: (href: string) => boolean;
 
   constructor(options: M3uCatalogOptions = {}) {
@@ -204,6 +241,10 @@ export class M3uCatalogBuilder {
         return;
       }
       case 'series': {
+        if (entry.episode !== undefined) {
+          this.addEpisode(entry, externalId);
+          return;
+        }
         const item: CatalogItemInput<'series'> = {
           externalId,
           name: entry.name,
@@ -218,11 +259,80 @@ export class M3uCatalogBuilder {
     }
   }
 
+  /** Adds a series entry with an episode marker to its show (created on its first episode). */
+  private addEpisode(entry: M3uEntry, externalId: string): void {
+    const info = entry.episode as NonNullable<M3uEntry['episode']>;
+    // Cached per show name + group: the identity normalisation runs once per show.
+    const cacheKey = `${info.show}\n${entry.group ?? ''}`;
+    let showId = this.showIds.get(cacheKey);
+    if (showId === undefined) {
+      const group = entry.group ?? '';
+      let groupIdentity = this.groupIds.get(group);
+      if (groupIdentity === undefined) {
+        groupIdentity = showGroupIdentity(entry.group);
+        this.groupIds.set(group, groupIdentity);
+      }
+      showId = showSeriesId(info.show, entry.group, groupIdentity);
+      this.showIds.set(cacheKey, showId);
+    }
+    const image = this.image(entry.attrs.tvgLogo);
+    let show = this.shows.get(showId);
+    if (show === undefined) {
+      const item: CatalogItemInput<'series'> = {
+        externalId: showId,
+        name: info.show,
+        categoryExternalId: this.category(this.series, entry.group),
+      };
+      if (image !== undefined) item.cover = image;
+      show = { item, seasons: new Map() };
+      this.shows.set(showId, show);
+      this.series.items.push(item);
+    } else if (show.item.cover === undefined && image !== undefined) {
+      show.item.cover = image;
+    }
+    const { streamUrl, ...flags } = this.flags(entry);
+    const episode: EpisodeInput = {
+      externalId,
+      season: info.season,
+      number: info.episode,
+      title: info.title,
+      streamPath: '',
+      streamUrl,
+      ...flags,
+    };
+    const ext = entry.container !== undefined ? EXTENSIONS[entry.container] : undefined;
+    if (ext !== undefined) episode.ext = ext;
+    if (entry.duration !== undefined && entry.duration > 0) {
+      episode.durationSec = Math.round(entry.duration);
+    }
+    if (image !== undefined) episode.image = image;
+    const season = show.seasons.get(info.season);
+    if (season === undefined) show.seasons.set(info.season, [episode]);
+    else season.push(episode);
+  }
+
   build(): M3uCatalog {
     const out = <T extends ContentType>(b: Building<T>): CatalogReplacement<T> => ({
       categories: b.categories,
       items: b.items,
     });
-    return { live: out(this.live), movie: out(this.movie), series: out(this.series) };
+    const seriesDetails: SeriesDetailsInput[] = [];
+    for (const [seriesExternalId, show] of this.shows) {
+      const seasons = [...show.seasons]
+        .sort(([a], [b]) => a - b)
+        .map(([number, episodes]) => ({
+          number,
+          // Stable sort: equal numbers (e.g. HD and SD copies) keep list order.
+          episodes: episodes.sort((a, b) => a.number - b.number),
+        }));
+      show.item.seasonCount = seasons.length;
+      seriesDetails.push({ seriesExternalId, seasons });
+    }
+    return {
+      live: out(this.live),
+      movie: out(this.movie),
+      series: out(this.series),
+      seriesDetails,
+    };
   }
 }

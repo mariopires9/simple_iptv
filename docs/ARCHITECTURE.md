@@ -174,7 +174,7 @@ Catalog keys are composite: `key = "${sourceId}:${type}:${externalId}"` — allo
 | `channels` | `key` | `[categoryKey+order]`, `sourceId`, `nameNorm` | `name`, `logo?`, `number?`, `epgId?`, `streamPath`*, `catchup?` |
 | `movies` | `key` | `[categoryKey+order]`, `sourceId`, `addedAt` | `name`, `poster?`, `rating?`, `year?`, `ext?`, `streamPath`* |
 | `series` | `key` | `[categoryKey+order]`, `sourceId` | `name`, `cover?`, `plot?`, `rating?`, `year?` |
-| `seriesDetails` | `seriesKey` | `fetchedAt` | seasons + episodes (cache TTL 24 h) |
+| `seriesDetails` | `seriesKey` | `fetchedAt` | seasons + episodes (Xtream: cache TTL 24 h; M3U: written with the catalogue on every sync, VOD-04) |
 | `favorites` | `itemKey` | `[sourceId+type]`, `addedAt` | `type` |
 | `history` | `itemKey` | `[sourceId+type]`, `lastWatchedAt` | `positionSec?`, `durationSec?`, `episodeKey?`, `completed` |
 | `epgPrograms` | `[channelEpgId+start]` | `end`, `sourceId` | `title`, `desc?` (post-MVP, XMLTV) |
@@ -270,3 +270,21 @@ flowchart TD
 
 
 M3U catalogue (SRC-04/05): items keep the full stream URL only in `streamUrl` (`streamPath` is empty); extra item fields `container`, `drm`, `requiredHeaders`, `audioOnly`; `Source.epgUrls`. Keys: item id = 64-bit hash of `url + name` (duplicates suffixed), category id = `g` + hash of the group name, synthetic `uncategorized` category (empty stored name, localised in the UI). All three types are written in one transaction (`catalogRepo.replaceAllForExistingSource`). Streaming downloads use `fetchStream` in `src/core/net/http.ts`.
+
+M3U classification (VOD-04, `src/providers/m3u/classify.ts`): every entry is classified once, in the worker, by a chain of rules — the first one that decides wins:
+
+1. URL path (Xtream pattern): `/movie/` → movie, `/series/` → series, `/live/` → live.
+2. Audio-only (`radio="true"`, audio extension) → live.
+3. Group title (rules table `DEFAULT_M3U_RULES`, compared without case/diacritics/punctuation, read after country codes and quality tags): "24/7"/"24h" anywhere → live (looping channels); otherwise the leading significant word decides — a live word ("Live", "Ao vivo", "Canal/Canais", "Channel(s)", "Rádio"…) → live, a VOD keyword ("VOD", "Movies", "Filmes", "Películas", "Series", "Séries", "TV Shows"…) → movie / series / VOD, so "Filmes Canal Hollywood" or "VOD | Live Concerts" stay VOD; when no VOD keyword leads, a live word later in the group still means live ("Desporto Ao Vivo"). Only the leading word counts for VOD ("World Series", "Serie A" and "Netflix Séries" decide nothing).
+4. `media="true"` (Kodi IPTV Simple's on-demand attribute, used by real Portuguese lists) → VOD.
+5. VOD extension `.mp4`/`.mkv`/`.avi`/`.mov`/`.m4v` → VOD.
+6. Strong episode marker in the name (`S01E02`, `S01 E02`, `T01E02`, "Temporada 1 Episódio 2", "Season 1 Episode 2") → series.
+7. **Anything else is uncertain and stays in Live** (safe default: nothing disappears from Live TV because of a guess).
+
+"VOD" is a movie unless the name has an episode marker. The weak marker `1x02` (episode with ≥ 2 digits, so `1x2` scores never match) only counts after rules 1–5 said VOD/series; a "Movies" group needs a strong marker to turn an entry into a series. "Temporada 2 e 3" is not a marker (a bare "e" must be followed by digits), and names are NFC-normalised before matching. The rules table is code (no user setting); changing it takes effect on the next sync, without a migration. Cost: O(1) per entry (group decision cached per distinct group, marker expressions skipped for names without digits).
+
+Grouping (VOD-04 AC3): series entries with a marker become one `series` row per show — id `s` + hash of the normalised show name (text before the marker, without quality tags) + the group without season tokens ("Show T1"/"Show T2", "Season 2", "Temporada 2", "S02" groups are one show) — placed at its first episode, with `seasonCount`. When the name starts with the marker ("S01E01 - Pilot"), the group names the show only if it is not a generic VOD/series group; in "Séries" or without a group the entry stays an ungrouped row of its own. Seasons/episodes are a `seriesDetails` row written in the same transaction as the catalogue (previous rows of the source deleted by key prefix), read by the Series details screen without a network call. Each episode keeps its entry's own `streamUrl`/`container`/`drm` flags, and its id is the entry id (hash of url + name), so episode history keys (`episodeItemKey`) do not depend on list order and survive re-imports. Series entries without a marker remain one row each (the entry is its own episode). The sync reports `episodes` next to the per-type stats (`stats.series` counts shows), and write progress counts items plus episodes.
+
+Key migration (one-time, `src/core/db/repos/regroup.ts`): before VOD-04 every M3U series entry was a series row of its own. In the same catalogue transaction, history and favourites under an old per-entry key (`<src>:series:<entryId>` and its `:ep:<entryId>`) that is now an episode of a grouped show move to the episode key and the show (show entry only when it is the most recent; one favourite per show, earliest date). Old keys are deleted, so the step is idempotent.
+
+Known limits: episode titles are not in the search index (the show is); M3U shows identified only by dates ("Programa - 22/10/2026", `media="true"` without a marker) are listed as movies; EXTINF durations are not used to classify.

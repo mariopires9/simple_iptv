@@ -107,14 +107,3 @@ export function customSeasonName(season: Pick<Season, 'name'>): string | undefin
   const name = season.name?.trim();
   return name && !GENERIC_SEASON.test(name) ? name : undefined;
 }
-
-/** `S01E02`, `S1 E2`, `1x02` in an M3U entry name → season and episode numbers. */
-export function parseEpisodeMarker(name: string): { season: number; episode: number } | undefined {
-  const sxe = /\bS(\d{1,3})\s*E(\d{1,4})\b/i.exec(name) ?? /\b(\d{1,2})x(\d{1,3})\b/i.exec(name);
-  if (!sxe) return undefined;
-  const season = Number(sxe[1]);
-  const episode = Number(sxe[2]);
-  return Number.isFinite(season) && Number.isFinite(episode) && episode > 0
-    ? { season, episode }
-    : undefined;
-}
