@@ -10,4 +10,4 @@ test-results/
 .vscode/*
 !.vscode/extensions.json
 *.tsbuildinfo
-.claude/worktrees/
+.claude
