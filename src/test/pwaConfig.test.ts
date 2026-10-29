@@ -124,6 +124,8 @@ describe('service worker configuration (PWA-02)', () => {
     for (const ext of ['html', 'js', 'css', 'woff2', 'png', 'svg', 'webmanifest']) {
       expect(glob).toContain(ext);
     }
+    // Settings › About offline (UX-04): the build-time licenses list.
+    expect(PRECACHE_GLOBS).toContain('licenses.json');
   });
 
   it('never caches other hosts: no runtime caching, no navigation fallback, no auto-activation (AC2)', () => {
@@ -153,6 +155,7 @@ describe('service worker configuration (PWA-02)', () => {
       for (const file of [
         'index.html',
         'manifest.webmanifest',
+        'licenses.json',
         'assets/index-abc.js',
         'assets/index-abc.css',
         'assets/inter-latin.woff2',
@@ -169,6 +172,7 @@ describe('service worker configuration (PWA-02)', () => {
       const sw = readFileSync(swDest, 'utf8');
       expect(checkServiceWorker(sw)).toEqual([]);
       expect(sw).toContain('"index.html"');
+      expect(sw).toContain('"licenses.json"');
       expect(sw).toContain('"assets/inter-latin.woff2"');
       expect(sw).not.toContain('screenshots/');
       expect(sw).not.toContain('hls-');

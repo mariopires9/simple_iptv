@@ -86,8 +86,11 @@ export function pwaManifest(base: string): Partial<ManifestOptions> {
   };
 }
 
-/** Extensions of the build output that make up the app shell (PWA-02 AC1). */
-export const PRECACHE_GLOBS = ['**/*.{html,js,css,woff2,png,svg,webmanifest}'];
+/**
+ * Build output that makes up the app shell (PWA-02 AC1), plus the build-time licenses list so
+ * Settings › About works offline (UX-04, build/licenses.ts).
+ */
+export const PRECACHE_GLOBS = ['**/*.{html,js,css,woff2,png,svg,webmanifest}', 'licenses.json'];
 
 /**
  * Lazy playback engine libraries (hls.js ≈ 575 KB, mpegts.js ≈ 270 KB raw): not precached, they

@@ -13,13 +13,7 @@ const base = process.env.VITE_BASE ?? '/';
 export default defineConfig({
   base,
   // PWA-01/PWA-02: manifest + generateSW precache of the app shell (rules in build/pwa.ts).
-  plugins: [
-    react(),
-    cspPlugin(),
-    licensesPlugin(),
-    themeColorPlugin(),
-    VitePWA(pwaOptions(base)),
-  ],
+  plugins: [react(), cspPlugin(), licensesPlugin(), themeColorPlugin(), VitePWA(pwaOptions(base))],
   // Workers as ES modules: allows dynamic import() inside tasks (FND-07).
   worker: { format: 'es' },
   build: {

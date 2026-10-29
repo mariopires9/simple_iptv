@@ -23,7 +23,7 @@ class FakeWindow extends EventTarget {
   constructor(readonly navigator: InstallEnv['navigator']) {
     super();
   }
-  matchMedia = (query: string) => {
+  matchMedia: NonNullable<InstallEnv['matchMedia']> = (query: string) => {
     const isStandalone = () => query === STANDALONE_QUERY && this.standalone;
     return {
       get matches() {
@@ -53,7 +53,7 @@ const chrome = () => new FakeWindow({ userAgent: UA.chrome, vendor: 'Google Inc.
 afterEach(() => resetInstallPromptStoreForTests());
 
 describe('install prompt store (PWA-01 AC3)', () => {
-  it('Chrome: unsupported until beforeinstallprompt, then available; with a button listening, the infobar is kept away', () => {
+  it('Chrome: unsupported until beforeinstallprompt, then available (the infobar is kept away)', () => {
     const win = chrome();
     const store = createInstallPromptStore(win);
     const listener = vi.fn();
@@ -67,13 +67,28 @@ describe('install prompt store (PWA-01 AC3)', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('without an in-app button listening, the browser keeps its own install UI', () => {
+  it('an event captured before any button exists is kept (and the infobar suppressed) for Settings', async () => {
     const win = chrome();
     const store = createInstallPromptStore(win);
-    const { event } = installEvent('accepted');
+    const { event, prompt } = installEvent('accepted');
     win.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    // Settings opens later: it subscribes and finds the prompt available.
+    const listener = vi.fn();
+    store.subscribe(listener);
     expect(store.getState()).toBe('available');
+    await expect(store.prompt()).resolves.toBe('accepted');
+    expect(prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('fullscreen display mode also counts as installed (shared isInstalledApp)', () => {
+    const win = chrome();
+    win.matchMedia = (query: string) => ({
+      matches: query === '(display-mode: fullscreen)',
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    expect(createInstallPromptStore(win).getState()).toBe('installed');
   });
 
   it('prompt(): a rejected prompt() or userChoice resolves "unavailable" and spends the event', async () => {

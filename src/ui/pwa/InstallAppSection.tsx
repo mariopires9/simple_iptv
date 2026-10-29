@@ -2,6 +2,7 @@
 // install dialog (`beforeinstallprompt`). iPhone/iPad: the "Share → Add to Home Screen" steps.
 // Installed: a short status line. Other browsers: nothing (they offer no install prompt).
 // Strings: the `install` namespace, which the hosting route must declare (`lazyScreen`).
+// A host with its own section layout (Settings) passes `renderSection` to wrap the content.
 import CheckCircleOutlined from '@mui/icons-material/CheckCircleOutlined';
 import InstallMobileOutlined from '@mui/icons-material/InstallMobileOutlined';
 import IosShareOutlined from '@mui/icons-material/IosShareOutlined';
@@ -9,7 +10,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { useId, useState } from 'react';
+import { useId, useState, type ReactElement, type ReactNode } from 'react';
 import type { InstallPromptStore } from '@/core/platform';
 import { t } from '@/i18n';
 import { useInstallPrompt } from './useInstallPrompt';
@@ -17,11 +18,20 @@ import { useInstallPrompt } from './useInstallPrompt';
 export interface InstallAppSectionProps {
   /** Heading level of the section title (default 2: a section inside the Settings screen). */
   headingLevel?: 2 | 3;
+  /**
+   * Wraps the content in the host's own section (title + content). Default: a `<section>` with a
+   * heading of `headingLevel`. Not called when there is nothing to show.
+   */
+  renderSection?: (title: string, content: ReactNode) => ReactElement;
   /** Tests: an install prompt store other than the app's. */
   store?: InstallPromptStore;
 }
 
-export function InstallAppSection({ headingLevel = 2, store }: InstallAppSectionProps) {
+export function InstallAppSection({
+  headingLevel = 2,
+  renderSection,
+  store,
+}: InstallAppSectionProps) {
   const { state, promptInstall } = useInstallPrompt(store);
   const [pending, setPending] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -41,11 +51,8 @@ export function InstallAppSection({ headingLevel = 2, store }: InstallAppSection
     }
   };
 
-  return (
-    <Box component="section" aria-labelledby={titleId} sx={{ py: 2 }}>
-      <Typography id={titleId} variant="h6" component={`h${headingLevel}`} gutterBottom>
-        {text.title}
-      </Typography>
+  const content = (
+    <>
       {state === 'installed' && (
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <CheckCircleOutlined aria-hidden fontSize="small" color="success" />
@@ -94,6 +101,16 @@ export function InstallAppSection({ headingLevel = 2, store }: InstallAppSection
           )}
         </>
       )}
+    </>
+  );
+
+  if (renderSection) return renderSection(text.title, content);
+  return (
+    <Box component="section" aria-labelledby={titleId} sx={{ py: 2 }}>
+      <Typography id={titleId} variant="h6" component={`h${headingLevel}`} gutterBottom>
+        {text.title}
+      </Typography>
+      {content}
     </Box>
   );
 }

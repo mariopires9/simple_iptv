@@ -3,10 +3,12 @@
 // and keeps the event until the user asks to install. React reads it with `useInstallPrompt`
 // (src/ui/pwa).
 //
-// The browser's own install UI (Chrome's mini-infobar) is only suppressed (`preventDefault`) when
-// an in-app install button is listening, so there is always one way to install.
+// The event is captured with `preventDefault` (no Chrome mini-infobar): Settings › Install app
+// offers the install instead, whenever it is opened, from the kept event. The browser's own menu
+// entry stays available.
 import { log } from '@/core/log';
 import { detectAppleWebKit, type PlatformEnv } from './capabilities';
+import { isInstalledApp } from './storage';
 
 /** Chromium's install prompt event (not in the DOM typings: non-standard). */
 export interface BeforeInstallPromptEvent extends Event {
@@ -54,7 +56,8 @@ export function createInstallPromptStore(env: InstallEnv): InstallPromptStore {
   let deferred: BeforeInstallPromptEvent | undefined;
   let installed = false;
 
-  const isStandalone = () => standaloneMedia?.matches === true || env.navigator.standalone === true;
+  // Same test as Settings › Storage (standalone/fullscreen display mode, iOS home-screen flag).
+  const isStandalone = () => isInstalledApp(env);
 
   const compute = (): InstallState => {
     if (installed || isStandalone()) return 'installed';
@@ -72,8 +75,8 @@ export function createInstallPromptStore(env: InstallEnv): InstallPromptStore {
   };
 
   const onBeforeInstallPrompt = (event: Event) => {
-    // Our button replaces the browser's mini-infobar only when it is on screen to replace it.
-    if (listeners.size > 0) event.preventDefault();
+    // Settings offers the install from this kept event, even when opened much later.
+    event.preventDefault();
     deferred = event as BeforeInstallPromptEvent;
     update();
   };
