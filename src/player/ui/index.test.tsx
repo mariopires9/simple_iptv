@@ -1,9 +1,10 @@
 // TEC-01 review: the `player` strings load with the player UI chunk (`@/player/ui`), not with the
 // screens that may open it; the exported PlayerView waits for them.
 import { ThemeProvider } from '@mui/material/styles';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { Component, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isPlaybackActive } from '@/core/session';
 import { ensureMessages, isMessagesLoaded, loadAllMessages, unloadMessagesForTests } from '@/i18n';
 import { createAppTheme } from '@/ui';
 import { PlayerView } from './index';
@@ -60,6 +61,14 @@ describe('@/player/ui PlayerView (TEC-01)', () => {
   it('renders at once when the strings are already there', () => {
     renderPlayer();
     expect(screen.getByRole('region', { name: /Big Movie/ })).toBeInTheDocument();
+  });
+
+  it('marks playback as active while mounted, so app updates wait (PWA-03 AC2)', () => {
+    expect(isPlaybackActive()).toBe(false);
+    renderPlayer();
+    expect(isPlaybackActive()).toBe(true);
+    cleanup();
+    expect(isPlaybackActive()).toBe(false);
   });
 
   it('a failed load reaches the error boundary instead of rendering without strings', async () => {

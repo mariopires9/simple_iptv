@@ -7,6 +7,7 @@
 // with one, the bundler splits the shared modules of the initial bundle into extra chunks
 // (measured: +3.9 KiB gzip of initial JS).
 import { createElement, useEffect, useState } from 'react';
+import { claimPlayback } from '@/core/session';
 import { ensureMessages, isMessagesLoaded } from '@/i18n';
 import { PlayerView as PlayerViewWithStrings, type PlayerViewProps } from './PlayerView';
 
@@ -15,6 +16,8 @@ ensureMessages('player').catch(() => undefined);
 
 /** `PlayerView` once the `player` strings are loaded; a failed load goes to the error boundary. */
 export function PlayerView(props: PlayerViewProps) {
+  // PWA-03: while a player is open, an app update is never applied (no reload under playback).
+  useEffect(() => claimPlayback(), []);
   const [ready, setReady] = useState(() => isMessagesLoaded('player'));
   const [error, setError] = useState<{ error: unknown }>();
   useEffect(() => {

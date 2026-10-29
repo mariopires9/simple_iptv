@@ -35,6 +35,19 @@ describe('check-dist-sw (PWA-02 AC2)', () => {
     expect(checkServiceWorker(sw([...SHELL, url])).join('\n')).toContain(problem);
   });
 
+  it.each(['assets/hls-CydbS6hn.js', 'assets/mpegts-CPX_TFvm.js'])(
+    'rejects the lazy playback engine %s (PLY-01 AC2)',
+    (url) => {
+      expect(checkServiceWorker(sw([...SHELL, url])).join('\n')).toContain(
+        'playback engine precached',
+      );
+    },
+  );
+
+  it('does not mistake other chunks for engines', () => {
+    expect(checkServiceWorker(sw([...SHELL, 'assets/hlsEngine-abc.js']))).toEqual([]);
+  });
+
   it('rejects runtime caching and navigation routes', () => {
     const runtime = ',s.registerRoute(/^https:\\/\\//,new s.NetworkFirst({cacheName:"api"}),"GET")';
     expect(checkServiceWorker(sw(SHELL, runtime)).join('\n')).toMatch(

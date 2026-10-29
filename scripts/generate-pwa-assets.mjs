@@ -5,7 +5,7 @@
 // Usage: node scripts/generate-pwa-assets.mjs   (then commit the PNGs)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { deflateSync } from 'node:zlib';
 import { colors } from '../src/ui/theme/tokens.ts';
 
@@ -212,7 +212,7 @@ const outputs = [
   ['public/screenshots/wide.png', () => screenshot(1280, 720, { wide: true })],
 ];
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   for (const [file, make] of outputs) {
     const path = join(ROOT, file);
     mkdirSync(dirname(path), { recursive: true });

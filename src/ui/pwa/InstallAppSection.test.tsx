@@ -43,12 +43,21 @@ describe('InstallAppSection (PWA-01 AC3)', () => {
     expect(screen.queryByRole('button', { name: text.button })).not.toBeInTheDocument();
   });
 
-  it('dismissed prompt: says so and hides the spent button', async () => {
+  it('dismissed prompt: a neutral note, no button and no promise of an install', async () => {
     const { store } = fakeStore('available', 'dismissed');
     render(<InstallAppSection store={store} />);
     await userEvent.click(screen.getByRole('button', { name: text.button }));
     expect(await screen.findByRole('status')).toHaveTextContent(text.dismissed);
     expect(screen.queryByRole('button', { name: text.button })).not.toBeInTheDocument();
+    expect(screen.queryByText(text.description)).not.toBeInTheDocument();
+  });
+
+  it('a failing prompt never surfaces as an error (no unhandled rejection)', async () => {
+    const { store, prompt } = fakeStore('available');
+    prompt.mockRejectedValueOnce(new Error('boom'));
+    render(<InstallAppSection store={store} />);
+    await userEvent.click(screen.getByRole('button', { name: text.button }));
+    expect(screen.getByRole('button', { name: text.button })).toBeEnabled();
   });
 
   it('iOS: the "Share → Add to Home Screen" instructions, no button', () => {

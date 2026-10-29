@@ -4,7 +4,7 @@ export const install = {
   description:
     'Install Simple IPTV to open it from your home screen or app list, like a normal app.',
   button: 'Install app',
-  dismissed: 'Installation cancelled. You can install the app at any time from here.',
+  dismissed: 'Installation cancelled.',
   installed: 'Simple IPTV is installed on this device.',
   ios: {
     intro: 'To install on iPhone or iPad:',

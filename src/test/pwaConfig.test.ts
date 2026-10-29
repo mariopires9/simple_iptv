@@ -48,6 +48,8 @@ describe('web app manifest (PWA-01 AC1)', () => {
     expect(manifest.display).toBe('standalone');
     expect(manifest.theme_color).toBe(colors.dark.bg);
     expect(manifest.background_color).toBe(colors.dark.bg);
+    // No English-only text that cannot follow the UI language (ADR-015).
+    expect(manifest).not.toHaveProperty('description');
   });
 
   it('192 and 512 icons, "any" and "maskable", with relative paths to real PNGs of that size', () => {
@@ -132,6 +134,14 @@ describe('service worker configuration (PWA-02)', () => {
     expect(workbox?.clientsClaim).toBe(false);
     expect(workbox?.additionalManifestEntries).toBeUndefined();
     expect(workbox?.importScripts).toBeUndefined();
+    // Workbox defaults (utm_*, fbclid) kept: the app still opens offline from such links.
+    expect(workbox?.ignoreURLParametersMatching).toBeUndefined();
+  });
+
+  it('never precaches the playback engines: they load on first use (PLY-01 AC2)', () => {
+    expect(pwaOptions('/').workbox?.globIgnores).toEqual(
+      expect.arrayContaining(['assets/hls-*.js', 'assets/mpegts-*.js']),
+    );
   });
 
   it('the generated sw.js precaches only same-origin app files and routes nothing else (AC2)', async () => {
@@ -146,6 +156,8 @@ describe('service worker configuration (PWA-02)', () => {
         'assets/index-abc.js',
         'assets/index-abc.css',
         'assets/inter-latin.woff2',
+        'assets/hls-CydbS6hn.js',
+        'assets/mpegts-CPX_TFvm.js',
         'icons/icon-192.png',
         'screenshots/wide.png',
       ]) {
@@ -159,6 +171,8 @@ describe('service worker configuration (PWA-02)', () => {
       expect(sw).toContain('"index.html"');
       expect(sw).toContain('"assets/inter-latin.woff2"');
       expect(sw).not.toContain('screenshots/');
+      expect(sw).not.toContain('hls-');
+      expect(sw).not.toContain('mpegts-');
     } finally {
       rmSync(dist, { recursive: true, force: true });
     }

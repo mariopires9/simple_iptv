@@ -53,7 +53,7 @@ const chrome = () => new FakeWindow({ userAgent: UA.chrome, vendor: 'Google Inc.
 afterEach(() => resetInstallPromptStoreForTests());
 
 describe('install prompt store (PWA-01 AC3)', () => {
-  it('Chrome: unsupported until beforeinstallprompt, then available (and the infobar is kept away)', () => {
+  it('Chrome: unsupported until beforeinstallprompt, then available; with a button listening, the infobar is kept away', () => {
     const win = chrome();
     const store = createInstallPromptStore(win);
     const listener = vi.fn();
@@ -65,6 +65,33 @@ describe('install prompt store (PWA-01 AC3)', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(store.getState()).toBe('available');
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('without an in-app button listening, the browser keeps its own install UI', () => {
+    const win = chrome();
+    const store = createInstallPromptStore(win);
+    const { event } = installEvent('accepted');
+    win.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(store.getState()).toBe('available');
+  });
+
+  it('prompt(): a rejected prompt() or userChoice resolves "unavailable" and spends the event', async () => {
+    const win = chrome();
+    const store = createInstallPromptStore(win);
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const { event, prompt } = installEvent('accepted');
+    prompt.mockRejectedValueOnce(new DOMException('already shown', 'InvalidStateError'));
+    win.dispatchEvent(event);
+    await expect(store.prompt()).resolves.toBe('unavailable');
+    expect(store.getState()).toBe('unsupported');
+
+    const second = installEvent('accepted');
+    Object.assign(second.event, { userChoice: Promise.reject(new Error('gone')) });
+    win.dispatchEvent(second.event);
+    await expect(store.prompt()).resolves.toBe('unavailable');
+    expect(store.getState()).toBe('unsupported');
   });
 
   it('prompt(): shows the browser dialog once; accepted → installed', async () => {

@@ -7,7 +7,7 @@ export const install = {
   description:
     'Instale o Simple IPTV para o abrir a partir do ecrã principal ou da lista de apps, como uma app normal.',
   button: 'Instalar app',
-  dismissed: 'Instalação cancelada. Pode instalar a app a qualquer momento a partir daqui.',
+  dismissed: 'Instalação cancelada.',
   installed: 'O Simple IPTV está instalado neste dispositivo.',
   ios: {
     intro: 'Para instalar no iPhone ou iPad:',

@@ -8,7 +8,10 @@ import { colors } from '../src/ui/theme/tokens.ts';
  *
  * Service worker rules (docs/SECURITY.md, PWA-02 AC2):
  * - It precaches the app shell only: files emitted by the build into dist/ (same origin, under the
- *   base path). Nothing else ever enters Cache Storage.
+ *   base path). Nothing else ever enters Cache Storage. Workbox's default
+ *   `ignoreURLParametersMatching` (utm_*, fbclid) is kept, so the app also opens offline from a
+ *   link carrying them; the cached files themselves never have query strings.
+ * - The playback engines (hls.js, mpegts.js) are not precached: they load on first use.
  * - No `runtimeCaching`: provider APIs, streams, logos and EPG live on other hosts and their URLs
  *   may carry credentials, so the service worker never intercepts or stores them. Workbox only
  *   answers requests for precached URLs; every other request goes straight to the network.
@@ -48,7 +51,6 @@ export function pwaManifest(base: string): Partial<ManifestOptions> {
     id: root,
     name: APP_NAME,
     short_name: APP_NAME,
-    description: 'IPTV player for your own lists (M3U and Xtream Codes). No account, no tracking.',
     lang: 'en',
     dir: 'ltr',
     start_url: root,
@@ -87,6 +89,12 @@ export function pwaManifest(base: string): Partial<ManifestOptions> {
 /** Extensions of the build output that make up the app shell (PWA-02 AC1). */
 export const PRECACHE_GLOBS = ['**/*.{html,js,css,woff2,png,svg,webmanifest}'];
 
+/**
+ * Lazy playback engine libraries (hls.js ≈ 575 KB, mpegts.js ≈ 270 KB raw): not precached, they
+ * load on the first play that needs them (PLY-01 AC2). scripts/check-dist-sw.mjs enforces it.
+ */
+export const ENGINE_CHUNK_GLOBS = ['assets/hls-*.js', 'assets/mpegts-*.js'];
+
 /** vite-plugin-pwa options (generateSW). */
 export function pwaOptions(base: string): Partial<VitePWAOptions> {
   const root = normaliseBase(base);
@@ -104,17 +112,14 @@ export function pwaOptions(base: string): Partial<VitePWAOptions> {
     devOptions: { enabled: false },
     workbox: {
       globPatterns: PRECACHE_GLOBS,
-      // Screenshots are only read by the install UI, from the network.
-      globIgnores: ['**/node_modules/**', 'screenshots/**'],
-      // hls.js (≈ 575 KB raw, ADR-017) must fit: precached so a later first play is instant.
-      maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+      // Screenshots are only read by the install UI, from the network. The playback engines are
+      // only downloaded on first use (PLY-01 AC2), never ahead of it by the service worker.
+      globIgnores: ['**/node_modules/**', 'screenshots/**', ...ENGINE_CHUNK_GLOBS],
       navigateFallback: null,
       runtimeCaching: [],
       skipWaiting: false,
       clientsClaim: false,
       cleanupOutdatedCaches: true,
-      // Nothing in the precache uses query parameters; never treat one as an alias of a file.
-      ignoreURLParametersMatching: [/.^/],
       sourcemap: false,
     },
   };

@@ -1,15 +1,23 @@
 // Checks the built service worker and web app manifest against PWA-02 AC2 (docs/SECURITY.md):
 // only same-origin app-shell files may enter Cache Storage, so no URL with credentials ever can.
 // - dist/sw.js precaches only relative paths of files that exist in dist/ (no scheme, no host, no
-//   query string, no fragment, no userinfo, no credential-looking parameters);
+//   query string, no fragment, no userinfo, no credential-looking parameters), and never the lazy
+//   playback engines (hls.js, mpegts.js: loaded on first use, PLY-01 AC2);
 // - dist/sw.js registers no runtime route or caching strategy (no `runtimeCaching`, no
 //   navigation route) and never calls `skipWaiting` on its own (only on the PWA-03 prompt message);
 // - dist/manifest.webmanifest has start_url/scope/id equal to the base path and relative icons.
 // Usage: node scripts/check-dist-sw.mjs [distDir] [base]   (defaults: dist, $VITE_BASE or "/")
-// No dependencies on purpose: it runs right after `vite build` (npm run build).
+// No dependencies on purpose: it runs right after `vite build` (npm run build). The base path and
+// engine globs come from build/pwa.ts (Node ≥ 22.18 strips the TypeScript types on import).
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { ENGINE_CHUNK_GLOBS, normaliseBase } from '../build/pwa.ts';
+
+/** `assets/hls-*.js` → a RegExp matching that path (`*` = any characters except `/`). */
+const globToRegExp = (glob) =>
+  new RegExp(`^${glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '[^/]*')}$`);
+const ENGINE_CHUNKS = ENGINE_CHUNK_GLOBS.map(globToRegExp);
 
 /** Precache entries of a generated (minified) Workbox sw.js. */
 export function precacheUrls(sw) {
@@ -48,6 +56,9 @@ export function checkServiceWorker(sw, { exists = () => true } = {}) {
   if (urls.length === 0) problems.push('empty precache list');
   for (const url of urls) {
     problems.push(...checkPrecacheUrl(url));
+    if (ENGINE_CHUNKS.some((pattern) => pattern.test(url))) {
+      problems.push(`playback engine precached (load on first use only): ${url}`);
+    }
     if (!exists(url)) problems.push(`precached file missing from dist: ${url}`);
   }
   if (!urls.includes('index.html')) problems.push('index.html (app shell) is not precached');
@@ -75,11 +86,6 @@ export function checkManifest(manifest, base, { exists = () => true } = {}) {
     else if (!exists(src)) problems.push(`manifest image missing from dist: ${src}`);
   }
   return problems;
-}
-
-function normaliseBase(base) {
-  const withLeading = base.startsWith('/') ? base : `/${base}`;
-  return withLeading.endsWith('/') ? withLeading : `${withLeading}/`;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

@@ -33,7 +33,8 @@ export function InstallAppSection({ headingLevel = 2, store }: InstallAppSection
   const onInstall = async () => {
     setPending(true);
     try {
-      const outcome = await promptInstall();
+      // The store never rejects; a failure is treated like an unavailable prompt.
+      const outcome = await promptInstall().catch(() => 'unavailable' as const);
       setDismissed(outcome === 'dismissed');
     } finally {
       setPending(false);
@@ -45,12 +46,20 @@ export function InstallAppSection({ headingLevel = 2, store }: InstallAppSection
       <Typography id={titleId} variant="h6" component={`h${headingLevel}`} gutterBottom>
         {text.title}
       </Typography>
-      {state === 'installed' ? (
+      {state === 'installed' && (
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <CheckCircleOutlined aria-hidden fontSize="small" color="success" />
           <Typography>{text.installed}</Typography>
         </Stack>
-      ) : (
+      )}
+      {state === 'unsupported' && (
+        // Only after a dismissal (otherwise nothing renders): no install is on offer any more, so
+        // the text promises nothing.
+        <Typography color="text.secondary" role="status">
+          {text.dismissed}
+        </Typography>
+      )}
+      {(state === 'available' || state === 'ios') && (
         <>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
             {text.description}
@@ -82,11 +91,6 @@ export function InstallAppSection({ headingLevel = 2, store }: InstallAppSection
                 </li>
               </Box>
             </>
-          )}
-          {dismissed && state !== 'available' && (
-            <Typography color="text.secondary" role="status" sx={{ mt: 1 }}>
-              {text.dismissed}
-            </Typography>
           )}
         </>
       )}

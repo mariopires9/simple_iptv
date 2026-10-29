@@ -2,6 +2,10 @@
 // once, early, often before the Settings screen exists, so capture starts at boot (src/main.tsx)
 // and keeps the event until the user asks to install. React reads it with `useInstallPrompt`
 // (src/ui/pwa).
+//
+// The browser's own install UI (Chrome's mini-infobar) is only suppressed (`preventDefault`) when
+// an in-app install button is listening, so there is always one way to install.
+import { log } from '@/core/log';
 import { detectAppleWebKit, type PlatformEnv } from './capabilities';
 
 /** Chromium's install prompt event (not in the DOM typings: non-standard). */
@@ -35,7 +39,7 @@ export interface InstallEnv {
 export interface InstallPromptStore {
   getState(): InstallState;
   subscribe(listener: () => void): () => void;
-  /** Shows the browser's install dialog (once per captured event). */
+  /** Shows the browser's install dialog (once per captured event). Never rejects. */
   prompt(): Promise<InstallOutcome>;
   /** Removes the listeners (tests). */
   stop(): void;
@@ -68,8 +72,8 @@ export function createInstallPromptStore(env: InstallEnv): InstallPromptStore {
   };
 
   const onBeforeInstallPrompt = (event: Event) => {
-    // Keep the browser's own mini-infobar away: installing is offered in Settings instead.
-    event.preventDefault();
+    // Our button replaces the browser's mini-infobar only when it is on screen to replace it.
+    if (listeners.size > 0) event.preventDefault();
     deferred = event as BeforeInstallPromptEvent;
     update();
   };
@@ -99,6 +103,10 @@ export function createInstallPromptStore(env: InstallEnv): InstallPromptStore {
         const { outcome } = await event.userChoice;
         if (outcome === 'accepted') installed = true;
         return outcome;
+      } catch (error) {
+        // E.g. the browser already showed its own prompt for this event (InvalidStateError).
+        log.warn('pwa: install prompt failed', { error });
+        return 'unavailable';
       } finally {
         update();
       }

@@ -10,7 +10,9 @@ import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installChunkReload } from './chunkReload';
 import { DatabaseUnavailableScreen, useDatabaseCheck } from './DatabaseUnavailableScreen';
+import { UpdatePrompt } from './pwa/UpdatePrompt';
 import { AppRouter, getAppRouter } from './router';
+import { StartupIndicator } from './StartupIndicator';
 
 /** The stored interface language is applied before the router's first render (UX-06). */
 function useLanguageRestored(): boolean {
@@ -29,8 +31,10 @@ function useLanguageRestored(): boolean {
 
 /**
  * Theme and toasts (UX-02), then the start-up storage check, then the hash router (AppShell + lazy screens).
- * While the check runs nothing but the themed background is shown (UX_UI §5: short loads do not
- * flash a spinner); it normally takes one IndexedDB open.
+ * While the check runs only the themed background is shown (UX_UI §5: short loads do not flash a
+ * spinner); it normally takes one IndexedDB open. A longer start (e.g. the schema upgrade of a new
+ * version, which runs inside that open: PWA-03 AC4) shows the start-up indicator instead. The
+ * update prompt (PWA-03) lives beside the screens, in the toast queue.
  *
  * Interface language (UX-06): screens read `t` while rendering, so a locale switch re-mounts the
  * routed content (keyed by locale) and every visible string changes at once, without a reload.
@@ -62,11 +66,13 @@ export function App() {
   let content = null;
   if (db.status === 'unavailable') content = <DatabaseUnavailableScreen reason={db.reason} />;
   else if (routerReady) content = <AppRouter router={getAppRouter()} />;
+  else content = <StartupIndicator />;
 
   return (
     <ThemeModeProvider>
       <ToastProvider>
         <Fragment key={locale}>{content}</Fragment>
+        <UpdatePrompt />
       </ToastProvider>
     </ThemeModeProvider>
   );
