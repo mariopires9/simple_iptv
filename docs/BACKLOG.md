@@ -41,7 +41,7 @@ Allowed statuses (exactly one per story):
 | SRC-07 | Sync Xtream catalog | E1 | Must | 5 | SRC-02, FND-05, FND-07 | 3 | M1 | Done |
 | VOD-04 | VOD/series classification in M3U | E5 | Must | 3 | SRC-04 | 3 | M2 | Backlog |
 | PLY-02 | Player UI | E3 | Must | 5 | PLY-01, FND-03 | 3 | M1 | Done |
-| PLY-04 | Playback errors | E3 | Must | 3 | PLY-01, FND-06 | 3 | M1 | Backlog |
+| PLY-04 | Playback errors | E3 | Must | 3 | PLY-01, FND-06 | 3 | M1 | In Progress |
 | PWA-03 | Predictable updates | E10 | Must | 2 | PWA-02 | 3 | M3 | Backlog |
 | PWA-04 | Offline and network errors | E10 | Must | 2 | UX-02 | 3 | M3 | Backlog |
 | QA-02 | Playwright E2E + axe | E13 | Must | 3 | FND-02, QA-01 | 3 | M1 | Backlog |
@@ -49,17 +49,17 @@ Allowed statuses (exactly one per story):
 | SRC-09 | Compatibility diagnostics | E1 | Must | 3 | SRC-02, PLY-01 | 4 | M1 | Backlog |
 | SRC-10 | Delete all data | E1 | Must | 2 | FND-05, SRC-01, PWA-02 | 4 | M3 | Backlog |
 | LIV-01 | Categories and channel list | E4 | Must | 5 | FND-04, FND-05, UX-02, SRC-07 | 4 | M1 | Done |
-| VOD-01 | Movie grid | E5 | Must | 3 | FND-04, FND-05, UX-02, SRC-07 | 4 | M2 | Backlog |
-| PLY-03 | Fullscreen and PiP | E3 | Must | 3 | PLY-02 | 4 | M1 | Backlog |
+| VOD-01 | Movie grid | E5 | Must | 3 | FND-04, FND-05, UX-02, SRC-07 | 4 | M2 | In Progress |
+| PLY-03 | Fullscreen and PiP | E3 | Must | 3 | PLY-02 | 4 | M1 | In Progress |
 | SCH-01 | Search index | E8 | Must | 3 | FND-07, SRC-07 | 4 | M2 | Backlog |
 | LIV-02 | Play channel and zapping | E4 | Must | 5 | LIV-01, PLY-02 | 5 | M1 | Done |
-| LIV-04 | Quick channel filter | E4 | Must | 2 | LIV-01 | 5 | M1 | Backlog |
-| VOD-02 | Movie details | E5 | Must | 3 | VOD-01, PLY-02 | 5 | M2 | Backlog |
+| LIV-04 | Quick channel filter | E4 | Must | 2 | LIV-01 | 5 | M1 | In Progress |
+| VOD-02 | Movie details | E5 | Must | 3 | VOD-01, PLY-02 | 5 | M2 | In Progress |
 | SER-01 | Series grid | E6 | Must | 2 | VOD-01 | 5 | M2 | Backlog |
-| EPG-01 | Xtream now/next | E7 | Must | 3 | LIV-01, SRC-02 | 5 | M2 | Backlog |
+| EPG-01 | Xtream now/next | E7 | Must | 3 | LIV-01, SRC-02 | 5 | M2 | In Progress |
 | SCH-02 | Global search | E8 | Must | 3 | SCH-01, FND-04 | 5 | M2 | Backlog |
 | UX-04 | Settings and privacy | E11 | Must | 2 | FND-04, SRC-08 | 5 | M3 | Backlog |
-| LIV-03 | Remember last channel | E4 | Must | 2 | LIV-02, FND-05 | 6 | M1 | Backlog |
+| LIV-03 | Remember last channel | E4 | Must | 2 | LIV-02, FND-05 | 6 | M1 | In Progress |
 | VOD-03 | VOD with resume | E5 | Must | 3 | VOD-02, FAV-02 | 6 | M2 | Backlog |
 | SER-02 | Series details | E6 | Must | 5 | SER-01, PLY-02 | 6 | M2 | Backlog |
 | SER-03 | Episode, resume, next | E6 | Must | 3 | SER-02, VOD-03 | 7 | M2 | Backlog |
