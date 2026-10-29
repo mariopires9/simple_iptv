@@ -14,7 +14,7 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 | ADR-007 | GitHub Pages + HashRouter | **Accepted** (2026-10-28) |
 | ADR-008 | State: Zustand (UI) + TanStack Query (remote) + Dexie (persisted) | **Accepted** (2026-10-28) |
 | ADR-009 | Heavy work in Web Workers (M3U/JSON/XMLTV parsing, MiniSearch index) | **Accepted** (2026-10-28) |
-| ADR-010 | Strategy for HTTP-only/no-CORS servers | **Pending (spike S-00)** |
+| ADR-010 | Strategy for HTTP-only/no-CORS servers | **Accepted** (2026-10-29) — personal proxy (PRX-01) |
 | ADR-011 | Zero telemetry, zero analytics, zero advertising | **Accepted** (2026-10-28) |
 | ADR-012 | UI in pt-PT with externalized strings (i18n-ready) | **Superseded by ADR-015** |
 | ADR-013 | Validation of external data with tolerant schemas (Valibot) | **Accepted** (2026-10-28) |
@@ -69,10 +69,11 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 - **Decision:** one data worker (Comlink, Apache-2.0) that does: streaming M3U download+parse, `fetch`+`JSON.parse` of large Xtream responses, normalization, `bulkPut` into Dexie, MiniSearch index building, XMLTV parsing.
 - **Consequence:** the UI never blocks for > 50 ms during syncs.
 
-### ADR-010 — HTTP-only / no-CORS servers — **PENDING**
-- **Context:** see `RESEARCH.md §6`. It is the biggest product risk.
-- **Proposal:** MVP in "direct mode" with explicit diagnostics (SRC-09) and a `UrlRewriter` extension point (identity in the MVP). Post-MVP: reference self-hosted proxy (PRX-01) and/or Capacitor Android shell (NAT-01).
-- **Decision depends on:** the result of spike S-00 with the real provider (HTTPS? CORS? `.m3u8` available? codecs?). If the user's provider is HTTP-only without CORS, the MVP in direct mode **will not play** its channels and PRX-01 or NAT-01 become mandatory.
+### ADR-010 — HTTP-only / no-CORS servers — **Accepted** (2026-10-29)
+- **Context:** see `RESEARCH.md §6`. S-00 with the owner's provider (`docs/progress/S-00.md`, 2026-10-29): the API has HTTPS and CORS, but every live stream answers 302 to `http://` edge servers without valid HTTPS, so any HTTPS web app (GitHub Pages, installed PWA) is blocked by mixed-content rules. Not fixable inside the browser (a service worker is bound by the same rule; serving the app over http would lose the secure context needed by the vault and the service worker).
+- **Decision:** keep the static app in direct mode by default and add an optional **personal proxy (PRX-01)**, moved up to Must: a small dependency-free Node relay in `proxy/` that the owner runs on their own PC, reachable over HTTPS through **Tailscale Serve** (private to the owner's tailnet, valid certificate, no port forwarding, residential IP the provider already accepts). Per list, the app can route stream requests (and optionally API requests) through it. NAT-01 stays Could.
+- **Rejected:** serverless relays (Vercel/Netlify time limits; Cloudflare Workers terms on video); datacenter VPS as the default (providers often block datacenter IPs, monthly cost) — possible later with the same `proxy/` code; serving the app over http (loses secure context).
+- **Consequences:** the proxy sees the provider credentials embedded in stream URLs (it is the owner's own machine); it must not be an open proxy (mandatory token, upstream allowlist, redirects followed only from allowed hosts, private-range targets refused), must not log URLs, and must stream unbuffered and close upstream when the client leaves (providers allow 1 connection). Exposure to the public internet (Tailscale Funnel, port forwarding) is documented as unsafe by default.
 
 ### ADR-011 — No telemetry
 - No analytics, no trackers, no third-party CDN fonts (self-hosted typefaces), no remote error reporting. Logs only in the console and in a redacted local buffer, manually exportable.

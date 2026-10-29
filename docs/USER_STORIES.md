@@ -772,7 +772,7 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Dependencies:** SRC-08, FAV-03.
 
 ### PRX-01 — Reference self-hosted proxy
-- **Priority:** Could (may move up to Must — ADR-010) · **Effort:** 5 · **Value:** High if the provider is HTTP-only
+- **Priority:** Must (ADR-010, 2026-10-29) · **Effort:** 5 · **Value:** High if the provider is HTTP-only
 - **Story:** As a user whose provider only has HTTP, I want to specify my own proxy, so that I can play in the browser.
 - **AC:**
   1. Given Settings › Personal proxy (HTTPS URL + token), Then `UrlRewriter` rewrites requests (API, playlists, segments, streams) to the proxy.

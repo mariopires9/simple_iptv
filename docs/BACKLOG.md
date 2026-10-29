@@ -11,7 +11,7 @@ Allowed statuses (exactly one per story):
 
 | ID | Title | Epic | Prio | Pts | Depends on | Wave | Milestone | Status |
 |---|---|---|---|---|---|---|---|---|
-| S-00 | Validate real provider compatibility | E0 | Must | 3 | — | 0 | M0 | In Progress |
+| S-00 | Validate real provider compatibility | E0 | Must | 3 | — | 0 | M0 | Done |
 | FND-01 | Project scaffold | E0 | Must | 3 | — | 0 | M0 | Done |
 | FND-02 | CI pipeline | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
 | FND-03 | Tokens, theme and AppShell | E0 | Must | 5 | FND-01 | 1 | M0 | Done |
@@ -68,12 +68,12 @@ Allowed statuses (exactly one per story):
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
 | LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Done |
+| PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | In Progress |
 
 ## Post-MVP
 
 | ID | Title | Prio | Pts | Depends on | Status |
 |---|---|---|---|---|---|
-| PRX-01 | Self-hosted proxy (may move up to Must — ADR-010) | Could | 5 | PLY-01, SRC-02 | Backlog |
 | EPG-02 | Import XMLTV | Should | 5 | FND-07, FND-05 | Backlog |
 | EPG-03 | Channel↔EPG matching | Should | 3 | EPG-02, LIV-01 | Backlog |
 | PLY-05 | Audio tracks and subtitles | Should | 3 | PLY-02 | Backlog |
