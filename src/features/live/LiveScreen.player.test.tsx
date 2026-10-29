@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { VaultKeyLostError, credentialVault } from '@/core/crypto';
 import {
   catalogRepo,
+  favoritesRepo,
   historyRepo,
   itemKey,
   settingsRepo,
@@ -515,17 +516,43 @@ describe('LIV-02 — stream resolution in the player area', () => {
   it.each([
     ['Protected', mkey('drm')],
     ['Dash channel', mkey('dash')],
-  ])('%s (DRM/DASH) opened by a link is not attempted and says why', async (_name, key) => {
+  ])('UX-07: %s opened by a link never mounts the player and says why', async (_name, key) => {
     await settingsRepo.set('activeSourceId', M3U);
-    // UX-07: the list refuses to open it; a deep link (or zapping) reaches the player, which
-    // explains without attempting playback.
-    show(`/live/category/g?channel=${encodeURIComponent(key)}`, 1400);
-    expect(
-      await screen.findByRole('heading', {
-        name: 'This channel uses DRM / DASH, which this app does not support',
-      }),
-    ).toBeInTheDocument();
+    // Home, search and "play last channel" all open `?channel=`.
+    const { router } = show(`/live/category/g?channel=${encodeURIComponent(key)}`, 1400);
+    expect(await screen.findByTestId('live-protected-notice')).toHaveTextContent(
+      "Protected content (DRM/DASH) can't be played in this app",
+    );
+    await waitFor(() => expect(router.state.location.search).toBe(''));
+    expect(screen.queryByRole('region', { name: /^Player/ })).toBeNull();
     expect(views).toHaveLength(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+    // Not remembered as the last channel.
+    expect(await settingsRepo.get('lastChannelKey')).not.toBe(key);
+  });
+
+  it('UX-07: zapping skips protected channels both ways, wrapping around', async () => {
+    await settingsRepo.set('activeSourceId', M3U);
+    // General: Protected (DRM), Dash channel (.mpd), Referer channel, Plain channel.
+    show(`/live/category/g?channel=${encodeURIComponent(mkey('hdr'))}`, 1400);
+    const list = await listbox('Channels in General');
+    await within(list).findByText('Plain channel');
+    await waitFor(() => expect(lastView().descriptor.url).toContain('cdn.example'));
+    expect(lastView().title).toBe('Referer channel');
+    /** The player shows `name` and has settled on its stream. */
+    const settledOn = (name: string, file: string) =>
+      waitFor(() => {
+        expect(lastView().title).toBe(name);
+        expect(lastView().descriptor.url).toContain(file);
+      });
+    act(() => lastView().onNext?.());
+    await settledOn('Plain channel', 'ok.m3u8');
+    // Wraps past the two protected ones at the top.
+    act(() => lastView().onNext?.());
+    await settledOn('Referer channel', 'hdr.ts');
+    act(() => lastView().onPrevious?.());
+    await settledOn('Plain channel', 'ok.m3u8');
+    expect(views.some((v) => v.title === 'Protected' || v.title === 'Dash channel')).toBe(false);
   });
 
   it.each([
@@ -563,6 +590,23 @@ describe('LIV-02 — stream resolution in the player area', () => {
       expect(options[0]).toHaveAttribute('aria-setsize', '2');
       expect(within(list).queryByText('Dash channel')).toBeNull();
     } finally {
+      await settingsRepo.set('hideProtectedContent', false);
+    }
+  });
+
+  it('UX-07: a category emptied by "Hide protected content" says so', async () => {
+    await settingsRepo.set('activeSourceId', M3U);
+    await settingsRepo.set('hideProtectedContent', true);
+    await favoritesRepo.add(mkey('drm'));
+    try {
+      show('/live/category/~favorites', 1400);
+      expect(
+        await screen.findByText(
+          'Protected content is hidden. You can show it in Settings › Playback.',
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      await favoritesRepo.remove(mkey('drm'));
       await settingsRepo.set('hideProtectedContent', false);
     }
   });

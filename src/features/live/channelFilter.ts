@@ -82,7 +82,10 @@ export async function buildFilterIndex(pager: ChannelPager): Promise<FilterIndex
   for (let offset = 0; offset < pager.total; offset += INDEX_CHUNK) {
     const rows = await pager.load(offset, INDEX_CHUNK);
     if (rows.length === 0) break;
-    addRows(columns, rows);
+    addRows(
+      columns,
+      rows.filter((row): row is Channel => row !== undefined),
+    );
   }
   return indexOf(columns);
 }

@@ -10,16 +10,11 @@ import { t } from '@/i18n';
 
 export type NavId = 'home' | 'live' | 'movies' | 'series' | 'favorites' | 'settings';
 
-/** Keys of `t.nav` that name a destination. */
-export type NavLabelKey = NavId;
-
 export interface NavItem {
   id: NavId;
-  /** Key of the label in `t.nav`; the module holds keys only, never text. */
-  labelKey: NavLabelKey;
   /**
-   * The label in the active locale, read from `t` on every access (a getter): the items are
-   * module constants, so a value captured at module load would keep the language the app
+   * The label in the active locale, read from `t.nav[id]` on every access (a getter): the items
+   * are module constants, so a value captured at module load would keep the language the app
    * started in (QA-02 defect, UX-06).
    */
   readonly label: string;
@@ -31,7 +26,7 @@ export interface NavItem {
 function navItem(id: NavId, icon: ReactNode, to: string): NavItem {
   return {
     id,
-    labelKey: id,
+
     get label() {
       return t.nav[id];
     },

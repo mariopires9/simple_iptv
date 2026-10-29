@@ -24,6 +24,13 @@ export type {
   ConnectivityStoreOptions,
   ReachabilityProbe,
 } from './connectivity';
+export {
+  declaredMediaContainer,
+  isDashStream,
+  mediaContainerOfExtension,
+  pathExtension,
+} from './streamContainer';
+export type { MediaContainer } from './streamContainer';
 export { DEFAULT_TIMEOUT_MS, fetchJson, fetchStream, fetchText, identityRewriter } from './http';
 export type {
   FetchImpl,

@@ -40,10 +40,12 @@
 import {
   CONTENT_TYPES,
   catalogRepo,
+  isProtectedStream,
   sourcesRepo,
   type ContentType,
   type Source,
   type SourceStats,
+  type StreamFlags,
   type TypeSyncStatus,
 } from '@/core/db';
 import { credentialVault, VaultKeyLostError, type CredentialVault } from '@/core/crypto';
@@ -56,7 +58,7 @@ import {
   type NetErrorKind,
 } from '@/core/net';
 import { WorkerTaskError, type TaskContext, type TaskProgress } from '@/core/worker';
-import { M3uCatalogBuilder } from './catalog';
+import { M3uCatalogBuilder, type M3uCatalog } from './catalog';
 import { downloadM3u, DOWNLOAD_INACTIVITY_TIMEOUT_MS } from './download';
 import { M3uParser, type M3uSkipReason } from './parser';
 import { FileReadError, readM3uFile } from './readFile';
@@ -275,6 +277,24 @@ export async function waitForM3uSourceIdle(sourceId: string): Promise<void> {
 // ---------------------------------------------------------------------------------------------
 // Sync
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Protected items (DRM/DASH, UX-07) per type of a built catalogue: a series is protected when its
+ * own entry is or every grouped episode is (`allEpisodesProtected`). Duplicates dropped by the
+ * write may be counted: only "none" versus "some" matters to the readers.
+ */
+export function protectedCounts(catalog: M3uCatalog): SourceStats {
+  const count = (items: readonly StreamFlags[]) =>
+    items.reduce((n, item) => n + (isProtectedStream(item) ? 1 : 0), 0);
+  return {
+    live: count(catalog.live.items),
+    movies: count(catalog.movie.items),
+    series: catalog.series.items.reduce(
+      (n, item) => n + (item.allEpisodesProtected === true || isProtectedStream(item) ? 1 : 0),
+      0,
+    ),
+  };
+}
 
 async function storedStats(sourceId: string): Promise<SourceStats> {
   const [live, movies, series] = await Promise.all([
@@ -579,6 +599,7 @@ async function runSync(
   const stats = await storedStats(sourceId);
   const changes: Partial<Omit<Source, 'id'>> = {
     stats,
+    protectedCounts: protectedCounts(catalog),
     lastSyncAt: now(),
     lastSyncStatus: 'ok',
     lastSyncError: undefined,

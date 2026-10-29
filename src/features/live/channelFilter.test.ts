@@ -164,7 +164,7 @@ describe('keysPager', () => {
     const keys = [4, 2, 3].map((n) => itemKey('s', 'live', String(n)));
     const pager = keysPager(keys);
     expect(pager.total).toBe(3);
-    expect((await pager.load(1, 5)).map((c) => c.name)).toEqual(['Channel 2', 'Channel 3']);
+    expect((await pager.load(1, 5)).map((c) => c?.name)).toEqual(['Channel 2', 'Channel 3']);
     const two = (await pager.load(1, 1))[0];
     expect(two && (await pager.locate(two))).toBe(1);
   });

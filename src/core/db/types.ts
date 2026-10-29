@@ -46,6 +46,12 @@ export interface Source {
   /** Outcome of the last sync attempt per content type (SRC-07). Not indexed. */
   lastSyncByType?: Partial<Record<ContentType, TypeSyncStatus>>;
   stats: SourceStats;
+  /**
+   * Protected items (DRM/DASH, UX-07) per type written by the last successful M3U import; absent
+   * = unknown (an older import, or Xtream, whose items are never flagged). Lets "Hide protected
+   * content" skip any filtering work for a list that has none. Not indexed.
+   */
+  protectedCounts?: SourceStats;
 }
 
 /** Outcome of syncing one content type of a source (SRC-07). Never contains sensitive data. */

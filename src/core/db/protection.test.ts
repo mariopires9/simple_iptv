@@ -1,7 +1,7 @@
 // @vitest-environment node
 // UX-07: which items are protected content (DRM-flagged or DASH).
 import { describe, expect, it } from 'vitest';
-import { isProtectedEpisode, isProtectedItem, isProtectedStream } from './protection';
+import { isProtectedItem, isProtectedStream } from './protection';
 import type { Channel, Movie, Series } from './types';
 
 const channel = (extra: Partial<Channel> = {}): Channel => ({
@@ -50,6 +50,22 @@ describe('protected content (UX-07)', () => {
     ).toBe(false);
   });
 
+  it('agrees with the player: the URL path only, and an unrecognised container falls back to it', () => {
+    // A query naming an .mpd file is not DASH (the player plays the path, play.php).
+    expect(isProtectedStream({ streamUrl: 'https://cdn.example.test/play.php?src=feed.mpd' })).toBe(
+      false,
+    );
+    // A legacy/unknown declared container: the URL decides (as in the player).
+    expect(
+      isProtectedStream({ container: 'legacy', streamUrl: 'https://cdn.example.test/a.mpd' }),
+    ).toBe(true);
+    expect(
+      isProtectedStream({ container: 'legacy', streamUrl: 'https://cdn.example.test/a.ts' }),
+    ).toBe(false);
+    expect(isProtectedStream({ container: 'DASH' })).toBe(true);
+    expect(isProtectedStream({ streamUrl: 'not a url .mpd' })).toBe(false);
+  });
+
   it('channels, movies and single-entry series follow their own stream flags', () => {
     expect(isProtectedItem(channel())).toBe(false);
     expect(isProtectedItem(channel({ drm: true }))).toBe(true);
@@ -61,11 +77,5 @@ describe('protected content (UX-07)', () => {
   it('a grouped series is protected when flagged at import (every episode protected)', () => {
     expect(isProtectedItem(series())).toBe(false);
     expect(isProtectedItem(series({ allEpisodesProtected: true }))).toBe(true);
-  });
-
-  it('episodes', () => {
-    expect(isProtectedEpisode({ drm: true })).toBe(true);
-    expect(isProtectedEpisode({ container: 'dash' })).toBe(true);
-    expect(isProtectedEpisode({ container: 'mkv' })).toBe(false);
   });
 });

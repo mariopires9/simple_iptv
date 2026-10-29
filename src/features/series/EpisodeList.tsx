@@ -10,7 +10,7 @@ import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import { useId, useState } from 'react';
-import { isProtectedEpisode, type Episode, type Season } from '@/core/db';
+import { isProtectedStream, type Episode, type Season } from '@/core/db';
 import { t } from '@/i18n';
 import { formatDuration, formatInteger, formatPercent } from '@/ui/catalog/format';
 import { ProtectedBadge, ProtectedNote } from '@/ui/catalog/ProtectedBadge';
@@ -136,7 +136,7 @@ function EpisodeRow({ episode, progress, playing, onPlay }: EpisodeRowProps) {
   const fraction = state.kind === 'progress' ? state.fraction : undefined;
   // UX-07: a DRM/DASH episode is marked and its row does not play (kept focusable, so keyboard
   // and screen reader users still hear why).
-  const isProtected = isProtectedEpisode(episode);
+  const isProtected = isProtectedStream(episode);
 
   return (
     <Box component="li" data-testid="episode-row" data-protected={isProtected || undefined}>

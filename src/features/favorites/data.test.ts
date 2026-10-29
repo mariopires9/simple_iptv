@@ -97,6 +97,18 @@ describe('protected content on Home (UX-07)', () => {
     ]);
   });
 
+  it('reads the setting together with the rows, not before them', async () => {
+    let release: (value: boolean) => void = () => undefined;
+    vi.spyOn(settingsRepo, 'get').mockImplementation(
+      () => new Promise((resolve) => (release = resolve as (value: boolean) => void)),
+    );
+    const rows = vi.spyOn(historyRepo, 'listRecentItems');
+    const home = loadHome(SOURCE);
+    await vi.waitFor(() => expect(rows).toHaveBeenCalledTimes(2));
+    release(true);
+    expect((await home).recentChannels.map((c) => c.name)).toEqual(['Open']);
+  });
+
   it('"Hide protected content" leaves them out of every row', async () => {
     await settingsRepo.set('hideProtectedContent', true);
     const home = await loadHome(SOURCE);

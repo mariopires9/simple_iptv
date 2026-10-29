@@ -6,7 +6,15 @@ import 'fake-indexeddb/auto';
 import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { catalogRepo, settingsRepo, sourcesRepo, wipeAll } from '@/core/db';
+import {
+  catalogRepo,
+  episodeItemKey,
+  historyRepo,
+  itemKey,
+  settingsRepo,
+  sourcesRepo,
+  wipeAll,
+} from '@/core/db';
 import { forgetActiveSource } from '@/core/session';
 import { t } from '@/i18n';
 import type { PlayerViewProps } from '@/player/ui';
@@ -37,6 +45,16 @@ const LIST = [
   '#EXTINF:-1 group-title="Séries",Mixed Show S01E02 - Closed',
   DRM,
   `${CDN}/m2.mpd`,
+  // Protected episodes first and in between: "Play"/"Continue" skip them.
+  '#EXTINF:-1 group-title="Séries",Skip Show S01E01',
+  DRM,
+  `${CDN}/k1.mpd`,
+  '#EXTINF:-1 group-title="Séries",Skip Show S01E02',
+  `${CDN}/k2.mp4`,
+  '#EXTINF:-1 group-title="Séries",Skip Show S01E03',
+  `${CDN}/k3.mpd`,
+  '#EXTINF:-1 group-title="Séries",Skip Show S01E04',
+  `${CDN}/k4.mp4`,
 ].join('\n');
 const LABEL = t.state.protectedContent.label;
 const UNPLAYABLE = t.state.protectedContent.unplayable;
@@ -45,6 +63,7 @@ const named = (title: string) => (name: string) =>
 
 let lockedId = '';
 let mixedId = '';
+let skipId = '';
 
 beforeAll(async () => {
   await sourcesRepo.put(m3uSource(SOURCE, 'List', 1));
@@ -53,6 +72,7 @@ beforeAll(async () => {
   const catalog = builder.build();
   lockedId = catalog.series.items[0]!.externalId;
   mixedId = catalog.series.items[1]!.externalId;
+  skipId = catalog.series.items[2]!.externalId;
   await catalogRepo.replaceAllForExistingSource(SOURCE, catalog);
   await settingsRepo.set('activeSourceId', SOURCE);
 });
@@ -97,7 +117,7 @@ describe('UX-07 — Series grid', () => {
     show('/series');
     const g = await screen.findByRole('grid', { name: /^Series in/ }, { timeout: 5000 });
     await within(g).findByRole('link', { name: /^Mixed Show/ });
-    expect(within(g).getAllByRole('gridcell')).toHaveLength(1);
+    expect(within(g).getAllByRole('gridcell')).toHaveLength(2);
     expect(within(g).queryByText('Locked Show')).toBeNull();
   });
 });
@@ -134,5 +154,32 @@ describe('UX-07 — Series details', () => {
 
     await userEvent.click(within(open!).getByRole('button'));
     expect(await screen.findByRole('region', { name: /Player/ })).toBeInTheDocument();
+  });
+
+  it('Play starts at the first playable episode and "Continue" skips protected ones', async () => {
+    show(`/series/${skipId}`);
+    const play = await screen.findByRole('button', { name: 'Play S1 E2' }, { timeout: 5000 });
+    expect(play).toBeEnabled();
+    cleanup();
+
+    // E2 finished: the next playable episode is E4 (E3 is DASH).
+    const details = await catalogRepo.getSeriesDetails(itemKey(SOURCE, 'series', skipId));
+    const [, e2] = details!.seasons[0]!.episodes;
+    const showKey = itemKey(SOURCE, 'series', skipId);
+    await historyRepo.upsert({
+      itemKey: episodeItemKey(showKey, e2!.externalId),
+      positionSec: 290,
+      durationSec: 300,
+      completed: true,
+    });
+    await historyRepo.upsert({
+      itemKey: showKey,
+      episodeKey: episodeItemKey(showKey, e2!.externalId),
+    });
+    show(`/series/${skipId}`);
+    const next = await screen.findByRole('button', { name: 'Continue S1 E4' }, { timeout: 5000 });
+    await userEvent.click(next);
+    expect(await screen.findByRole('region', { name: /S1 E4/ })).toBeInTheDocument();
+    expect(views.at(-1)?.descriptor).toMatchObject({ url: `${CDN}/k4.mp4` });
   });
 });

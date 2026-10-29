@@ -432,33 +432,45 @@ export function LiveScreen() {
     pagerKeyRef.current = pagerKey;
   });
 
+  // UX-07: a protected (DRM/DASH) channel never mounts the player — not from the list, a link
+  // (`?channel=`: Home, search, "play last channel") nor zapping. The reason is shown and
+  // announced instead, and it is not saved as the last channel.
+  const [notice, setNotice] = useState<string>();
+  const say = useCallback((text: string) => {
+    setNotice(text);
+    setAnnouncement(text);
+  }, []);
+  const refuseProtected = useCallback(
+    (channel: Channel): boolean => {
+      if (!isProtectedItem(channel)) return false;
+      say(t.state.protectedContent.unplayable);
+      return true;
+    },
+    [say],
+  );
+
+  /** Opens `channel` in the player; `false` when it is refused (protected content). */
   const select = useCallback(
-    (channel: Channel, index: number | undefined, via: SelectionVia) => {
+    (channel: Channel, index: number | undefined, via: SelectionVia): boolean => {
+      if (refuseProtected(channel)) return false;
       const next: Selection = { channel, index, via, pagerKey: pagerKeyRef.current };
       selectionRef.current = next;
       setSelection(next);
+      setNotice(undefined);
       setAnnouncement(t.live.player.watching(channel.name));
       // Replace: picking or zapping channels must not stack one history entry per channel.
       navigate(liveChannelPath(categoryId, channel.key), { replace: true });
+      return true;
     },
-    [navigate, categoryId],
+    [navigate, categoryId, refuseProtected],
   );
-
-  // UX-07: a protected (DRM/DASH) channel is never opened in the player from the list — Play is
-  // refused and the reason announced (the row shows the "Protected" badge and is aria-disabled).
-  const refuseProtected = useCallback((channel: Channel): boolean => {
-    if (!isProtectedItem(channel)) return false;
-    setAnnouncement(t.state.protectedContent.unplayable);
-    return true;
-  }, []);
 
   // A filtered row's index is not its row in the category: zapping locates it instead.
   const onPlay = useCallback(
     (channel: Channel, index: number) => {
-      if (refuseProtected(channel)) return;
       select(channel, filtering ? undefined : index, 'pick');
     },
-    [select, filtering, refuseProtected],
+    [select, filtering],
   );
 
   // LIV-03: the last played channel ("Play last channel on open").
@@ -512,7 +524,10 @@ export function LiveScreen() {
     catalogRepo.get('live', channelKey).then(
       (channel) => {
         if (cancelled || selectionRef.current?.channel.key === channelKey) return;
-        if (channel && channel.sourceId === sourceId) {
+        if (channel && channel.sourceId === sourceId && refuseProtected(channel)) {
+          // Protected (UX-07): the reason instead of the player; the link is dropped.
+          navigate({ search: '' }, { replace: true });
+        } else if (channel && channel.sourceId === sourceId) {
           const restored: Selection = {
             channel,
             index: undefined,
@@ -535,7 +550,7 @@ export function LiveScreen() {
     return () => {
       cancelled = true;
     };
-  }, [channelKey, sourceId, navigate]);
+  }, [channelKey, sourceId, navigate, refuseProtected]);
 
   // ↑/↓ and ⏮/⏭: previous/next channel of the current category. Steps run one after another
   // (each starts from the previous one's result), so fast presses never skip or repeat.
@@ -548,9 +563,20 @@ export function LiveScreen() {
           const current = pagerRef.current;
           if (!from || current?.status !== 'ready') return;
           const index = from.pagerKey === current.key ? from.index : undefined;
-          const next = await neighbour(current.cache, { channel: from.channel, index }, delta);
+          // Protected channels are skipped (UX-07), both ways, wrapping around.
+          const next = await neighbour(
+            current.cache,
+            { channel: from.channel, index },
+            delta,
+            isProtectedItem,
+          );
           // A pick (or close) while the neighbour was being read wins.
-          if (!next || selectionRef.current !== from) return;
+          if (selectionRef.current !== from) return;
+          if (!next) {
+            // Every other channel here is protected: stay on this one.
+            if (current.cache.total > 1) say(t.state.protectedContent.noOtherPlayable);
+            return;
+          }
           select(next.channel, next.index, 'zap');
         })
         .catch((error: unknown) => {
@@ -559,7 +585,7 @@ export function LiveScreen() {
           });
         });
     },
-    [select],
+    [select, say],
   );
   const onPrevious = useCallback(() => zap(-1), [zap]);
   const onNext = useCallback(() => zap(1), [zap]);
@@ -572,11 +598,9 @@ export function LiveScreen() {
   }, []);
   const onOverlayPlay = useCallback(
     (channel: Channel, index: number) => {
-      if (refuseProtected(channel)) return;
-      select(channel, index, 'pick');
-      closeChannels();
+      if (select(channel, index, 'pick')) closeChannels();
     },
-    [select, closeChannels, refuseProtected],
+    [select, closeChannels],
   );
 
   // Optimistic favourites: the star changes at once and the write runs in the background. Per
@@ -797,6 +821,15 @@ export function LiveScreen() {
       <Typography variant="h3" component="h1" sx={isTablet ? undefined : visuallyHidden}>
         {t.live.title}
       </Typography>
+      {notice !== undefined && (
+        <Typography
+          variant="body2"
+          data-testid="live-protected-notice"
+          sx={{ color: 'text.secondary' }}
+        >
+          {notice}
+        </Typography>
+      )}
       <Box sx={{ flex: 1, minHeight: 0 }}>{content}</Box>
       <Box role="status" aria-live="polite" sx={visuallyHidden}>
         {announcement}
@@ -899,12 +932,15 @@ function ChannelPane({
     );
   }
   if (pager.cache.total === 0) {
+    // Emptied by "Hide protected content" (UX-07): say so, as Movies and Series do.
+    const allHidden =
+      (pager.cache.pager.hidden ?? 0) > 0 ? t.state.protectedContent.allHidden : undefined;
     if (category.kind === 'favorites') {
       return (
         <StateView
           variant="empty"
           title={t.live.emptyFavorites.title}
-          message={t.live.emptyFavorites.message}
+          message={allHidden ?? t.live.emptyFavorites.message}
           actions={showAll}
         />
       );
@@ -914,7 +950,7 @@ function ChannelPane({
         <StateView
           variant="empty"
           title={t.live.emptyRecent.title}
-          message={t.live.emptyRecent.message}
+          message={allHidden ?? t.live.emptyRecent.message}
           actions={showAll}
         />
       );
@@ -923,6 +959,7 @@ function ChannelPane({
       <StateView
         variant="empty"
         title={t.live.emptyCategory.title}
+        message={allHidden}
         actions={category.kind === 'all' ? undefined : showAll}
       />
     );

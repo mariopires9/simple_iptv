@@ -16,8 +16,9 @@ export type LiveSourceState =
       sourceCategoryKeys: string[];
       favoriteKeys: string[];
       /**
-       * Settings › Playback "Hide protected content" (UX-07), applied to this source: Xtream
-       * channels are never DRM/DASH-flagged, so it is always `false` for them (no filtering cost).
+       * Settings › Playback "Hide protected content" (UX-07), applied to this source: `false` when
+       * the source has no protected channels — Xtream ones are never flagged, and an M3U import
+       * records how many it wrote (`protectedCounts`) — so nothing is filtered or walked.
        */
       hideProtected: boolean;
     };
@@ -43,6 +44,10 @@ export async function loadLiveSource(): Promise<LiveSourceState> {
     categories,
     sourceCategoryKeys: categories.flatMap((c) => (c.kind === 'source' ? [c.key] : [])),
     favoriteKeys: favorites.map((f) => f.itemKey),
-    hideProtected: hide === true && source.kind !== 'xtream',
+    hideProtected:
+      hide === true &&
+      source.kind !== 'xtream' &&
+      // Unknown (imported before UX-07): filter, to be safe.
+      (source.protectedCounts?.live ?? 1) > 0,
   };
 }

@@ -5,27 +5,26 @@
 //
 // Pure (types only), exported by the core/db barrel. `src/ui` reaches it through the dynamic
 // `import('@/core/db')` it already uses, or gets a predicate from the feature (ADR-003).
-import type { CatalogItem, Episode, StreamContainer } from './types';
+import { isDashStream } from '@/core/net';
+import type { CatalogItem } from './types';
 
 /** The stream fields that decide protection (catalogue items and M3U episodes). */
 export interface StreamFlags {
   /** Rows written by older builds may hold another truthy value: any one counts (as playback). */
   drm?: unknown;
-  container?: StreamContainer | undefined;
-  streamUrl?: string | undefined;
+  /** Declared container (any string: an unrecognised one falls back to the URL). */
+  container?: unknown;
+  streamUrl?: unknown;
 }
 
-/** A `.mpd` path (DASH manifest), whatever the query or fragment. */
-const DASH_URL = /\.mpd(?:$|[?#])/i;
-
 /**
- * The stream is DRM-flagged or DASH (declared, or a `.mpd` URL without a declared container): it
- * cannot be played here. The same rules as the player's refusal (`resolveStream`/`resolveVod`).
+ * The stream is DRM-flagged or DASH: it cannot be played here. DASH is decided by the player's
+ * own rule (`isDashStream`, `@/core/net`: declared container, else the URL path's extension), so
+ * the mark and the player's refusal always agree.
  */
 export function isProtectedStream(stream: StreamFlags): boolean {
   if (stream.drm !== undefined && stream.drm !== null && stream.drm !== false) return true;
-  if (stream.container !== undefined) return stream.container === 'dash';
-  return typeof stream.streamUrl === 'string' && DASH_URL.test(stream.streamUrl);
+  return isDashStream(stream);
 }
 
 /**
@@ -36,11 +35,4 @@ export function isProtectedStream(stream: StreamFlags): boolean {
 export function isProtectedItem(item: CatalogItem): boolean {
   if (item.type === 'series' && item.allEpisodesProtected === true) return true;
   return isProtectedStream(item);
-}
-
-/** An episode that cannot be played here. */
-export function isProtectedEpisode(
-  episode: Pick<Episode, 'drm' | 'container' | 'streamUrl'>,
-): boolean {
-  return isProtectedStream(episode);
 }

@@ -206,16 +206,23 @@ export async function loadHomeFavorites(
   sourceId: string,
   hideProtected = false,
 ): Promise<CardItem[]> {
+  return homeFavoritesRow(await availableFavorites(sourceId), hideProtected);
+}
+
+/** Available favorites of every type, most recently added first (all of them). */
+async function availableFavorites(sourceId: string): Promise<CardItem[]> {
   const lists = await Promise.all(
     (['live', 'movie', 'series'] as const).map((type) => loadFavorites(sourceId, type)),
   );
   return lists
     .flat()
     .filter((entry): entry is FavoriteEntry & { card: CardItem } => entry.card !== undefined)
-    .filter((entry) => !hideProtected || entry.card.protected !== true)
     .sort((a, b) => b.favorite.addedAt - a.favorite.addedAt)
-    .slice(0, HOME_FAVORITES_LIMIT)
     .map((entry) => entry.card);
+}
+
+function homeFavoritesRow(cards: CardItem[], hideProtected: boolean): CardItem[] {
+  return visible(cards, hideProtected).slice(0, HOME_FAVORITES_LIMIT);
 }
 
 export interface HomeData {
@@ -227,16 +234,18 @@ export interface HomeData {
 }
 
 export async function loadHome(sourceId: string): Promise<HomeData> {
-  const hide = (await settingsRepo.get('hideProtectedContent')) === true;
-  const [continueWatching, recentChannels, favorites] = await Promise.all([
+  // The setting is read with the rows (one round of reads); the rows are filtered after.
+  const [continueWatching, recentChannels, favorites, hideSetting] = await Promise.all([
     continueWatchingRow(sourceId),
     recentChannelsRow(sourceId),
-    loadHomeFavorites(sourceId, hide),
+    availableFavorites(sourceId),
+    settingsRepo.get('hideProtectedContent'),
   ]);
+  const hide = hideSetting === true;
   return {
     continueWatching: visible(continueWatching.cards, hide),
     recentChannels: visible(recentChannels.cards, hide),
-    favorites,
+    favorites: homeFavoritesRow(favorites, hide),
     hasHistory: continueWatching.hasHistory || recentChannels.hasHistory,
   };
 }
