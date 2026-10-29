@@ -5,6 +5,7 @@ export const live = {
   title: 'TV em direto',
   categories: 'Categorias',
   virtualCategories: { favorites: 'Favoritos', recent: 'Recentes', all: 'Todos' },
+  uncategorized: 'Sem categoria',
   channelsIn: (category: string) => `Canais em ${category}`,
   favorite: 'Favorito',
   toggleFavorite: (name: string) => `Alternar favorito: ${name}`,

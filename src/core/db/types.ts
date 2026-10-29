@@ -159,7 +159,7 @@ export interface Channel extends CatalogItemBase {
   logo?: string;
   number?: number;
   epgId?: string;
-  /** Xtream: id + extension; M3U: plain URL (see ARCHITECTURE.md §5). */
+  /** Xtream: id + extension; M3U: empty (the full URL is in `streamUrl`, ARCHITECTURE.md §5). */
   streamPath: string;
   catchup?: { days?: number; source?: string };
 }

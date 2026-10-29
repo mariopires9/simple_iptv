@@ -91,18 +91,19 @@ function buildItems<T extends ContentType>(
   });
 }
 
-/**
- * Shared body of `replaceForSource` / `replaceForExistingSource`. With `requireSource`, the
- * existence check of the `sources` row runs inside the same rw transaction as the write, so a
- * concurrent `sourcesRepo.remove` (which also locks `sources` and the catalogue tables) either
- * happens entirely before (nothing is written) or entirely after (it deletes what was written).
- */
-async function replace<T extends ContentType>(
+/** Records of one source+type, keyed and deduplicated, ready to be written. */
+interface PreparedType<T extends ContentType> {
+  type: T;
+  categories: Category[];
+  items: CatalogItemByType[T][];
+  duplicates: number;
+}
+
+function prepare<T extends ContentType>(
   sourceId: string,
   type: T,
   data: CatalogReplacement<T>,
-  requireSource: boolean,
-): Promise<ReplaceResult | undefined> {
+): PreparedType<T> {
   const categories: Category[] = dedupeByKey(
     data.categories.map((c, order) => ({
       key: categoryKey(sourceId, type, c.externalId),
@@ -115,29 +116,59 @@ async function replace<T extends ContentType>(
   );
   const allItems = buildItems(sourceId, type, data);
   const items = dedupeByKey(allItems);
+  return { type, categories, items, duplicates: allItems.length - items.length };
+}
 
+/** Replaces one source+type; must run inside a rw transaction over categories + its table. */
+async function writePrepared<T extends ContentType>(
+  db: SimpleIptvDb,
+  sourceId: string,
+  prepared: PreparedType<T>,
+): Promise<void> {
+  const table = itemTable(db, prepared.type);
+  // Delete by primary-key range (prefix `${sourceId}:${type}:`): Dexie turns it into a single
+  // native `deleteRange`, much faster than walking a secondary index.
+  const prefix = typePrefix(sourceId, prepared.type);
+  await db.categories.where('key').startsWith(prefix).delete();
+  await table.where('key').startsWith(prefix).delete();
+  await db.categories.bulkPut(prepared.categories);
+  for (let i = 0; i < prepared.items.length; i += BULK_CHUNK_SIZE) {
+    await table.bulkPut(prepared.items.slice(i, i + BULK_CHUNK_SIZE));
+  }
+}
+
+const resultOf = (p: PreparedType<ContentType>): ReplaceResult => ({
+  categories: p.categories.length,
+  items: p.items.length,
+  duplicates: p.duplicates,
+});
+
+/**
+ * Shared body of `replaceForSource` / `replaceForExistingSource`. With `requireSource`, the
+ * existence check of the `sources` row runs inside the same rw transaction as the write, so a
+ * concurrent `sourcesRepo.remove` (which also locks `sources` and the catalogue tables) either
+ * happens entirely before (nothing is written) or entirely after (it deletes what was written).
+ */
+async function replace<T extends ContentType>(
+  sourceId: string,
+  type: T,
+  data: CatalogReplacement<T>,
+  requireSource: boolean,
+): Promise<ReplaceResult | undefined> {
+  const prepared = prepare(sourceId, type, data);
   const db = await getDb();
   const table = itemTable(db, type);
   const written = await db.transaction('rw', [db.sources, db.categories, table], async () => {
     if (requireSource && (await db.sources.get(sourceId)) === undefined) return false;
-    // Delete by primary-key range (prefix `${sourceId}:${type}:`): Dexie turns it into a single
-    // native `deleteRange`, much faster than walking a secondary index.
-    const prefix = typePrefix(sourceId, type);
-    await db.categories.where('key').startsWith(prefix).delete();
-    await table.where('key').startsWith(prefix).delete();
-    await db.categories.bulkPut(categories);
-    for (let i = 0; i < items.length; i += BULK_CHUNK_SIZE) {
-      await table.bulkPut(items.slice(i, i + BULK_CHUNK_SIZE));
-    }
+    await writePrepared(db, sourceId, prepared);
     return true;
   });
   if (!written) return undefined;
-  return {
-    categories: categories.length,
-    items: items.length,
-    duplicates: allItems.length - items.length,
-  };
+  return resultOf(prepared);
 }
+
+/** One replacement per content type (`replaceAllForExistingSource`). */
+export type CatalogReplacementByType = { [T in ContentType]: CatalogReplacement<T> };
 
 export const catalogRepo = {
   /**
@@ -163,6 +194,41 @@ export const catalogRepo = {
     data: CatalogReplacement<T>,
   ): Promise<ReplaceResult | undefined> {
     return replace(sourceId, type, data, true);
+  },
+
+  /**
+   * Replaces the live, movie and series catalogue of a source in ONE transaction (with the
+   * existence check of the `sources` row), e.g. an M3U list, which is a single document: either
+   * all three types are written or nothing changes (storage failure, source removed meanwhile).
+   * Returns `undefined` (nothing written) when the source no longer exists.
+   */
+  async replaceAllForExistingSource(
+    sourceId: string,
+    data: CatalogReplacementByType,
+  ): Promise<Record<ContentType, ReplaceResult> | undefined> {
+    const prepared = {
+      live: prepare(sourceId, 'live', data.live),
+      movie: prepare(sourceId, 'movie', data.movie),
+      series: prepare(sourceId, 'series', data.series),
+    };
+    const db = await getDb();
+    const written = await db.transaction(
+      'rw',
+      [db.sources, db.categories, db.channels, db.movies, db.series],
+      async () => {
+        if ((await db.sources.get(sourceId)) === undefined) return false;
+        await writePrepared(db, sourceId, prepared.live);
+        await writePrepared(db, sourceId, prepared.movie);
+        await writePrepared(db, sourceId, prepared.series);
+        return true;
+      },
+    );
+    if (!written) return undefined;
+    return {
+      live: resultOf(prepared.live),
+      movie: resultOf(prepared.movie),
+      series: resultOf(prepared.series),
+    };
   },
 
   /** Categories of a source+type in the source's original order. */

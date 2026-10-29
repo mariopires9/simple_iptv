@@ -27,6 +27,7 @@ export {
   catalogRepo,
   BULK_CHUNK_SIZE,
   type PageOptions,
+  type CatalogReplacementByType,
   type ReplaceResult,
 } from './repos/catalog';
 export { favoritesRepo } from './repos/favorites';

@@ -91,6 +91,8 @@ describe('M3uCatalogBuilder', () => {
       'Sports',
     ]);
     expect(live.categories[1]?.externalId).toBe(UNCATEGORIZED_CATEGORY_ID);
+    // Stored nameless (language-neutral); the UI localises it by id.
+    expect(UNCATEGORIZED_CATEGORY_NAME).toBe('');
     expect(live.categories[0]?.externalId).toBe(groupCategoryId('News'));
     // Every item has a category.
     expect(live.items.every((i) => i.categoryExternalId !== undefined)).toBe(true);
@@ -111,7 +113,7 @@ describe('M3uCatalogBuilder', () => {
     expect(a).toEqual({
       externalId: entryBaseId('https://s.example.test/live/a.m3u8', 'A'),
       name: 'A',
-      streamPath: 'https://s.example.test/live/a.m3u8',
+      streamPath: '', // the URL is stored once, in streamUrl
       streamUrl: 'https://s.example.test/live/a.m3u8',
       container: 'hls',
       categoryExternalId: groupCategoryId('News'),
@@ -138,7 +140,7 @@ describe('M3uCatalogBuilder', () => {
       ext: 'mkv',
       poster: 'https://img.example.test/m.jpg',
       streamUrl: 'https://s.example.test/movie/1.mkv',
-      streamPath: 'https://s.example.test/movie/1.mkv',
+      streamPath: '',
     });
     expect(series.items[0]).toMatchObject({
       name: 'Episode',

@@ -3,7 +3,7 @@
 // hosts) + fake-indexeddb + the real WebCrypto vault. Node environment: real WebCrypto and
 // structured clone of CryptoKey in fake-indexeddb.
 import { delay, http, HttpResponse } from 'msw';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { credentialVault } from '@/core/crypto';
 import {
@@ -22,6 +22,7 @@ import { WorkerTaskError, type TaskContext, type TaskProgress } from '@/core/wor
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
 import { UNCATEGORIZED_CATEGORY_ID } from './catalog';
+import { M3uParser } from './parser';
 import {
   isM3uSourceSyncing,
   listUrlSecrets,
@@ -393,7 +394,7 @@ describe('credentials never leave the vault except as stream URLs', () => {
     expect(items.length).toBe(5);
     for (const item of items) {
       const { streamUrl, ...rest } = item;
-      const others = { ...rest, streamPath: undefined };
+      const others = rest; // streamPath included: it is empty for M3U items
       expect(streamUrl).toContain(PASS); // documented: M3U stream URLs are stored as-is
       expect(leaks(JSON.stringify(others))).toBe(false);
     }
@@ -413,5 +414,147 @@ describe('list URL secrets', () => {
     expect(ok('https://img.example.test/a.png')).toBe(true);
     expect(ok('https://img.example.test/a.png?token=x')).toBe(false);
     expect(ok('https://h.example.test/xmltv.php?u=a&p=testpass')).toBe(false);
+  });
+});
+
+describe('review regressions (SRC-04/SRC-05)', () => {
+  const bodyResponse = (text: string, headers: Record<string, string> = {}, chunk = 32) => {
+    const bytes = new TextEncoder().encode(text);
+    let offset = 0;
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (offset >= bytes.length) controller.close();
+          else {
+            controller.enqueue(bytes.slice(offset, offset + chunk));
+            offset += chunk;
+          }
+        },
+      }),
+      { headers },
+    );
+  };
+  const fetching =
+    (text: string, headers: Record<string, string> = {}, chunk = 32) =>
+    () =>
+      Promise.resolve(bodyResponse(text, headers, chunk));
+
+  it('#1 a storage failure changes nothing and is reported as storage', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    serveList(SMALL_LIST);
+    await sync();
+    const before = await allItems();
+    vi.spyOn(catalogRepo, 'replaceAllForExistingSource').mockRejectedValueOnce(
+      new Error('QuotaExceededError'),
+    );
+    serveList(SMALL_LIST.replaceAll('One', 'Uno'));
+    expect(await sync()).toMatchObject({ status: 'error', error: 'storage' });
+    expect(await allItems()).toEqual(before);
+    vi.restoreAllMocks();
+  });
+
+  it('#2 a compressed body has no total; done never exceeds a (lying) total', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    const gz = fakeCtx();
+    await sync(gz.ctx, {
+      fetchImpl: fetching(SMALL_LIST, { 'content-encoding': 'gzip', 'content-length': '40' }),
+    });
+    const gzDownloads = gz.seen.filter((p) => p.phase === 'download' && p.done > 0);
+    expect(gzDownloads.length).toBeGreaterThan(0);
+    expect(gzDownloads.every((p) => p.total === undefined)).toBe(true);
+
+    const short = fakeCtx();
+    await sync(short.ctx, { fetchImpl: fetching(SMALL_LIST, { 'content-length': '50' }) });
+    for (const p of short.seen.filter((m) => m.phase === 'download')) {
+      if (p.total !== undefined) expect(p.done).toBeLessThanOrEqual(p.total);
+    }
+  });
+
+  it('#3 a list without #EXTM3U is accepted; JSON / HTML / empty bodies are not', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    const noHeader = SMALL_LIST.split('\n').slice(1).join('\n');
+    expect(await sync(undefined, { fetchImpl: fetching(noHeader) })).toMatchObject({
+      status: 'ok',
+      entries: 3,
+    });
+    const commentFirst = `# my list\n${noHeader}`;
+    expect(await sync(undefined, { fetchImpl: fetching(commentFirst) })).toMatchObject({
+      status: 'ok',
+    });
+    for (const body of ['{"user_info":{}}', '<!doctype html><p>x</p>', '']) {
+      expect(await sync(undefined, { fetchImpl: fetching(body) })).toMatchObject({
+        status: 'error',
+        error: 'not-m3u',
+      });
+    }
+    // A large non-playlist body stops after the sniff window instead of downloading everything.
+    const big = `<html>${'x'.repeat(300 * 1024)}</html>`;
+    const result = await sync(undefined, { fetchImpl: fetching(big, {}, 16 * 1024) });
+    expect(result).toMatchObject({ status: 'error', error: 'not-m3u' });
+    expect(result.bytes).toBeLessThan(100 * 1024);
+  });
+
+  it('#4 Xtream-style path credentials are secrets: redacted and never stored', async () => {
+    const url = 'https://lists.example.test/playlist/john/s3cr3t/m3u_plus';
+    await seedSource(url);
+    const list = [
+      '#EXTM3U url-tvg="https://lists.example.test/xmltv/john/s3cr3t/epg.xml,https://epg.example.test/ok.xml"',
+      '#EXTINF:-1 tvg-logo="https://lists.example.test/logo/s3cr3t/a.png" catchup-source="https://lists.example.test/timeshift/john/s3cr3t/{utc}/1.ts" catchup="default",A',
+      'https://lists.example.test/live/john/s3cr3t/1.ts',
+    ].join('\n');
+    const result = await sync(undefined, { fetchImpl: fetching(list) });
+    expect(listUrlSecrets(new URL(url))).toEqual(expect.arrayContaining(['john', 's3cr3t']));
+    expect(result.status).toBe('ok');
+    const source = await sourcesRepo.get(SOURCE_ID);
+    expect(source?.epgUrls).toEqual(['https://epg.example.test/ok.xml']);
+    const [item] = await allItems();
+    const { streamUrl, ...rest } = item!;
+    expect(streamUrl).toContain('s3cr3t');
+    expect(JSON.stringify(rest)).not.toContain('s3cr3t');
+    // Any text the redactor sees loses the secret.
+    server.use(http.get(url, () => HttpResponse.error()));
+    await sync();
+    expect(JSON.stringify(getLogEntries())).not.toContain('s3cr3t');
+  });
+
+  it('#6 a non-network exception is internal (not blocked) and fails the task', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    vi.spyOn(M3uParser.prototype, 'write').mockImplementationOnce(() => {
+      throw new TypeError('parser bug');
+    });
+    const err = await rejection(sync(undefined, { fetchImpl: fetching(SMALL_LIST) }));
+    vi.restoreAllMocks();
+    expect(err.kind).toBe('failed');
+    expect(err.message).toMatch(/internal/);
+    expect(await sourcesRepo.get(SOURCE_ID)).toMatchObject({
+      lastSyncStatus: 'error',
+      lastSyncError: 'internal',
+    });
+    expect(getLogEntries().some((e) => e.level === 'error')).toBe(true);
+  });
+
+  it('#7 the final download and parse totals are sent spaced, before the write phase', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    const stamps: Array<{ phase: string; done: number; at: number }> = [];
+    const { ctx } = fakeCtx((p) => stamps.push({ phase: p.phase, done: p.done, at: Date.now() }));
+    const result = await sync(ctx, { fetchImpl: fetching(SMALL_LIST) });
+    const firstWrite = stamps.findIndex((s) => s.phase === 'write');
+    const before = stamps.slice(0, firstWrite);
+    const lastDownload = before.filter((s) => s.phase === 'download').at(-1);
+    const lastParse = before.filter((s) => s.phase === 'parse').at(-1);
+    expect(lastDownload?.done).toBe(result.bytes);
+    expect(lastParse?.done).toBe(result.entries);
+    // Each final message is at least the throttle interval (50 ms) after the previous one.
+    expect(lastParse!.at - lastDownload!.at).toBeGreaterThanOrEqual(50);
+    expect(stamps[firstWrite]!.at - lastParse!.at).toBeGreaterThanOrEqual(50);
+  });
+
+  it('#8 the stream URL is stored once (streamUrl), streamPath stays empty', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    await sync(undefined, { fetchImpl: fetching(SMALL_LIST) });
+    for (const item of await allItems()) {
+      expect(item.streamUrl).toMatch(/^https:\/\//);
+      if ('streamPath' in item) expect(item.streamPath).toBe('');
+    }
   });
 });

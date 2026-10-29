@@ -181,14 +181,36 @@ function classify(thrown: unknown, state: RequestState): NetError {
   return new NetError({ kind: 'blocked', url, cause: error });
 }
 
+/** Hands to the caller an error that must not be classified as a network failure. */
+class ConsumerError {
+  constructor(readonly error: unknown) {}
+}
+
+interface ReadContext {
+  /** Aborted on timeout / caller abort. */
+  signal: AbortSignal;
+  /** Re-arms the timer (inactivity mode only; a no-op otherwise). */
+  keepAlive: () => void;
+  /** Request URL (after the rewriter). */
+  url: string;
+}
+
+interface RequestMode {
+  /** `inactivity`: the timeout restarts on every `keepAlive()` (streaming downloads). */
+  timeout: 'overall' | 'inactivity';
+}
+
 /**
  * Runs a GET request and passes the response to `read` while the timeout is still armed, so a
  * body that never finishes also times out. The timeout uses `setTimeout` (works with fake timers).
+ * Errors thrown by `read` wrapped in {@link ConsumerError} reach the caller unchanged; any other
+ * error is classified as a `NetError`.
  */
 async function request<T>(
   rawUrl: string,
   options: FetchOptions,
-  read: (text: string, response: Response, url: string) => T,
+  read: (response: Response, ctx: ReadContext) => Promise<T>,
+  mode: RequestMode = { timeout: 'overall' },
 ): Promise<T> {
   const {
     signal,
@@ -210,10 +232,15 @@ async function request<T>(
 
   if (signal?.aborted) throw new NetError({ kind: 'aborted', url });
   signal?.addEventListener('abort', onCallerAbort, { once: true });
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort(new DOMException('Request timed out', 'TimeoutError'));
-  }, timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort(new DOMException('Request timed out', 'TimeoutError'));
+    }, timeoutMs);
+  };
+  arm();
 
   const init: RequestInit = {
     method: 'GET',
@@ -222,7 +249,7 @@ async function request<T>(
     referrerPolicy: 'no-referrer',
     redirect: 'follow',
   };
-  if (purpose === 'api') init.cache = 'no-store';
+  if (purpose === 'api' || mode.timeout === 'inactivity') init.cache = 'no-store';
 
   try {
     // A fetchImpl or a body read may ignore the signal: race both with it so abort/timeout always win.
@@ -244,9 +271,18 @@ async function request<T>(
       await Promise.race([discardBody(response, controller.signal), aborted]);
       throw new NetError({ kind: 'http', status: response.status, url });
     }
-    const text = await Promise.race([readBody(response, controller.signal), aborted]);
-    return read(text, response, url);
+    const ctx: ReadContext = {
+      signal: controller.signal,
+      keepAlive: mode.timeout === 'inactivity' ? arm : () => undefined,
+      url,
+    };
+    return await Promise.race([read(response, ctx), aborted]);
   } catch (error) {
+    if (error instanceof ConsumerError) {
+      // Not a network failure (e.g. a bug in the consumer): cancel the body, pass it on as is.
+      controller.abort(new DOMException('Consumer failed', 'AbortError'));
+      throw error.error;
+    }
     const netError = classify(error, state);
     log.warn('Network request failed', {
       kind: netError.kind,
@@ -257,14 +293,14 @@ async function request<T>(
     });
     throw netError;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
     signal?.removeEventListener('abort', onCallerAbort);
   }
 }
 
 /** GET as text. Non-2xx → `http` (401/403 → `auth`). */
 export function fetchText(url: string, options: FetchOptions = {}): Promise<string> {
-  return request(url, options, (text) => text);
+  return request(url, options, (response, ctx) => readBody(response, ctx.signal));
 }
 
 /**
@@ -273,7 +309,8 @@ export function fetchText(url: string, options: FetchOptions = {}): Promise<stri
  * and an HTML-looking body only select the diagnostic cause.
  */
 export function fetchJson(url: string, options: FetchOptions = {}): Promise<unknown> {
-  return request(url, options, (text, response, target) => {
+  return request(url, options, async (response, ctx) => {
+    const text = await readBody(response, ctx.signal);
     try {
       return JSON.parse(text) as unknown;
     } catch {
@@ -282,9 +319,108 @@ export function fetchJson(url: string, options: FetchOptions = {}): Promise<unkn
       // The parser message may quote the body: never keep it as the cause.
       throw new NetError({
         kind: 'parse',
-        url: target,
+        url: ctx.url,
         cause: html ? 'HTML instead of JSON' : 'Invalid JSON',
       });
     }
   });
+}
+
+/** Pull-based access to a streamed response body (see {@link fetchStream}). */
+export interface StreamBody {
+  /** Next chunk, or `undefined` at the end. Re-arms the inactivity timeout. */
+  read(): Promise<Uint8Array | undefined>;
+  /** Bytes read so far. */
+  readonly bytes: number;
+  /**
+   * Announced size (`Content-Length`) when it describes the bytes `read` returns, i.e. only
+   * without a `Content-Encoding` (or `identity`): browsers decompress transparently, so a
+   * compressed length would be smaller than what is read.
+   */
+  readonly total: number | undefined;
+  readonly response: Response;
+}
+
+export interface FetchStreamOptions extends Omit<FetchOptions, 'timeoutMs'> {
+  /** No byte (or no response) for this long → `timeout`. Default {@link DEFAULT_TIMEOUT_MS}. */
+  inactivityTimeoutMs?: number;
+}
+
+function streamTotal(response: Response): number | undefined {
+  const encoding = response.headers.get('content-encoding')?.trim().toLowerCase();
+  if (encoding !== undefined && encoding !== '' && encoding !== 'identity') return undefined;
+  const raw = response.headers.get('content-length')?.trim();
+  if (raw === undefined || !/^\d{1,15}$/.test(raw)) return undefined;
+  const n = Number(raw);
+  return n > 0 ? n : undefined;
+}
+
+/**
+ * GET whose body is consumed as a stream by `consume`, with an *inactivity* timeout (re-armed on
+ * every chunk): a large download on a slow link may take minutes while making progress.
+ * Network failures (before or during the body) are `NetError`s with the same classification as
+ * {@link fetchText}; a failure while reading the body after the server answered is `blocked`
+ * without a CORS/mixed-content hint (the browser did let the response through). Anything `consume`
+ * throws itself (e.g. a parser bug) is passed through unchanged, and the body is cancelled.
+ */
+export function fetchStream<T>(
+  url: string,
+  consume: (body: StreamBody) => Promise<T>,
+  options: FetchStreamOptions = {},
+): Promise<T> {
+  const { inactivityTimeoutMs, ...rest } = options;
+  const requestOptions: FetchOptions = { ...rest, purpose: rest.purpose ?? 'playlist' };
+  if (inactivityTimeoutMs !== undefined) requestOptions.timeoutMs = inactivityTimeoutMs;
+  return request(
+    url,
+    requestOptions,
+    async (response, ctx) => {
+      const source = response.body ?? new Blob([]).stream();
+      const reader = source.getReader();
+      const onAbort = () => {
+        reader.cancel(ctx.signal.reason).catch(() => undefined);
+      };
+      if (ctx.signal.aborted) onAbort();
+      else ctx.signal.addEventListener('abort', onAbort, { once: true });
+      let bytes = 0;
+      const total = streamTotal(response);
+      const body: StreamBody = {
+        async read() {
+          let result: ReadableStreamReadResult<Uint8Array>;
+          try {
+            result = await reader.read();
+          } catch (error) {
+            if (ctx.signal.aborted) throw ctx.signal.reason;
+            throw new NetError({
+              kind: isOffline() ? 'offline' : 'blocked',
+              url: ctx.url,
+              cause: safeCause(error, ctx.url),
+            });
+          }
+          if (ctx.signal.aborted) throw ctx.signal.reason;
+          if (result.done) return undefined;
+          bytes += result.value.byteLength;
+          ctx.keepAlive();
+          return result.value;
+        },
+        get bytes() {
+          return bytes;
+        },
+        total,
+        response,
+      };
+      try {
+        return await consume(body);
+      } catch (error) {
+        // Errors produced by `read()` (NetError / abort reasons) are classified; anything else
+        // came from the consumer itself.
+        if (error instanceof NetError || ctx.signal.aborted) throw error;
+        throw new ConsumerError(error);
+      } finally {
+        ctx.signal.removeEventListener('abort', onAbort);
+        reader.cancel().catch(() => undefined);
+      }
+    },
+    { timeout: 'inactivity' },
+  );
 }

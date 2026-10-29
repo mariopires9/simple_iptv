@@ -12,14 +12,14 @@ import { credentialVault } from '@/core/crypto';
 import { clearLogBuffer, clearSecrets } from '@/core/log';
 import { WorkerTaskError, type TaskContext } from '@/core/worker';
 import { t } from '@/i18n';
-import { syncM3uSource, type SyncM3uResult } from '@/providers/m3u';
+import { syncM3uSource, waitForM3uSourceIdle, type SyncM3uResult } from '@/providers/m3u';
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
 import { ToastProvider } from '@/ui/state';
 import { OnboardingXtreamScreen } from '../AddXtreamScreen';
 import { getSourcesPresent, invalidateSourcesPresence } from '../sourcesPresence';
 import { M3uUrlForm, formatBytes, type M3uUrlFormDeps } from './M3uUrlForm';
-import type { RunM3uImport } from './runM3uImport';
+import type { M3uImportOptions, RunM3uImport, SettleM3uImport } from './runM3uImport';
 
 const server = createMswServer(...xtreamHandlers());
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -65,6 +65,12 @@ const directImport: RunM3uImport = (sourceId, { signal, onProgress }) => {
   return syncM3uSource({ sourceId }, ctx, { cancelPollMs: 5 });
 };
 
+/** Same contract as `settleM3uImport`: wait for the import to stop, return the row. */
+const directSettle: SettleM3uImport = async (sourceId) => {
+  await waitForM3uSourceIdle(sourceId);
+  return sourcesRepo.get(sourceId);
+};
+
 function serveList(body: string, { chunk = 1 << 20, pauseMs = 0 } = {}) {
   server.use(
     http.get(LIST_URL, () => {
@@ -100,7 +106,7 @@ function renderForm(deps: Partial<M3uUrlFormDeps> = {}) {
           <M3uUrlForm
             doneTo="/"
             xtreamTo="/onboarding/xtream"
-            deps={{ runImport: directImport, ...deps }}
+            deps={{ runImport: directImport, settleImport: directSettle, ...deps }}
           />
         ),
       },
@@ -338,5 +344,60 @@ describe('formatBytes', () => {
   it('KB below 1 MB, MB with one decimal above', () => {
     expect(formatBytes(1500)).toBe(text.units.kb('2'));
     expect(formatBytes(5 * 1024 * 1024 + 300_000)).toBe(text.units.mb('5.3'));
+  });
+});
+
+describe('review regressions (SRC-05)', () => {
+  /** A pending import that rejects as cancelled on abort (like the worker client). */
+  const pendingImport =
+    (emit?: (onProgress: M3uImportOptions['onProgress']) => void): RunM3uImport =>
+    (_id, { signal, onProgress }) =>
+      new Promise((_, reject) => {
+        emit?.(onProgress);
+        signal?.addEventListener('abort', () => reject(new WorkerTaskError('cancelled')));
+      });
+
+  it('#5 a cancel that lost the race with the write phase shows the real success', async () => {
+    const settleImport = vi.fn<SettleM3uImport>(async (id) => ({
+      ...(await sourcesRepo.get(id))!,
+      lastSyncStatus: 'ok',
+      stats: { live: 7, movies: 1, series: 0 },
+    }));
+    const { user } = renderForm({ runImport: pendingImport(), settleImport });
+    await user.type(urlInput(), LIST_URL);
+    await user.click(submit());
+    await user.click(await screen.findByRole('button', { name: t.state.cancel }));
+    expect(await screen.findByRole('heading', { name: text.result.title })).toBeInTheDocument();
+    expect(screen.getByText(text.result.live('7'))).toBeInTheDocument();
+    expect(settleImport).toHaveBeenCalledOnce();
+    expect(screen.queryByText(t.state.errors.cancelled.title)).toBeNull();
+  });
+
+  it('#5 a real cancel (nothing written) shows the neutral cancelled state', async () => {
+    const settleImport = vi.fn<SettleM3uImport>((id) => sourcesRepo.get(id));
+    const { user } = renderForm({ runImport: pendingImport(), settleImport });
+    await user.type(urlInput(), LIST_URL);
+    await user.click(submit());
+    await user.click(await screen.findByRole('button', { name: t.state.cancel }));
+    expect(await screen.findByText(t.state.errors.cancelled.title)).toBeInTheDocument();
+    expect(settleImport).toHaveBeenCalledOnce();
+  });
+
+  it('#5/#7 no Cancel in the write phase; the final download/parse totals stay visible', async () => {
+    const runImport = pendingImport((onProgress) => {
+      onProgress?.({ phase: 'download', done: 2048, total: 2048 });
+      onProgress?.({ phase: 'parse', done: 42 });
+      onProgress?.({ phase: 'write', done: 0, total: 42 });
+    });
+    const { user } = renderForm({ runImport });
+    await user.type(urlInput(), LIST_URL);
+    await user.click(submit());
+    expect(await screen.findByRole('group', { name: text.steps.write })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t.state.cancel })).toBeNull();
+    const details = screen.getByTestId('m3u-progress-details');
+    expect(details).toHaveTextContent(text.progress.entries('42'));
+    expect(details).toHaveTextContent(
+      text.progress.downloadedOf(formatBytes(2048), formatBytes(2048)),
+    );
   });
 });

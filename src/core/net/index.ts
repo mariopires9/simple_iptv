@@ -8,5 +8,12 @@ export type {
   ExternalUrlResult,
   SafeExternalLink,
 } from './url';
-export { DEFAULT_TIMEOUT_MS, fetchJson, fetchText, identityRewriter } from './http';
-export type { FetchImpl, FetchOptions, RequestPurpose, UrlRewriter } from './http';
+export { DEFAULT_TIMEOUT_MS, fetchJson, fetchStream, fetchText, identityRewriter } from './http';
+export type {
+  FetchImpl,
+  FetchOptions,
+  FetchStreamOptions,
+  RequestPurpose,
+  StreamBody,
+  UrlRewriter,
+} from './http';

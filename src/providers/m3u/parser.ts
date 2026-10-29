@@ -123,8 +123,16 @@ export interface M3uParseStats {
   longLines: number;
 }
 
-/** What the first non-blank line was: `undefined` until one has been seen. */
-export type M3uFirstLine = 'header' | 'other' | undefined;
+/**
+ * What the first non-blank line was: `undefined` until one has been seen. `extinf`: a list without
+ * the `#EXTM3U` header that starts directly with an entry (accepted, SRC-04 AC4).
+ */
+export type M3uFirstLine = 'header' | 'extinf' | 'other' | undefined;
+
+function classifyFirstLine(line: string): Exclude<M3uFirstLine, undefined> {
+  if (startsWithTag(line, '#EXTM3U')) return 'header';
+  return startsWithTag(line, '#EXTINF') ? 'extinf' : 'other';
+}
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g;
@@ -439,7 +447,7 @@ export class M3uParser {
     this.stats.longLines++;
     const head = prefix.replace(/^\uFEFF/, '').trimStart();
     if (this.firstLine === undefined) {
-      this.firstLine = startsWithTag(head, '#EXTM3U') ? 'header' : 'other';
+      this.firstLine = classifyFirstLine(head);
     }
     if (startsWithTag(head, '#EXTINF')) {
       if (this.pending) this.skip('missing-url');
@@ -462,7 +470,7 @@ export class M3uParser {
     if (this.firstLine === undefined) line = line.replace(/^\uFEFF/, '').trim();
     if (line === '') return;
     if (this.firstLine === undefined) {
-      this.firstLine = startsWithTag(line, '#EXTM3U') ? 'header' : 'other';
+      this.firstLine = classifyFirstLine(line);
     }
     if (line.startsWith('#')) {
       this.tag(line);
