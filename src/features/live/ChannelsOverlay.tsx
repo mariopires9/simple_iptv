@@ -5,16 +5,17 @@ import CloseRounded from '@mui/icons-material/CloseRounded';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
-import { useMemo, type KeyboardEvent } from 'react';
+import type { KeyboardEvent } from 'react';
 import type { Channel } from '@/core/db';
 import { t } from '@/i18n';
 import { ChannelList } from './ChannelList';
-import { PageCache } from './pageCache';
-import type { ChannelPager } from './pagers';
+import type { PageCache } from './pageCache';
 
 export interface ChannelsOverlayProps {
-  /** The category's pager (the panel keeps its own page cache over it). */
-  pager: ChannelPager;
+  /** The main list's page cache (shared: pages already read are not read again). */
+  cache: PageCache;
+  /** Identity of the category's pager: a new pager remounts the list (selection, scroll). */
+  pagerKey: string;
   categoryName: string;
   favorites: ReadonlySet<string>;
   playingKey: string | undefined;
@@ -26,7 +27,8 @@ export interface ChannelsOverlayProps {
 }
 
 export function ChannelsOverlay({
-  pager,
+  cache,
+  pagerKey,
   categoryName,
   favorites,
   playingKey,
@@ -35,9 +37,6 @@ export function ChannelsOverlay({
   onToggleFavorite,
   onClose,
 }: ChannelsOverlayProps) {
-  // A ChannelList owns its cache's subscription, so the panel cannot share the main list's one.
-  const cache = useMemo(() => new PageCache(pager), [pager]);
-
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -80,6 +79,7 @@ export function ChannelsOverlay({
       </Box>
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <ChannelList
+          key={pagerKey}
           cache={cache}
           label={t.live.channelsIn(categoryName)}
           favorites={favorites}

@@ -77,6 +77,44 @@ describe('PageCache', () => {
     expect(cache.get(0)).toBeUndefined();
   });
 
+  it('serves several lists: each is notified, each pin is kept, results stop with the last', async () => {
+    const { pager, load } = fakePager(10_000);
+    const cache = new PageCache(pager, 100, 2);
+    const main = vi.fn();
+    const panel = vi.fn();
+    const offMain = cache.subscribe(main);
+    const offPanel = cache.subscribe(panel);
+    const mainOwner = {};
+    const panelOwner = {};
+    cache.pin(0, mainOwner);
+    cache.pin(5_000, panelOwner);
+    cache.ensure(0, 0);
+    cache.ensure(5_000, 5_000);
+    await flush();
+    expect(main).toHaveBeenCalledTimes(2);
+    expect(panel).toHaveBeenCalledTimes(2);
+    // Two more pages: both pinned pages survive eviction (maxPages is a soft limit for pins).
+    for (const row of [2_000, 3_000]) {
+      cache.ensure(row, row);
+      await flush();
+    }
+    expect(cache.get(0)).toBeDefined();
+    expect(cache.get(5_000)).toBeDefined();
+    expect(load.mock.calls.filter(([offset]) => offset === 0)).toHaveLength(1);
+
+    // One list leaves: the other still gets pages.
+    offPanel();
+    cache.pin(undefined, panelOwner);
+    cache.ensure(7_000, 7_000);
+    await flush();
+    expect(cache.get(7_000)).toBeDefined();
+    expect(cache.get(5_000)).toBeUndefined();
+    offMain();
+    cache.ensure(9_000, 9_000);
+    await flush();
+    expect(cache.get(9_000)).toBeUndefined();
+  });
+
   it('indexOf finds a channel among the cached pages only', async () => {
     const { pager } = fakePager(1000);
     const cache = new PageCache(pager, 100, 4);

@@ -11,7 +11,17 @@ import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
-import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { Link } from 'react-router';
 import { historyRepo, type Channel, type Source } from '@/core/db';
 import { log } from '@/core/log';
@@ -57,6 +67,13 @@ export interface LivePlayerProps {
   onClose: () => void;
   /** Rendered over the video (the "Channels" panel). */
   overlay?: ReactNode;
+  /** Imperative handle: `focus()` returns focus to the player (after the panel closes). */
+  handleRef?: Ref<LivePlayerHandle>;
+}
+
+export interface LivePlayerHandle {
+  /** Focuses what last had focus in the player (its region, so the shortcuts work again). */
+  focus(): void;
 }
 
 export function LivePlayer({
@@ -67,13 +84,38 @@ export function LivePlayer({
   onToggleChannelList,
   onClose,
   overlay,
+  handleRef,
 }: LivePlayerProps) {
   const { channel } = selection;
   const [attempt, setAttempt] = useState(0);
-  const [result, setResult] = useState<{ selection: LiveSelection; outcome: Outcome }>();
+  const [result, setResult] = useState<{
+    selection: LiveSelection;
+    attempt: number;
+    outcome: Outcome;
+  }>();
   const [shown, setShown] = useState<Shown>();
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
-  const [playbackError, setPlaybackError] = useState<{ key: string; error: PlaybackError }>();
+  // The final playback error of the player's current play() (cleared when a new one starts).
+  const [playbackError, setPlaybackError] = useState<PlaybackError>();
+
+  // Focus handle: the element that last had focus in the player area (PlayerView focuses its own
+  // region on mount), else the area itself.
+  const playerArea = useRef<HTMLDivElement>(null);
+  const lastFocused = useRef<HTMLElement | null>(null);
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      focus() {
+        const area = playerArea.current;
+        const target =
+          lastFocused.current?.isConnected && area?.contains(lastFocused.current)
+            ? lastFocused.current
+            : area;
+        target?.focus({ preventScroll: true });
+      },
+    }),
+    [],
+  );
 
   // Resolve the selected channel: debounced for zaps, latest wins.
   useEffect(() => {
@@ -82,7 +124,7 @@ export function LivePlayer({
       resolveStream(selection.channel, source).then(
         (outcome) => {
           if (!current) return;
-          setResult({ selection, outcome });
+          setResult({ selection, attempt, outcome });
           setShown(
             outcome.status === 'ok'
               ? {
@@ -98,7 +140,7 @@ export function LivePlayer({
           log.warn('live: resolving the stream failed', {
             error: error instanceof Error ? error.name : 'unknown',
           });
-          setResult({ selection, outcome: { status: 'error', error } });
+          setResult({ selection, attempt, outcome: { status: 'error', error } });
           setShown(undefined);
         },
       );
@@ -111,7 +153,9 @@ export function LivePlayer({
     };
   }, [selection, source, attempt]);
 
-  const outcome = result?.selection === selection ? result.outcome : undefined;
+  // A retry (new `attempt`) shows the pending state again until its own result arrives.
+  const outcome =
+    result?.selection === selection && result.attempt === attempt ? result.outcome : undefined;
   const playingThis = shown?.key === channel.key;
 
   // Counted only once this channel's own stream is in the player.
@@ -126,29 +170,18 @@ export function LivePlayer({
 
   // Playback errors, read from the controller (PlayerView has no error callback).
   // TODO(PLY-04): fold the "restricted" message into the player's own error overlay.
-  const onPlaybackError = useCallback((key: string, error: PlaybackError) => {
-    setPlaybackError({ key, error });
+  const factory = useCallback<ControllerFactory>((video) => {
+    if (!createController) throw new Error('player controller not loaded');
+    const controller = createController(video);
+    // A new play() — another stream, the same channel again after zapping, or PlayerView's
+    // retry — starts without the previous attempt's error.
+    controller.on('attempt', ({ attempt: candidate }) => {
+      if (candidate === 0) setPlaybackError(undefined);
+    });
+    controller.on('error', setPlaybackError);
+    return controller;
   }, []);
-  const shownKey = shown?.key;
-  // Key of the stream in the player, read by the controller's error listener (created once per
-  // <video>, so it cannot close over render state).
-  const shownKeyRef = useRef(shownKey);
-  useEffect(() => {
-    shownKeyRef.current = shownKey;
-  }, [shownKey]);
-  const factory = useCallback<ControllerFactory>(
-    (video) => {
-      if (!createController) throw new Error('player controller not loaded');
-      const controller = createController(video);
-      controller.on('error', (error) => {
-        const key = shownKeyRef.current;
-        if (key !== undefined) onPlaybackError(key, error);
-      });
-      return controller;
-    },
-    [onPlaybackError],
-  );
-  const failure = playbackError && playbackError.key === shownKey ? playbackError.error : undefined;
+  const failure = playbackError;
   const restricted =
     shown?.requiredHeaders === true &&
     failure !== undefined &&
@@ -191,7 +224,16 @@ export function LivePlayer({
           overflow: 'hidden',
         }}
       >
-        {body}
+        <Box
+          ref={playerArea}
+          tabIndex={-1}
+          onFocus={(event) => {
+            lastFocused.current = event.target;
+          }}
+          sx={{ position: 'absolute', inset: 0, '&:focus': { outline: 'none' } }}
+        >
+          {body}
+        </Box>
         {shown && !playingThis && (!outcome || outcome.status === 'ok') && (
           // On-screen display while the zapped channel is pending: its name, immediately.
           <Box

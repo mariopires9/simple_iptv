@@ -63,7 +63,9 @@ export function ChannelList({
   const listId = useId();
   const hintId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(() => Math.max(0, Math.min(cache.total - 1, initialIndex)));
+  const [selected, setActive] = useState(initialIndex);
+  // Clamped to the current total (the list may shrink under the selection).
+  const active = Math.max(0, Math.min(cache.total - 1, selected));
   const [, pageArrived] = useReducer((n: number) => n + 1, 0);
   const total = cache.total;
 
@@ -95,14 +97,18 @@ export function ChannelList({
   const firstIndex = Math.max(0, (visible?.startIndex ?? 0) - OVERSCAN);
   const lastIndex = visible ? visible.endIndex + OVERSCAN : -1;
 
+  // This list's pin on the shared cache (another list may pin its own active row).
+  const [pinOwner] = useState(() => ({}));
+  useEffect(() => () => cache.pin(undefined, pinOwner), [cache, pinOwner]);
+
   // Fetch the pages covering the viewport (plus overscan) and the active row — two separate
   // ranges, so jumping with End does not fetch every page in between.
   useEffect(() => {
-    cache.pin(active < total ? active : undefined);
+    cache.pin(active < total ? active : undefined, pinOwner);
     if (active < total) cache.ensure(active, active);
     // Last, so eviction keeps the pages around the viewport.
     if (lastIndex >= 0) cache.ensure(firstIndex, lastIndex);
-  }, [cache, firstIndex, lastIndex, active, total]);
+  }, [cache, pinOwner, firstIndex, lastIndex, active, total]);
 
   // Mount only: start at the initial row (the playing channel in the "Channels" panel).
   const initialActive = useRef(active);

@@ -31,7 +31,12 @@ import {
 import { CategoryNav } from './CategoryNav';
 import { ChannelList } from './ChannelList';
 import { ChannelsOverlay } from './ChannelsOverlay';
-import { LivePlayer, type LiveSelection, type SelectionVia } from './LivePlayer';
+import {
+  LivePlayer,
+  type LivePlayerHandle,
+  type LiveSelection,
+  type SelectionVia,
+} from './LivePlayer';
 import { loadLiveSource, type LiveSourceState } from './liveSource';
 import { PageCache } from './pageCache';
 import { createPager } from './pagers';
@@ -235,10 +240,11 @@ export function LiveScreen() {
   const onPrevious = useCallback(() => zap(-1), [zap]);
   const onNext = useCallback(() => zap(1), [zap]);
   const toggleChannels = useCallback(() => setChannelsOpen((open) => !open), []);
+  const playerHandle = useRef<LivePlayerHandle>(null);
   const closeChannels = useCallback(() => {
     setChannelsOpen(false);
     // Back to the player, so its shortcuts keep working.
-    document.querySelector<HTMLElement>('[data-testid="live-player"] [role="region"]')?.focus();
+    playerHandle.current?.focus();
   }, []);
   const onOverlayPlay = useCallback(
     (channel: Channel, index: number) => {
@@ -331,12 +337,14 @@ export function LiveScreen() {
           onNext={onNext}
           onToggleChannelList={toggleChannels}
           onClose={closePlayer}
+          handleRef={playerHandle}
           overlay={
             channelsOpen &&
             readyPager &&
             category && (
               <ChannelsOverlay
-                pager={readyPager.cache.pager}
+                cache={readyPager.cache}
+                pagerKey={readyPager.key}
                 categoryName={category.name}
                 favorites={favorites}
                 playingKey={playing.channel.key}

@@ -51,6 +51,47 @@ describe('useWatchTimer', () => {
     expect(onWatched).toHaveBeenLastCalledWith('b');
   });
 
+  it('`stalled` mid-play does not stop the count (normal MSE playback)', () => {
+    const onWatched = vi.fn();
+    const view = render(<Harness itemKey="a" onWatched={onWatched} />);
+    const video = view.getByTestId('video');
+    fire(video, 'playing');
+    advance(2_000);
+    fire(video, 'stalled');
+    advance(RECENT_AFTER_MS - 2_000);
+    expect(onWatched).toHaveBeenCalledExactlyOnceWith('a');
+  });
+
+  it('resumes on timeupdate progress after a wait, without a new `playing`', () => {
+    const onWatched = vi.fn();
+    const view = render(<Harness itemKey="a" onWatched={onWatched} />);
+    const video = view.getByTestId('video') as HTMLVideoElement;
+    let time = 0;
+    let paused = false;
+    Object.defineProperty(video, 'currentTime', { configurable: true, get: () => time });
+    Object.defineProperty(video, 'paused', { configurable: true, get: () => paused });
+    fire(video, 'playing');
+    advance(1_000);
+    fire(video, 'waiting');
+    advance(30_000);
+    // Same position: still buffering.
+    fire(video, 'timeupdate');
+    time = 1;
+    fire(video, 'timeupdate');
+    advance(RECENT_AFTER_MS - 1_001);
+    expect(onWatched).not.toHaveBeenCalled();
+    advance(1);
+    expect(onWatched).toHaveBeenCalledOnce();
+
+    // Paused: a timeupdate does not count.
+    view.rerender(<Harness itemKey="b" onWatched={onWatched} />);
+    paused = true;
+    time = 2;
+    fire(video, 'timeupdate');
+    advance(RECENT_AFTER_MS * 2);
+    expect(onWatched).toHaveBeenCalledOnce();
+  });
+
   it('does nothing without a key, and stops counting when the key changes', () => {
     const onWatched = vi.fn();
     const view = render(<Harness itemKey={undefined} onWatched={onWatched} />);
