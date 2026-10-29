@@ -66,7 +66,7 @@ Allowed statuses (exactly one per story):
 | FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | Backlog |
 | UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | Backlog |
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
-| TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Backlog |
+| TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | In Progress |
 | LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Backlog |
 
 ## Post-MVP
