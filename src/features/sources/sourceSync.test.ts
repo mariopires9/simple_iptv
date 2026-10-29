@@ -2,7 +2,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerTaskError } from '@/core/worker';
 import {
+  beginRemoval,
   cancelSourceSync,
+  endRemoval,
   getSourceSyncSnapshot,
   isSourceSyncRunning,
   resetSourceSyncs,
@@ -102,6 +104,51 @@ describe('startSourceSync', () => {
     fake.pending[0]?.reject(error);
     if (run.dispatch !== 'started') throw new Error('not started');
     await expect(run.done).resolves.toEqual({ status: 'failed', error });
+  });
+
+  // Review fix 3: a cancel while the worker module is still loading awaits the real end.
+  it('cancel while the worker is still loading: no task is started, cancel awaits the end', async () => {
+    const fake = fakeWorker();
+    let release!: () => void;
+    const loading = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = startSourceSync({ id: 's1', kind: 'xtream' }, async () => {
+      await loading;
+      return fake.worker();
+    });
+    expect(isSourceSyncRunning('s1')).toBe(true);
+    let cancelDone = false;
+    const cancelled = cancelSourceSync('s1').then(() => {
+      cancelDone = true;
+    });
+    await Promise.resolve();
+    expect(cancelDone).toBe(false);
+    release();
+    await cancelled;
+    const run = await started;
+    if (run.dispatch !== 'started') throw new Error('not started');
+    await expect(run.done).resolves.toEqual({ status: 'cancelled' });
+    expect(fake.runTask).not.toHaveBeenCalled();
+    expect(isSourceSyncRunning('s1')).toBe(false);
+  });
+
+  // Review fix 2: a list being removed cannot start a sync; worker-side syncs are waited out.
+  it('beginRemoval blocks new syncs, cancels the tracked one and waits for the worker', async () => {
+    const fake = fakeWorker();
+    const first = await startSourceSync({ id: 's1', kind: 'm3u-url' }, fake.worker);
+    expect(first.dispatch).toBe('started');
+    await beginRemoval('s1', fake.worker);
+    expect(fake.pending[0]?.options.signal?.aborted).toBe(true);
+    // Once for the cancelled tracked sync, once for any other sync of the list in the worker.
+    expect(fake.waitIdle).toHaveBeenCalledTimes(2);
+    expect((await startSourceSync({ id: 's1', kind: 'm3u-url' }, fake.worker)).dispatch).toBe(
+      'removing',
+    );
+    endRemoval('s1');
+    expect((await startSourceSync({ id: 's1', kind: 'm3u-url' }, fake.worker)).dispatch).toBe(
+      'started',
+    );
   });
 
   it('a worker that cannot be loaded → "unavailable", nothing left running', async () => {

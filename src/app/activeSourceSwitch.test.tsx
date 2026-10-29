@@ -7,13 +7,10 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { catalogRepo, settingsRepo, sourcesRepo, wipeAll, type Source } from '@/core/db';
-import {
-  forgetActiveSource,
-  invalidateSourcesPresence,
-  setSourcesPresent,
-} from '@/features/sources';
+import { forgetActiveSource } from '@/core/session';
+import { invalidateSourcesPresence, setSourcesPresent } from '@/features/sources';
 import { t } from '@/i18n';
 import { ToastProvider } from '@/ui/state';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
@@ -72,6 +69,7 @@ function renderApp(path: string, width = 1400) {
 
 beforeEach(() => setSourcesPresent(true));
 afterEach(async () => {
+  vi.restoreAllMocks();
   media?.restore();
   media = undefined;
   invalidateSourcesPresence();
@@ -106,6 +104,23 @@ describe('SRC-08 — top-bar list selector', () => {
     expect(await selector('Bravo list')).toBeInTheDocument();
     expect(await settingsRepo.get('activeSourceId')).toBe('b');
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  });
+
+  // Review fix 6: switch first; on failure stay where we are and say so.
+  it('a failed switch shows an error and does not leave the current screen', async () => {
+    await seed();
+    const { user, router } = renderApp('/live/category/a1');
+    expect(await screen.findByRole('link', { name: 'Alpha news' })).toBeInTheDocument();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(settingsRepo, 'set').mockRejectedValueOnce(new Error('quota'));
+    await user.click(await selector('Alpha list'));
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Bravo list' }));
+
+    expect(await screen.findAllByText(t.sources.myLists.toasts.switchFailed)).not.toHaveLength(0);
+    expect(router.state.location.pathname).toBe('/live/category/a1');
+    expect(await selector('Alpha list')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Alpha news' })).toBeInTheDocument();
+    expect(await settingsRepo.get('activeSourceId')).toBe('a');
   });
 
   it('"Manage lists…" opens My lists', async () => {
@@ -147,6 +162,9 @@ describe('SRC-08 AC4 — switching re-renders Live with the other list, without 
     const { user, router } = renderApp('/live');
     expect(await screen.findByRole('link', { name: 'Alpha news' })).toBeInTheDocument();
     const banner = screen.getByRole('banner');
+    // Review fixes 5/7/9: the screen reacts to the session store; nothing is remounted.
+    const main = screen.getByRole('main');
+    const heading = screen.getByRole('heading', { level: 1, name: t.live.title });
 
     await user.click(await selector('Alpha list'));
     await user.click(await screen.findByRole('menuitemradio', { name: 'Bravo list' }));
@@ -155,6 +173,8 @@ describe('SRC-08 AC4 — switching re-renders Live with the other list, without 
     expect(screen.queryByRole('link', { name: 'Alpha news' })).toBeNull();
     // Same top bar element: the app was not reloaded, only the screen re-rendered.
     expect(screen.getByRole('banner')).toBe(banner);
+    expect(screen.getByRole('main')).toBe(main);
+    expect(screen.getByRole('heading', { level: 1, name: t.live.title })).toBe(heading);
     expect(router.state.location.pathname).toBe('/live');
   });
 

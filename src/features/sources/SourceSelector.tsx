@@ -17,8 +17,10 @@ import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import { useEffect, useId, useState, useSyncExternalStore } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
+import type { Source } from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
+import { useToast } from '@/ui/state';
 import { setActiveSource, useActiveSource } from './activeSource';
 import { AddListDialog } from './AddListDialog';
 import { effectiveActiveId, reloadSources, sortSources, useSourcesList } from './sourcesList';
@@ -47,29 +49,40 @@ export function pathAfterSwitch(pathname: string, search: string): string | unde
 }
 
 export function SourceSelector() {
-  const text = t.sources.selector;
   const presence = useSyncExternalStore(subscribeSourcesPresent, getSourcesPresenceSnapshot);
   const present = presence.present === true;
   const { sources } = useSourcesList(present);
   const active = useActiveSource();
+  // Settings pages are not guarded: ask once on mount if nobody has yet (later changes are
+  // published by whoever adds or removes a list).
+  useEffect(() => {
+    if (getSourcesPresent() === undefined) hasSources().catch(() => undefined);
+  }, []);
+  // A read once lists exist (the cached list may predate a change in another screen); joins a
+  // read already in flight (e.g. My lists opening at the same time).
+  useEffect(() => {
+    if (present) reloadSources('shared').catch(() => undefined);
+  }, [present]);
+
+  if (!present || sources === undefined || !active.known) return null;
+  return <SelectorMenu sources={sources} activeId={effectiveActiveId(sources, active.id)} />;
+}
+
+function SelectorMenu({
+  sources,
+  activeId,
+}: {
+  sources: readonly Source[];
+  activeId: string | undefined;
+}) {
+  const text = t.sources.selector;
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [adding, setAdding] = useState(false);
   const buttonId = useId();
   const menuId = useId();
-  // Settings pages are not guarded: ask once on mount if nobody has yet (later changes are
-  // published by whoever adds or removes a list).
-  useEffect(() => {
-    if (getSourcesPresent() === undefined) hasSources().catch(() => undefined);
-  }, []);
-  // A fresh read once lists exist (the cached list may predate a change in another screen).
-  useEffect(() => {
-    if (present) reloadSources().catch(() => undefined);
-  }, [present]);
-
-  if (!present || sources === undefined || !active.known) return null;
-  const activeId = effectiveActiveId(sources, active.id);
   const ordered = sortSources(sources, activeId);
   const current = ordered.find((s) => s.id === activeId);
   const close = () => setAnchor(null);
@@ -77,13 +90,16 @@ export function SourceSelector() {
   async function choose(id: string) {
     close();
     if (id === activeId) return;
+    // Switch first; leave items of the previous list only once the switch has happened.
     const target = pathAfterSwitch(location.pathname, location.search);
-    if (target !== undefined) void navigate(target, { replace: true });
     try {
       await setActiveSource(id);
     } catch (error) {
       log.warn('Switching the active source failed', { error });
+      toast.show({ message: t.sources.myLists.toasts.switchFailed, severity: 'error' });
+      return;
     }
+    if (target !== undefined) void navigate(target, { replace: true });
   }
 
   return (
@@ -98,7 +114,7 @@ export function SourceSelector() {
         onClick={(event) => {
           setAnchor(event.currentTarget);
           // Counts or names may have changed (sync, another tab): refresh in the background.
-          reloadSources().catch(() => undefined);
+          reloadSources('shared').catch(() => undefined);
         }}
         endIcon={<ArrowDropDownRounded />}
         sx={{ minWidth: 0, maxWidth: '100%', minHeight: 44, textTransform: 'none' }}

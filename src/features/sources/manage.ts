@@ -5,17 +5,13 @@ import { credentialVault } from '@/core/crypto';
 import { settingsRepo, sourcesRepo } from '@/core/db';
 import { log } from '@/core/log';
 import { setActiveSource } from './activeSource';
-import { cancelSourceSync } from './sourceSync';
+import { beginRemoval, endRemoval, type SyncWorker } from './sourceSync';
 import { setSourcesPresent } from './sourcesPresence';
 import { effectiveActiveId, reloadSources, sortSources } from './sourcesList';
-import { MAX_SOURCE_NAME_LENGTH, passwordRef } from './xtream/saveXtreamSource';
+import { sourceName } from './sourceName';
+import { passwordRef } from './xtream/saveXtreamSource';
 
-/** Trimmed and cut by code points (never inside a surrogate pair); empty → `fallback`. */
-export function sourceName(name: string, fallback: string): string {
-  return Array.from(name.trim() || fallback)
-    .slice(0, MAX_SOURCE_NAME_LENGTH)
-    .join('');
-}
+export { sourceName } from './sourceName';
 
 export class SourceNotFoundError extends Error {
   override readonly name = 'SourceNotFoundError';
@@ -103,13 +99,26 @@ export interface RemoveSourceResult {
 }
 
 /**
- * Removes a list and everything stored for it (SRC-08 AC3, FND-05 AC4): a running sync of it is
- * cancelled first, then the source row and all its data go in one transaction, and its vault
- * secret is deleted. If it was the active list, the first remaining one (display order) becomes
- * active; the onboarding guard is told whether any list is left.
+ * Removes a list and everything stored for it (SRC-08 AC3, FND-05 AC4). First no new sync of it
+ * may start, the tracked one is cancelled and any other sync of it in the worker (e.g. a
+ * background refresh) is waited out; then the source row and all its data go in one transaction
+ * (a sync that still got through writes nothing: the worker's writes require the source row), and
+ * its vault secret is deleted. If it was the active list, the first remaining one (display order)
+ * becomes active; the onboarding guard is told whether any list is left.
  */
-export async function removeSource(id: string): Promise<RemoveSourceResult> {
-  await cancelSourceSync(id);
+export async function removeSource(
+  id: string,
+  worker?: () => Promise<SyncWorker>,
+): Promise<RemoveSourceResult> {
+  try {
+    await beginRemoval(id, worker);
+    return await removeNow(id);
+  } finally {
+    endRemoval(id);
+  }
+}
+
+async function removeNow(id: string): Promise<RemoveSourceResult> {
   const [source, before, storedActive] = await Promise.all([
     sourcesRepo.get(id),
     sourcesRepo.list(),

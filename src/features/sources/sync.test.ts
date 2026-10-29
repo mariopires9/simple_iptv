@@ -34,6 +34,14 @@ describe('startInitialSync', () => {
     expect(warnings()[0]?.context).toContain('source-1');
   });
 
+  // Review fix 1: a sync already running is not reported as a new one.
+  it('a sync of the list already running → "busy" (not "started"), nothing dispatched', async () => {
+    runTask.mockReturnValue(new Promise(() => undefined));
+    await expect(startInitialSync('source-1')).resolves.toBe('started');
+    await expect(startInitialSync('source-1')).resolves.toBe('busy');
+    expect(runTask).toHaveBeenCalledTimes(1);
+  });
+
   it('a task that cannot be started → "unavailable" (no false "loading" claim)', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     runTask.mockImplementation(() => {

@@ -28,15 +28,6 @@ import { effectiveActiveId, reloadSources, sortSources, useSourcesList } from '.
 
 export const ONBOARDING_PATH = '/onboarding';
 
-/** Id of the page heading (one instance of the page exists at a time). */
-const TITLE_ID = 'my-lists-title';
-
-/**
- * List whose heading gets the focus on the next render of the page: after "Use this" the cards
- * re-order (and the shell remounts the page), so focus follows the list that became active.
- */
-let pendingFocusId: string | undefined;
-
 export interface SourcesScreenProps {
   /** Tests: the worker used by "Refresh". */
   worker?: () => Promise<SyncWorker>;
@@ -54,10 +45,16 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removed, setRemoved] = useState(false);
   const headings = useRef(new Map<string, HTMLHeadingElement>());
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  /**
+   * List whose heading gets the focus once it is shown as active: after "Use this" the cards
+   * re-order, so focus follows the list that became active.
+   */
+  const pendingFocusId = useRef<string | undefined>(undefined);
 
   // Always a fresh read when the page opens (counts may have changed since the last one).
   useEffect(() => {
-    reloadSources().catch(() => undefined);
+    reloadSources('shared').catch(() => undefined);
   }, []);
 
   const ready = sources !== undefined && active.known;
@@ -65,21 +62,22 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
   const ordered = ready ? sortSources(sources, activeId) : [];
 
   useEffect(() => {
-    if (pendingFocusId === undefined) return;
-    const heading = headings.current.get(pendingFocusId);
-    if (heading && pendingFocusId === activeId) {
-      pendingFocusId = undefined;
+    const pending = pendingFocusId.current;
+    if (pending === undefined) return;
+    const heading = headings.current.get(pending);
+    if (heading && pending === activeId) {
+      pendingFocusId.current = undefined;
       heading.focus();
     }
   });
 
   async function use(source: Source) {
-    pendingFocusId = source.id;
+    pendingFocusId.current = source.id;
     try {
       await setActiveSource(source.id);
       toast.show({ message: text.toasts.switched(source.name) });
     } catch (failure) {
-      pendingFocusId = undefined;
+      pendingFocusId.current = undefined;
       log.warn('Switching the active source failed', { error: failure });
       toast.show({ message: text.toasts.switchFailed, severity: 'error' });
     }
@@ -124,13 +122,8 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
       setRemoved(true);
       setRemoving(undefined);
       setRemoveBusy(false);
-      if (result.remaining === 0) {
-        void navigate(ONBOARDING_PATH, { replace: true });
-      } else {
-        // Removing the active list remounts the page (new active list, no dialog left): focus
-        // its heading now; otherwise `onExited` does it once the dialog has closed.
-        document.getElementById(TITLE_ID)?.focus();
-      }
+      // Otherwise the dialog's `onExited` moves the focus to the page heading.
+      if (result.remaining === 0) void navigate(ONBOARDING_PATH, { replace: true });
     } catch (failure) {
       log.warn('Removing the source failed', { sourceId: target.id, error: failure });
       toast.show({ message: text.toasts.removeFailed(target.name), severity: 'error' });
@@ -206,7 +199,7 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
     <Box sx={{ maxWidth: 720, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, flexWrap: 'wrap' }}>
         <Typography
-          id={TITLE_ID}
+          ref={titleRef}
           tabIndex={-1}
           variant="h1"
           sx={{ flex: 1, minWidth: 0, outline: 'none' }}
@@ -226,7 +219,8 @@ export function SourcesScreen({ worker }: SourcesScreenProps = {}) {
         onConfirm={() => void confirmRemove()}
         removed={removed}
         onExited={() => {
-          if (removed) document.getElementById(TITLE_ID)?.focus();
+          // The removed list's card (and its Remove button) is gone: focus the page heading.
+          if (removed) titleRef.current?.focus();
           setRemoved(false);
         }}
       />

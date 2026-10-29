@@ -8,7 +8,7 @@ import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router';
-import { SourceSelectorSlot, useActiveSourceChanges } from '@/features/sources';
+import { SourceSelectorSlot } from '@/features/sources';
 import { pageMargin } from '@/ui/theme/tokens';
 import { BottomNav } from './shell/BottomNav';
 import { navIdForPath } from './shell/navItems';
@@ -41,9 +41,6 @@ export function AppShell({
   searchAction,
 }: AppShellProps) {
   const layout = useNavLayout();
-  // SRC-08 AC4: switching the active list remounts the screen, so whatever it shows is re-read
-  // for the new list (no reload; the chrome stays mounted and keeps the focus on the selector).
-  const activeSourceChanges = useActiveSourceChanges();
   // The current destination follows the route; the nav items are links (FND-04).
   const selected = navIdForPath(useLocation().pathname);
   const isMobile = layout === 'bottom';
@@ -62,7 +59,6 @@ export function AppShell({
         {!isMobile && <NavRail expanded={layout === 'expanded'} selected={selected} />}
         <Box
           component="main"
-          key={activeSourceChanges}
           sx={{
             flex: 1,
             minWidth: 0,

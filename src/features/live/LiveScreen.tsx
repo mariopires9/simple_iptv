@@ -38,6 +38,7 @@ import {
   type SelectionVia,
 } from './LivePlayer';
 import { loadLiveSource, type LiveSourceState } from './liveSource';
+import { useActiveSource } from './useActiveSource';
 import { PageCache } from './pageCache';
 import { createPager } from './pagers';
 import { useFillHeight } from './useFillHeight';
@@ -170,6 +171,28 @@ export function LiveScreen() {
     setChannelsOpen(false);
     navigate(categoryPath(categoryId), { replace: true });
   }, [navigate, categoryId]);
+
+  // SRC-08 AC4: another list became active → close the player, leave a category of the previous
+  // list (virtual ones are kept) and reload the categories. The first known value is not a change.
+  const active = useActiveSource();
+  const seenActive = useRef<{ id: string | undefined } | undefined>(undefined);
+  useEffect(() => {
+    if (!active.known) return;
+    const previous = seenActive.current;
+    seenActive.current = { id: active.id };
+    if (previous === undefined || previous.id === active.id) return;
+    selectionRef.current = undefined;
+    setSelection(undefined);
+    setChannelsOpen(false);
+    const virtual = Object.values(VIRTUAL_CATEGORY_IDS).includes(categoryId);
+    if (!virtual || channelKey !== undefined) {
+      navigate(categoryPath(virtual ? categoryId : DEFAULT_CATEGORY_ID), { replace: true });
+    }
+    setSource({ status: 'loading' });
+    setAttempt((n) => n + 1);
+    // Only a change of the active list triggers this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active.known, active.id]);
 
   // Restore (reload, deep link) or follow an outside change of `?channel=`.
   const sourceId = ready?.source.id;

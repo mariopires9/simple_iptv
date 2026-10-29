@@ -28,6 +28,8 @@ const INITIAL = [
     'activeSource.ts',
     'SourceSelectorSlot.tsx',
   ].map((file) => join(SRC, 'features', 'sources', file)),
+  // The session store loads Dexie lazily too (any screen may import it).
+  ...sourceFiles(join(SRC, 'core', 'session')),
 ];
 
 /** Static, non-type imports of the core/db barrel (or any of its modules). */

@@ -311,6 +311,10 @@ describe('SRC-08 AC3 — remove', () => {
     await user.click(within(dialog).getByRole('button', { name: text.remove.confirm }));
 
     await waitFor(() => expect(cardHeadings()).toEqual(['Beta', 'Laptop list', 'Sports list']));
+    // Review: focus lands on the page heading (the page stays mounted after the switch).
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: text.title })).toHaveFocus(),
+    );
     expect(await settingsRepo.get('activeSourceId')).toBe('beta');
     expect(within(card('beta')).getByText(text.active)).toBeInTheDocument();
     expect(await vaultStore.getSecret('source:living:password')).toBeUndefined();
