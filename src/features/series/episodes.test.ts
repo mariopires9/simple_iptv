@@ -2,10 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Episode, Season } from '@/core/db';
 import {
+  SPECIALS_SEASON,
   continueTarget,
   customSeasonName,
   episodeState,
   nextEpisode,
+  orderSeasons,
   parseEpisodeMarker,
   playOrder,
   type EpisodeProgress,
@@ -134,5 +136,38 @@ describe('parseEpisodeMarker', () => {
     ['Show S01E00', undefined],
   ])('%s', (name, expected) => {
     expect(parseEpisodeMarker(name)).toEqual(expected);
+  });
+});
+
+describe('specials (season 0, review #5)', () => {
+  const withSpecials: Season[] = [
+    { number: SPECIALS_SEASON, episodes: [ep(0, 1)] },
+    { number: 2, episodes: [ep(2, 1)] },
+    { number: 1, episodes: [ep(1, 1)] },
+  ];
+
+  it('come after the regular seasons', () => {
+    expect(orderSeasons(withSpecials).map((s) => s.number)).toEqual([1, 2, 0]);
+    expect(playOrder(withSpecials).map((e) => e.externalId)).toEqual(['1-1', '2-1', '0-1']);
+  });
+
+  it('are not the default start', () => {
+    expect(continueTarget(withSpecials, undefined, new Map())).toMatchObject({
+      kind: 'start',
+      episode: { externalId: '1-1' },
+    });
+  });
+
+  it('the last regular episode does not move on into the specials', () => {
+    expect(nextEpisode(withSpecials, ep(1, 1).key)?.externalId).toBe('2-1');
+    expect(nextEpisode(withSpecials, ep(2, 1).key)).toBeUndefined();
+  });
+
+  it('within the specials, the next special follows', () => {
+    const specials: Season[] = [{ number: 0, episodes: [ep(0, 2), ep(0, 1)] }];
+    expect(nextEpisode(specials, ep(0, 1).key)?.externalId).toBe('0-2');
+    expect(continueTarget(specials, undefined, new Map())).toMatchObject({
+      episode: { externalId: '0-1' },
+    });
   });
 });

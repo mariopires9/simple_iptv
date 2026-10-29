@@ -20,7 +20,7 @@ import {
   loadHome,
   loadHomeFavorites,
   loadRecentChannels,
-  resumeFraction,
+  continueWatching,
 } from './data';
 import { OTHER, SOURCE, seedCatalog } from './test-utils';
 
@@ -69,11 +69,13 @@ describe('continue watching (FAV-02 AC2)', () => {
     [{ positionSec: 59, durationSec: 6000 }, false],
     [{ positionSec: 60, durationSec: 6000 }, true],
     [{ positionSec: 5640, durationSec: 6000 }, true], // 94 %
-    [{ positionSec: 5700, durationSec: 6000 }, false], // 95 %
+    [{ positionSec: 5700, durationSec: 6000 }, true], // 95 %: still resumable (VOD-03)
+    [{ positionSec: 5760, durationSec: 6000 }, false], // 96 %
     [{ positionSec: 600, durationSec: 6000, completed: true }, false],
-    [{ positionSec: 600 }, false],
-    [{ positionSec: 600, durationSec: 0 }, false],
-  ])('resumeFraction(%o) → resumable: %s', (fields, expected) => {
+    // Unknown duration: resumable, as on the movie details (VOD-03).
+    [{ positionSec: 600 }, true],
+    [{ positionSec: 600, durationSec: 0 }, true],
+  ])('movie %o → in Continue watching: %s', (fields, expected) => {
     const entry = {
       itemKey: movie('m1'),
       sourceId: SOURCE,
@@ -82,7 +84,45 @@ describe('continue watching (FAV-02 AC2)', () => {
       completed: false,
       ...fields,
     };
-    expect(resumeFraction(entry) !== undefined).toBe(expected);
+    expect(continueWatching(entry) !== undefined).toBe(expected);
+  });
+
+  it.each([
+    ['in progress', { episodeKey: 'e', positionSec: 300, durationSec: 1200 }, 0.25],
+    ['moved on to the next episode', { episodeKey: 'e', positionSec: 0 }, undefined],
+    ['just started', { episodeKey: 'e', positionSec: 10, durationSec: 1200 }, 10 / 1200],
+  ] as const)('series %s → shown, progress %s', (_, fields, fraction) => {
+    const entry = {
+      itemKey: series('s1'),
+      sourceId: SOURCE,
+      type: 'series' as const,
+      lastWatchedAt: 1,
+      completed: false,
+      ...fields,
+    };
+    expect(continueWatching(entry)).toEqual({ fraction });
+  });
+
+  it.each([
+    ['finished (last episode)', { episodeKey: 'e', completed: true }],
+    ['no episode', {}],
+  ])('series %s → not shown', (_, fields) => {
+    const entry = {
+      itemKey: series('s1'),
+      sourceId: SOURCE,
+      type: 'series' as const,
+      lastWatchedAt: 1,
+      completed: false,
+      ...fields,
+    };
+    expect(continueWatching(entry)).toBeUndefined();
+    expect(
+      continueWatching({
+        ...entry,
+        itemKey: episodeItemKey(series('s1'), '1'),
+        episodeKey: undefined,
+      }),
+    ).toBeUndefined();
   });
 
   it('movies and episodes with progress, newest first, at most 20, with the progress', async () => {
@@ -177,6 +217,44 @@ describe('continue watching — series episodes (SER-02/03)', () => {
     ]);
     // The episode key is never looked up as a catalogue item.
     expect(getMany.mock.calls.flatMap(([, keys]) => keys)).not.toContain(episode);
+  });
+});
+
+describe('continue watching — finished episode (SER-03 review #1)', () => {
+  it('a series whose episode was finished stays, on its next episode', async () => {
+    const e1 = episodeItemKey(series('s2'), '1');
+    const e2 = episodeItemKey(series('s2'), '2');
+    await catalogRepo.putSeriesDetails({
+      seriesKey: series('s2'),
+      sourceId: SOURCE,
+      fetchedAt: 1,
+      seasons: [
+        {
+          number: 1,
+          episodes: [
+            { key: e1, externalId: '1', season: 1, number: 1, title: 'A', streamPath: '' },
+            { key: e2, externalId: '2', season: 1, number: 2, title: 'B', streamPath: '' },
+          ],
+        },
+      ],
+    });
+    // The writes of features/series `saveEpisodeProgress` when E1 is finished and E2 follows:
+    // E1's own entry completed, the series entry (written exactly) pointing at E2 from 0.
+    await historyRepo.upsert({
+      itemKey: e1,
+      positionSec: 1190,
+      durationSec: 1200,
+      completed: true,
+    });
+    await historyRepo.set({ itemKey: series('s2'), episodeKey: e2, positionSec: 0 });
+    const cards = await loadContinueWatching(SOURCE);
+    expect(cards).toEqual([
+      expect.objectContaining({
+        href: '/series/s2',
+        progress: undefined,
+        episode: { season: 1, number: 2 },
+      }),
+    ]);
   });
 });
 

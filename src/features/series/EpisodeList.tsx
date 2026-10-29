@@ -16,13 +16,17 @@ import { formatDuration, formatInteger, formatPercent } from '@/ui/catalog/forma
 import { isLoadableImage } from '@/ui/images';
 import { visuallyHidden } from '@/ui/state';
 import { episodeName } from './EpisodePlayer';
-import { customSeasonName, episodeState, type EpisodeProgress } from './episodes';
+import { SPECIALS_SEASON, customSeasonName, episodeState, type EpisodeProgress } from './episodes';
 
 /** Above this many seasons the selector is a dropdown (docs/UX_UI.md §4.7). */
 export const MAX_SEASON_TABS = 6;
 
 export function seasonLabel(season: Pick<Season, 'number' | 'name'>): string {
-  return customSeasonName(season) ?? t.series.details.season(formatInteger(season.number));
+  const own = customSeasonName(season);
+  if (own !== undefined) return own;
+  return season.number === SPECIALS_SEASON
+    ? t.series.details.specials
+    : t.series.details.season(formatInteger(season.number));
 }
 
 export interface SeasonsPanelProps {

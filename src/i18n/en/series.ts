@@ -63,6 +63,8 @@ export const series = {
     /** SER-02 AC2: a season without a usable name. */
     season: (number: string) => `Season ${number}`,
     /** Label of the season selector. */
+    /** Season 0 of the panels. */
+    specials: 'Specials',
     seasons: 'Seasons',
     /** Accessible name of the episode list. */
     episodesOf: (season: string) => `Episodes of ${season}`,

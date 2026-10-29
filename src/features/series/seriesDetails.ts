@@ -107,6 +107,10 @@ export async function loadSeriesDetails(
   const details = toSeriesDetails(series, info, identity, now());
   try {
     await catalogRepo.putSeriesDetails(details);
+    // The grid card's "N seasons" (SER-01), without reading the details per grid page.
+    if (series.seasonCount !== details.seasons.length) {
+      await catalogRepo.setSeasonCount(series.key, details.seasons.length);
+    }
   } catch (error) {
     // The details still show; only the cache is lost.
     log.warn('series: caching the details failed', {

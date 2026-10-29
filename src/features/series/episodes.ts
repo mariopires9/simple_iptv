@@ -3,18 +3,34 @@
 import type { Episode, HistoryEntry, Season } from '@/core/db';
 import { resumePosition, watchedFraction } from '@/ui/vod/resume';
 
-/** Every episode in playing order: seasons ascending, then episode numbers. */
-export function playOrder(seasons: readonly Season[]): Episode[] {
-  return [...seasons]
-    .sort((a, b) => a.number - b.number)
-    .flatMap((season) => [...season.episodes].sort((a, b) => a.number - b.number));
+/** Season 0: the panels' "Specials" (extras, not part of the story order). */
+export const SPECIALS_SEASON = 0;
+
+/** Display and playing order of the seasons: regular seasons ascending, specials last. */
+export function orderSeasons<S extends Pick<Season, 'number'>>(seasons: readonly S[]): S[] {
+  const rank = (n: number) => (n === SPECIALS_SEASON ? Number.POSITIVE_INFINITY : n);
+  return [...seasons].sort((a, b) => rank(a.number) - rank(b.number));
 }
 
-/** The episode after `key` (crossing into the next season); `undefined` after the last one. */
+/** Every episode in playing order: regular seasons ascending, then specials; episode numbers. */
+export function playOrder(seasons: readonly Season[]): Episode[] {
+  return orderSeasons(seasons).flatMap((season) =>
+    [...season.episodes].sort((a, b) => a.number - b.number),
+  );
+}
+
+/**
+ * The episode after `key` (crossing into the next regular season); `undefined` after the last
+ * one. The end of the regular seasons never moves on into the specials (SER-03 review #5).
+ */
 export function nextEpisode(seasons: readonly Season[], key: string): Episode | undefined {
   const order = playOrder(seasons);
   const index = order.findIndex((e) => e.key === key);
-  return index < 0 ? undefined : order[index + 1];
+  const current = order[index];
+  const next = index < 0 ? undefined : order[index + 1];
+  if (!current || !next) return undefined;
+  const special = (e: Episode) => e.season === SPECIALS_SEASON;
+  return special(next) && !special(current) ? undefined : next;
 }
 
 export function findEpisode(

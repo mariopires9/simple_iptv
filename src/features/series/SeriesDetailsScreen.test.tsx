@@ -277,6 +277,32 @@ describe('SeriesDetailsScreen — details (SER-02 AC1, AC5)', () => {
     await clearSeries('3003');
   });
 
+  it('specials (season 0) come last and are not the default season (review #5)', async () => {
+    await clearSeries('3003');
+    server.use(
+      http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, () =>
+        HttpResponse.json({
+          info: [],
+          seasons: [],
+          episodes: {
+            '0': [{ id: 800, episode_num: 1, title: 'Behind the scenes' }],
+            '1': [{ id: 801, episode_num: 1, title: 'Pilot' }],
+          },
+        }),
+      ),
+    );
+    await open('/series/3003');
+    const tabs = await screen.findByRole('tablist', { name: 'Seasons' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((t) => t.textContent),
+    ).toEqual(['Season 1', 'Specials']);
+    expect(screen.getByRole('tab', { name: 'Season 1' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: 'Play S1 E1' })).toBeInTheDocument();
+    await clearSeries('3003');
+  });
+
   it('no episodes on the server: says so; missing metadata leaves no gaps', async () => {
     await open('/series/3003');
     expect(await screen.findByRole('heading', { name: 'No episodes' })).toBeInTheDocument();
@@ -449,6 +475,40 @@ describe('SeriesDetailsScreen — playing episodes (SER-03)', () => {
     await waitFor(async () =>
       expect((await historyRepo.get(epKey('3001', '40102')))?.completed).toBe(true),
     );
+  });
+
+  it('paused, then Play now: the episode is still saved as watched (review #3/#8)', async () => {
+    await clearSeries('3001');
+    await open('/series/3001');
+    await screen.findByRole('tablist', { name: 'Seasons' });
+    await userEvent.click(playRow(1));
+    await screen.findByRole('region', { name: /S1 E2/ });
+    await attached();
+    // 285 / 300 = 95 %: not yet "watched", but within the last 20 s.
+    video().at(285, 300);
+    video().pause();
+    await waitFor(async () =>
+      expect(await historyRepo.get(epKey('3001', '40102'))).toMatchObject({
+        positionSec: 285,
+        completed: false,
+      }),
+    );
+    const card = await screen.findByTestId('next-episode-card');
+    await userEvent.click(within(card).getByRole('button', { name: 'Play now' }));
+    await screen.findByRole('region', { name: /S2 E1/ });
+    await waitFor(async () =>
+      expect(await historyRepo.get(epKey('3001', '40102'))).toMatchObject({ completed: true }),
+    );
+    // The series now points at the next episode, from the start (Home "Continue watching").
+    await waitFor(async () =>
+      expect(await historyRepo.get(seriesKey('3001'))).toMatchObject({
+        episodeKey: epKey('3001', '40201'),
+        positionSec: 0,
+        completed: false,
+      }),
+    );
+    act(() => lastView().onClose?.());
+    expect(await screen.findByRole('button', { name: 'Continue S2 E1' })).toBeInTheDocument();
   });
 
   it('Cancel hides the card and stays on the episode', async () => {

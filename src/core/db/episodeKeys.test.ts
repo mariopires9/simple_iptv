@@ -1,8 +1,11 @@
-// SER-02/03: episode keys (history entries per episode).
+// SER-02/03: episode keys (history entries per episode), the exact history write, prefix reads and
+// the series season count.
 import 'fake-indexeddb/auto';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
+  catalogRepo,
   episodeItemKey,
+  episodeKeyPrefix,
   historyRepo,
   isEpisodeItemKey,
   itemKey,
@@ -45,5 +48,57 @@ describe('episodeItemKey', () => {
     const key = episodeItemKey(series, '40101');
     const entry = await historyRepo.upsert({ itemKey: key, positionSec: 10 });
     expect(entry).toMatchObject({ sourceId: 's1', type: 'series', positionSec: 10 });
+  });
+});
+
+describe('historyRepo.set / listByKeyPrefix', () => {
+  const series = itemKey('s7', 'series', '1');
+
+  it('set writes exactly the given fields (no merge with the stored entry)', async () => {
+    await historyRepo.upsert({
+      itemKey: series,
+      positionSec: 300,
+      durationSec: 1200,
+      episodeKey: 'x',
+    });
+    const entry = await historyRepo.set({ itemKey: series, positionSec: 0, episodeKey: 'y' });
+    expect(entry).toEqual({
+      itemKey: series,
+      sourceId: 's7',
+      type: 'series',
+      lastWatchedAt: expect.any(Number) as number,
+      completed: false,
+      positionSec: 0,
+      episodeKey: 'y',
+    });
+    expect(await historyRepo.get(series)).toEqual(entry);
+    await expect(historyRepo.set({ itemKey: 'bad' })).rejects.toThrow(TypeError);
+  });
+
+  it('listByKeyPrefix reads only the keys under the prefix', async () => {
+    await historyRepo.upsert({ itemKey: episodeItemKey(series, 'a') });
+    await historyRepo.upsert({ itemKey: episodeItemKey(series, 'b') });
+    await historyRepo.upsert({ itemKey: episodeItemKey(itemKey('s7', 'series', '10'), 'c') });
+    const found = await historyRepo.listByKeyPrefix(episodeKeyPrefix(series));
+    expect(found.map((e) => e.itemKey).sort()).toEqual([
+      episodeItemKey(series, 'a'),
+      episodeItemKey(series, 'b'),
+    ]);
+    await expect(historyRepo.listByKeyPrefix('')).rejects.toThrow(TypeError);
+  });
+});
+
+describe('catalogRepo.setSeasonCount (review #7)', () => {
+  it('records the count on the series row without touching the search index', async () => {
+    await catalogRepo.replaceForSource('s8', 'series', {
+      categories: [],
+      items: [{ externalId: '1', name: 'Show' }],
+    });
+    await catalogRepo.putSearchIndex({ sourceId: 's8', data: '{}', builtAt: 1 });
+    const key = itemKey('s8', 'series', '1');
+    expect(await catalogRepo.setSeasonCount(key, 4)).toBe(true);
+    expect((await catalogRepo.get('series', key))?.seasonCount).toBe(4);
+    expect(await catalogRepo.getSearchIndex('s8')).toBeDefined();
+    expect(await catalogRepo.setSeasonCount(itemKey('s8', 'series', 'gone'), 1)).toBe(false);
   });
 });

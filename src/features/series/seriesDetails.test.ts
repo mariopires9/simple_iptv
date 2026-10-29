@@ -72,6 +72,15 @@ describe('loadSeriesDetails (Xtream)', () => {
     expect(requests).toHaveLength(2);
   });
 
+  it('records the number of seasons on the series row for the grid (review #7)', async () => {
+    await catalogRepo.replaceForSource('x9', 'series', {
+      categories: [],
+      items: [{ externalId: '3001', name: 'Example Drama' }],
+    });
+    await loadSeriesDetails(source, series('3001'));
+    expect((await catalogRepo.get('series', series('3001').key))?.seasonCount).toBe(2);
+  });
+
   it('a new sync or edited account refetches', async () => {
     await loadSeriesDetails(source, series('3001'));
     await loadSeriesDetails({ ...source, lastSyncAt: 11 }, series('3001'));

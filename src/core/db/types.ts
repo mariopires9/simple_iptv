@@ -178,6 +178,11 @@ export interface Movie extends CatalogItemBase {
 
 export interface Series extends CatalogItemBase {
   type: 'series';
+  /**
+   * Number of seasons, once the series details were fetched (SER-01 card caption). Not indexed;
+   * written by `catalogRepo.setSeasonCount`, dropped by the next sync.
+   */
+  seasonCount?: number;
   cover?: string;
   plot?: string;
   rating?: number;

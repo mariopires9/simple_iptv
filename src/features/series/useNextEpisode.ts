@@ -1,7 +1,7 @@
 // "Next episode in 10 s" (SER-03 AC2/AC3): the countdown starts when ≤ 20 s of the episode remain
 // (credits are not detectable, so `ended` also starts it), counts down once per second and then
-// moves on. Cancel stops it for this episode; seeking back before the last 20 s re-arms it. Without
-// a next episode nothing is offered.
+// moves on. It holds while the video is paused (not ended). Cancel stops it for this episode;
+// seeking back before the last 20 s re-arms it. Without a next episode nothing is offered.
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** Remaining time (s) from which the next episode is offered. */
@@ -51,17 +51,18 @@ export function useNextEpisode(
     };
   }, [video, hasNext]);
 
-  // The countdown itself.
+  // The countdown itself; a paused video (but not one that ended) holds it.
   const counting = phase.kind === 'counting';
   useEffect(() => {
     if (!counting) return undefined;
     const timer = setInterval(() => {
+      if (video && video.paused && !video.ended) return;
       setPhase((current) =>
         current.kind === 'counting' ? { kind: 'counting', seconds: current.seconds - 1 } : current,
       );
     }, 1000);
     return () => clearInterval(timer);
-  }, [counting]);
+  }, [counting, video]);
   const done = phase.kind === 'counting' && phase.seconds <= 0;
   useEffect(() => {
     if (done) advanceRef.current();

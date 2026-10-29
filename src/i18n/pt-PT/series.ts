@@ -56,6 +56,7 @@ export const series = {
     seasonCount: (count: number, formatted: string) =>
       count === 1 ? '1 temporada' : `${formatted} temporadas`,
     season: (number: string) => `Temporada ${number}`,
+    specials: 'Especiais',
     seasons: 'Temporadas',
     episodesOf: (season: string) => `Episódios da ${season}`,
     episodeCode: (number: string) => `E${number}`,

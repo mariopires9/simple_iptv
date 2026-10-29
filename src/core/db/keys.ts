@@ -117,6 +117,11 @@ export function episodeItemKey(seriesKey: string, episodeExternalId: string | nu
   return `${seriesKey}${EPISODE_MARKER}${ext}`;
 }
 
+/** Prefix shared by the episode keys of one series (`historyRepo.listByKeyPrefix`). */
+export function episodeKeyPrefix(seriesKey: string): string {
+  return `${seriesKey}${EPISODE_MARKER}`;
+}
+
 /** Whether `key` is an episode key ({@link episodeItemKey}), not a series or other item. */
 export function isEpisodeItemKey(key: string): boolean {
   const parsed = parseItemKey(key);

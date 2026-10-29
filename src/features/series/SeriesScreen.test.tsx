@@ -55,16 +55,7 @@ beforeAll(async () => {
     ],
   });
   // Details already fetched for one series: its card shows the number of seasons.
-  await catalogRepo.putSeriesDetails({
-    seriesKey: itemKey(SOURCE, 'series', 's1'),
-    sourceId: SOURCE,
-    fetchedAt: 1,
-    seasons: [
-      { number: 1, episodes: [] },
-      { number: 2, episodes: [] },
-      { number: 3, episodes: [] },
-    ],
-  });
+  await catalogRepo.setSeasonCount(itemKey(SOURCE, 'series', 's1'), 3);
   await settingsRepo.set('activeSourceId', SOURCE);
 });
 

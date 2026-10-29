@@ -3,7 +3,8 @@
 // - a saved position is offered ("Resume at mm:ss" + "Start over") from 1 min up to 95 % of the
 //   duration;
 // - beyond 95 % (or on `ended`) the item counts as watched: `completed`, no resume, no progress
-//   bar ("Continue watching" drops it).
+//   bar ("Continue watching" drops it);
+// - Home "Continue watching" (FAV-02, features/favorites) applies the same rules.
 import type { HistoryEntry } from '@/core/db';
 
 /** Saved positions below this are not worth resuming (s). */

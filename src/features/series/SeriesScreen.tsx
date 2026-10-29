@@ -1,33 +1,19 @@
 // Series screen (SER-01): categories, sort and the virtualised poster grid — the shared poster-grid
 // screen (`@/ui/catalog/PosterGridScreen`) with the Series strings and routes. A card shows the
-// number of seasons when known (details already fetched and cached), else the year.
+// number of seasons when known (`Series.seasonCount`, recorded when the details are fetched;
+// a sync drops it), else the year. Grid pages read only the series rows.
 import { catalogRepo, type Series } from '@/core/db';
 import { t } from '@/i18n';
 import { formatInteger } from '@/ui/catalog/format';
 import { PosterGridScreen } from '@/ui/catalog/PosterGridScreen';
 import { seriesBrowse } from './browseState';
 
-/** A grid card: the series and its number of seasons, when known. */
-export interface SeriesCard extends Series {
-  seasonCount?: number;
-}
+const loadSeries = (keys: readonly string[]) => catalogRepo.getMany('series', keys);
 
-export async function loadSeriesCards(keys: readonly string[]): Promise<SeriesCard[]> {
-  const [items, details] = await Promise.all([
-    catalogRepo.getMany('series', keys),
-    catalogRepo.getSeriesDetailsMany(keys),
-  ]);
-  const seasons = new Map(details.flatMap((d) => (d ? [[d.seriesKey, d.seasons.length]] : [])));
-  return items.map((item) => {
-    const count = seasons.get(item.key);
-    return count !== undefined && count > 0 ? { ...item, seasonCount: count } : item;
-  });
-}
-
-const externalIdOf = (item: SeriesCard) => item.externalId;
-const posterOf = (item: SeriesCard) => item.cover;
-function captionOf(item: SeriesCard): string | undefined {
-  if (item.seasonCount !== undefined) {
+const externalIdOf = (item: Series) => item.externalId;
+const posterOf = (item: Series) => item.cover;
+function captionOf(item: Series): string | undefined {
+  if (item.seasonCount !== undefined && item.seasonCount > 0) {
     return t.series.seasonCount(item.seasonCount, formatInteger(item.seasonCount));
   }
   return item.year === undefined ? undefined : String(item.year);
@@ -40,7 +26,7 @@ export function SeriesScreen() {
       base="/series"
       texts={t.series}
       browse={seriesBrowse}
-      loadItems={loadSeriesCards}
+      loadItems={loadSeries}
       externalIdOf={externalIdOf}
       posterOf={posterOf}
       captionOf={captionOf}

@@ -6,10 +6,11 @@ import { COUNTDOWN_SEC, OFFER_REMAINING_SEC, useNextEpisode } from './useNextEpi
 
 function fakeVideo(duration: number) {
   const video = document.createElement('video');
-  const state = { time: 0, ended: false };
+  const state = { time: 0, ended: false, paused: false };
   Object.defineProperty(video, 'currentTime', { configurable: true, get: () => state.time });
   Object.defineProperty(video, 'duration', { configurable: true, get: () => duration });
   Object.defineProperty(video, 'ended', { configurable: true, get: () => state.ended });
+  Object.defineProperty(video, 'paused', { configurable: true, get: () => state.paused });
   return {
     video,
     at(time: number) {
@@ -25,10 +26,17 @@ function fakeVideo(duration: number) {
         video.dispatchEvent(new Event('seeked'));
       });
     },
+    pause(paused = true) {
+      act(() => {
+        state.paused = paused;
+        video.dispatchEvent(new Event(paused ? 'pause' : 'play'));
+      });
+    },
     end() {
       act(() => {
         state.time = duration;
         state.ended = true;
+        state.paused = true;
         video.dispatchEvent(new Event('ended'));
       });
     },
@@ -91,6 +99,19 @@ describe('useNextEpisode', () => {
     expect(hook.result.current.phase).toEqual({ kind: 'idle' });
     media.at(1185);
     expect(hook.result.current.phase.kind).toBe('counting');
+  });
+
+  it('holds while the video is paused, resumes when it plays again (review #4)', () => {
+    const { media, onAdvance, hook } = setup();
+    media.at(1190);
+    act(() => vi.advanceTimersByTime(3000));
+    media.pause();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(hook.result.current.phase).toEqual({ kind: 'counting', seconds: 7 });
+    expect(onAdvance).not.toHaveBeenCalled();
+    media.pause(false);
+    act(() => vi.advanceTimersByTime(7000));
+    expect(onAdvance).toHaveBeenCalledTimes(1);
   });
 
   it('Play now moves on at once', () => {

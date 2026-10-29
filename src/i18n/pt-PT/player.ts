@@ -106,7 +106,7 @@ export const player = {
     unknown: 'Sem imagem: o codec de vídeo desta emissão não é suportado neste browser.',
   },
   tapForFullscreen: 'Toque para ecrã inteiro',
-  resumeUnsupported: 'A começar do início',
   nativeFullscreenNote:
     'Neste dispositivo, o ecrã inteiro usa o leitor do sistema e os respetivos controlos.',
+  resumeUnsupported: 'A começar do início',
 } satisfies MessageShape<typeof base>;

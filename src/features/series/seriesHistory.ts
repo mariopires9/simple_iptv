@@ -1,12 +1,15 @@
 // Watch progress of a series (SER-02 AC3, SER-03 AC1, VOD-03 rules), in the `history` table:
 // - one entry per episode, keyed by the episode key (`episodeItemKey`): its position, duration
 //   and whether it was watched (> 95 % or played to the end);
-// - one entry for the series itself, pointing at the last episode played (`episodeKey`) with
-//   that episode's position — what "Continue S2 E5" and "Continue watching" read. The series
-//   entry is `completed` only once its last episode is.
+// - one entry for the series itself, pointing at the episode to watch (`episodeKey`) — what
+//   "Continue S2 E5" and Home "Continue watching" read:
+//   - while an episode is unfinished: that episode, with its position and duration;
+//   - once it is finished and another follows: the next episode, from the start (no position or
+//     duration of the previous one is carried over), so the series stays in "Continue watching";
+//   - after the last episode: that episode, `completed`.
 import {
+  episodeKeyPrefix,
   historyRepo,
-  isEpisodeItemKey,
   type Episode,
   type HistoryEntry,
   type Series,
@@ -14,45 +17,44 @@ import {
 import type { ProgressSnapshot } from '@/ui/vod/resume';
 import type { EpisodeProgress } from './episodes';
 
-/** Upper bound of the history entries of a source read for one series. */
-export const HISTORY_LIMIT = 20_000;
-
 export interface SeriesHistory {
   entry: HistoryEntry | undefined;
   /** Progress per episode key. */
   episodes: Map<string, EpisodeProgress>;
 }
 
-export async function loadSeriesHistory(
-  series: Pick<Series, 'key' | 'sourceId'>,
-): Promise<SeriesHistory> {
-  const [entry, all] = await Promise.all([
+/** The series entry and this series' episode entries only (primary-key prefix read). */
+export async function loadSeriesHistory(series: Pick<Series, 'key'>): Promise<SeriesHistory> {
+  const [entry, list] = await Promise.all([
     historyRepo.get(series.key),
-    historyRepo.listRecent(series.sourceId, 'series', HISTORY_LIMIT),
+    historyRepo.listByKeyPrefix(episodeKeyPrefix(series.key)),
   ]);
-  const prefix = `${series.key}:`;
-  const episodes = new Map<string, EpisodeProgress>();
-  for (const e of all) {
-    if (e.itemKey.startsWith(prefix) && isEpisodeItemKey(e.itemKey)) episodes.set(e.itemKey, e);
-  }
-  return { entry, episodes };
+  return { entry, episodes: new Map(list.map((e) => [e.itemKey, e])) };
 }
 
-/** Writes an episode's progress and moves the series entry to it. */
+/**
+ * Writes an episode's progress and points the series entry at the episode to watch (see the
+ * header). `next` is the episode after this one in playing order, if any.
+ */
 export async function saveEpisodeProgress(
   series: Pick<Series, 'key'>,
   episode: Pick<Episode, 'key'>,
   snapshot: ProgressSnapshot,
-  isLastEpisode: boolean,
+  next: Pick<Episode, 'key'> | undefined,
 ): Promise<void> {
   const lastWatchedAt = Date.now();
   await historyRepo.upsert({ itemKey: episode.key, ...snapshot, lastWatchedAt });
-  await historyRepo.upsert({
-    itemKey: series.key,
-    episodeKey: episode.key,
-    positionSec: snapshot.positionSec,
-    ...(snapshot.durationSec !== undefined ? { durationSec: snapshot.durationSec } : {}),
-    completed: snapshot.completed && isLastEpisode,
-    lastWatchedAt,
-  });
+  // `set`, not `upsert`: fields of the previous episode must not survive (review #2).
+  await historyRepo.set(
+    snapshot.completed && next
+      ? { itemKey: series.key, episodeKey: next.key, positionSec: 0, lastWatchedAt }
+      : {
+          itemKey: series.key,
+          episodeKey: episode.key,
+          positionSec: snapshot.positionSec,
+          ...(snapshot.durationSec !== undefined ? { durationSec: snapshot.durationSec } : {}),
+          completed: snapshot.completed,
+          lastWatchedAt,
+        },
+  );
 }

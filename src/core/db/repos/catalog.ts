@@ -337,6 +337,16 @@ export const catalogRepo = {
     return db.seriesDetails.bulkGet([...seriesKeys]);
   },
 
+  /**
+   * Records how many seasons a series has (SER-01 card caption), once its details are known.
+   * Not a catalogue change: names and keys are untouched, so search indexes stay valid. The next
+   * sync of the source rewrites the row and forgets it. Returns whether the row exists.
+   */
+  async setSeasonCount(seriesKey: string, seasonCount: number): Promise<boolean> {
+    const db = await getDb();
+    return (await db.series.update(seriesKey, { seasonCount })) > 0;
+  },
+
   async putSeriesDetails(details: SeriesDetails): Promise<void> {
     const db = await getDb();
     await db.seriesDetails.put(details);

@@ -12,7 +12,7 @@ import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { formatInteger } from '@/ui/catalog/format';
 import { visuallyHidden } from '@/ui/state';
-import type { ProgressSnapshot } from '@/ui/vod/resume';
+import { progressSnapshot, type ProgressSnapshot } from '@/ui/vod/resume';
 import { VodPlayer } from '@/ui/vod/VodPlayer';
 import { resolveEpisodeStream } from './resolveEpisode';
 import { saveEpisodeProgress } from './seriesHistory';
@@ -54,13 +54,14 @@ export function EpisodePlayer({
     [source, series, episode],
   );
 
-  // Moving on means this episode was watched, even if the credits were skipped: every later save
-  // of it (the player closing) keeps it completed.
+  // Moving on means this episode was watched, even if the credits were skipped: it is saved as
+  // completed right away (the player's own saves skip a position they already wrote), and every
+  // later save of it (the player closing) keeps it completed.
   const finished = useRef(false);
   const save = useCallback(
     (snapshot: ProgressSnapshot) => {
       const final = finished.current ? { ...snapshot, completed: true } : snapshot;
-      saveEpisodeProgress(series, episode, final, next === undefined).then(
+      saveEpisodeProgress(series, episode, final, next).then(
         () => onSaved(episode, final),
         (error: unknown) =>
           log.warn('series: saving the position failed', {
@@ -75,8 +76,9 @@ export function EpisodePlayer({
   const advance = useCallback(() => {
     if (!next) return;
     finished.current = true;
+    save(progressSnapshot(video?.currentTime ?? 0, video?.duration, true));
     onAdvance(next);
-  }, [next, onAdvance]);
+  }, [next, onAdvance, save, video]);
   const { phase, cancel, playNow } = useNextEpisode(video, next !== undefined, advance);
 
   const texts = t.series.player;

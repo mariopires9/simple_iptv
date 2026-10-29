@@ -23,6 +23,7 @@ export {
   isSearchableQuery,
   MIN_SEARCH_QUERY_LENGTH,
   episodeItemKey,
+  episodeKeyPrefix,
   isEpisodeItemKey,
   type ParsedItemKey,
   type ParsedCategoryKey,

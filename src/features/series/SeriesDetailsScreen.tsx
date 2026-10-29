@@ -16,7 +16,7 @@ import StarRounded from '@mui/icons-material/StarRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { useCallback, useEffect, useId, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
   catalogRepo,
@@ -48,7 +48,13 @@ import { resumePosition, type ProgressSnapshot } from '@/ui/vod/resume';
 import { categoryPath, seriesBrowse } from './browseState';
 import { SeasonsPanel } from './EpisodeList';
 import { EpisodePlayer } from './EpisodePlayer';
-import { continueTarget, nextEpisode, playOrder, type EpisodeProgress } from './episodes';
+import {
+  continueTarget,
+  nextEpisode,
+  orderSeasons,
+  playOrder,
+  type EpisodeProgress,
+} from './episodes';
 import { loadSeriesDetails } from './seriesDetails';
 import { loadSeriesHistory, type SeriesHistory } from './seriesHistory';
 
@@ -232,7 +238,8 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
   }, [source, series, infoAttempt]);
   const infoState: InfoState = info?.attempt === infoAttempt ? info.state : { status: 'loading' };
   const details = infoState.status === 'ok' ? infoState.details : undefined;
-  const seasons = details?.seasons ?? [];
+  // Regular seasons ascending, specials (season 0) last: tabs, default tab and playing order.
+  const seasons = useMemo(() => orderSeasons(details?.seasons ?? []), [details]);
   const extra = details?.info;
 
   // --- progress -----------------------------------------------------------------------------------
@@ -241,17 +248,18 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
   const onSaved = useCallback(
     (episode: Episode, snapshot: ProgressSnapshot) => {
       setProgress((previous) => new Map(previous).set(episode.key, snapshot));
-      setSeriesEntry((previous) => ({
+      // Same rule as seriesHistory.ts: a finished episode points the series at the next one.
+      const next = snapshot.completed ? nextEpisode(seasons, episode.key) : undefined;
+      setSeriesEntry({
         itemKey: series.key,
         sourceId: series.sourceId,
         type: 'series',
-        completed: false,
+        completed: snapshot.completed && next === undefined,
         lastWatchedAt: Date.now(),
-        ...previous,
-        episodeKey: episode.key,
-      }));
+        episodeKey: next?.key ?? episode.key,
+      });
     },
-    [series.key, series.sourceId],
+    [series.key, series.sourceId, seasons],
   );
   const target = continueTarget(seasons, seriesEntry, progress);
 
