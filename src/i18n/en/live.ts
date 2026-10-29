@@ -89,8 +89,5 @@ export const live = {
       title: "Couldn't start this channel",
       message: 'Try again in a moment.',
     },
-    /** M3U entry with required headers that failed with 401/403 (PLY-04 AC8). */
-    restricted:
-      'The provider restricts playback to its own app/site: it requires headers (such as Referer or User-Agent) that browsers cannot send.',
   },
 };

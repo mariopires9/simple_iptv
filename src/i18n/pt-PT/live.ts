@@ -85,7 +85,5 @@ export const live = {
       title: 'Não foi possível iniciar este canal',
       message: 'Tente novamente dentro de momentos.',
     },
-    restricted:
-      'O fornecedor restringe a reprodução à sua própria aplicação/site: exige cabeçalhos (como Referer ou User-Agent) que os browsers não conseguem enviar.',
   },
 } satisfies MessageShape<typeof base>;

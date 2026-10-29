@@ -53,6 +53,9 @@ function ownsSpace(el: Element): boolean {
   return el.matches('button, a[href], input, [role="button"], [role="checkbox"], [role="switch"]');
 }
 
+/** Marks the container of PlayerView's `overlay`: keys pressed inside it are not shortcuts. */
+export const OVERLAY_ATTRIBUTE = 'data-player-overlay';
+
 /** Attaches the shortcuts to `region` (keydown bubbling from anything inside it). */
 export function useShortcuts(region: HTMLElement | null, handlers: ShortcutHandlers): void {
   // Latest handlers without re-subscribing on every render.
@@ -67,6 +70,8 @@ export function useShortcuts(region: HTMLElement | null, handlers: ShortcutHandl
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
       const target = event.target instanceof Element ? event.target : region;
       if (isTextEntry(target)) return;
+      // A panel shown over the video (PlayerView `overlay`) has its own keys.
+      if (target.closest(`[${OVERLAY_ATTRIBUTE}]`)) return;
       const h = ref.current;
       let action: (() => void) | undefined;
       switch (event.key) {
