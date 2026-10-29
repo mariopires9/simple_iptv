@@ -98,6 +98,31 @@ export function parseCategoryKey(key: string): ParsedCategoryKey | undefined {
   return { ...parsed, externalId };
 }
 
+const EPISODE_MARKER = `${SEP}ep${SEP}`;
+
+/**
+ * Key of one episode of a series (SER-02/03): `${seriesKey}:ep:${episodeExternalId}`. It is a
+ * valid item key of type `series` (the external id may contain `:`), so the episode's own
+ * progress lives in `history` next to the series entry, which points at the current episode
+ * through `episodeKey`. Consumers listing series history ("Continue watching") skip these
+ * entries with {@link isEpisodeItemKey}.
+ */
+export function episodeItemKey(seriesKey: string, episodeExternalId: string | number): string {
+  const series = parseItemKey(seriesKey);
+  const ext = String(episodeExternalId);
+  if (!series || series.type !== 'series' || isEpisodeItemKey(seriesKey)) {
+    throw new TypeError(`Invalid series key: "${seriesKey}"`);
+  }
+  if (ext === '') throw new TypeError('Empty episode id');
+  return `${seriesKey}${EPISODE_MARKER}${ext}`;
+}
+
+/** Whether `key` is an episode key ({@link episodeItemKey}), not a series or other item. */
+export function isEpisodeItemKey(key: string): boolean {
+  const parsed = parseItemKey(key);
+  return parsed?.type === 'series' && parsed.externalId.includes(EPISODE_MARKER);
+}
+
 /**
  * Normalizes a name for search/sorting: lowercase, no diacritics, collapsed whitespace.
  * Only removes combining marks (`\p{M}`) after NFD; other symbols (e.g. `^`, `` ` ``) are kept.

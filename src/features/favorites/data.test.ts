@@ -1,8 +1,15 @@
 // FAV-01/FAV-02 data rules: recent channels, "Continue watching", favorites per list (including
 // unavailable ones) and the routes the cards link to.
 import 'fake-indexeddb/auto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { catalogRepo, favoritesRepo, historyRepo, itemKey, wipeAll } from '@/core/db';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  catalogRepo,
+  episodeItemKey,
+  favoritesRepo,
+  historyRepo,
+  itemKey,
+  wipeAll,
+} from '@/core/db';
 import {
   CONTINUE_WATCHING_LIMIT,
   HOME_FAVORITES_LIMIT,
@@ -26,6 +33,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await wipeAll();
 });
 
@@ -125,6 +133,50 @@ describe('continue watching (FAV-02 AC2)', () => {
     expect(cards[1]).toMatchObject({ name: 'Movie 25', href: '/movies/m25', progress: 0.1 });
     expect(cards.map((c) => c.name)).not.toContain('Movie 26');
     expect(cards.map((c) => c.name)).not.toContain('Movie 27');
+  });
+});
+
+describe('continue watching — series episodes (SER-02/03)', () => {
+  it('one card per series from its entry; per-episode entries are skipped', async () => {
+    const episode = episodeItemKey(series('s2'), '40102');
+    await catalogRepo.putSeriesDetails({
+      seriesKey: series('s2'),
+      sourceId: SOURCE,
+      fetchedAt: 1,
+      seasons: [
+        {
+          number: 1,
+          episodes: [
+            { key: episode, externalId: '40102', season: 1, number: 2, title: 'E', streamPath: '' },
+          ],
+        },
+      ],
+    });
+    // What the series player writes: the episode's own entry, then the series entry.
+    await historyRepo.upsert({
+      itemKey: episode,
+      positionSec: 300,
+      durationSec: 1200,
+      lastWatchedAt: 10,
+    });
+    await historyRepo.upsert({
+      itemKey: series('s2'),
+      episodeKey: episode,
+      positionSec: 300,
+      durationSec: 1200,
+      lastWatchedAt: 10,
+    });
+    const getMany = vi.spyOn(catalogRepo, 'getMany');
+    const cards = await loadContinueWatching(SOURCE);
+    expect(cards).toEqual([
+      expect.objectContaining({
+        href: '/series/s2',
+        progress: 0.25,
+        episode: { season: 1, number: 2 },
+      }),
+    ]);
+    // The episode key is never looked up as a catalogue item.
+    expect(getMany.mock.calls.flatMap(([, keys]) => keys)).not.toContain(episode);
   });
 });
 

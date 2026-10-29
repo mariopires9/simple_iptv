@@ -11,6 +11,7 @@ import { onboarding } from './onboarding';
 import { player } from './player';
 import { routes } from './routes';
 import { search } from './search';
+import { series } from './series';
 import { sources } from './sources';
 import { state } from './state';
 
@@ -26,6 +27,7 @@ export const ptPT = {
   player,
   routes,
   search,
+  series,
   sources,
   state,
 } satisfies MessageShape<Messages>;

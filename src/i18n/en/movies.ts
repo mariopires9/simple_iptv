@@ -34,6 +34,8 @@ export const movies = {
     back: 'Back to movies',
     play: 'Play',
     resumeAt: (time: string) => `Resume at ${time}`,
+    /** VOD-03 AC2: next to "Resume at", plays from 0. */
+    startOver: 'Start from the beginning',
     addFavorite: 'Add to favorites',
     removeFavorite: 'Remove from favorites',
     favoriteAdded: (name: string) => `${name} added to favorites`,

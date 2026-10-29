@@ -36,6 +36,7 @@ export const movies = {
     back: 'Voltar aos filmes',
     play: 'Reproduzir',
     resumeAt: (time: string) => `Retomar aos ${time}`,
+    startOver: 'Começar do início',
     addFavorite: 'Adicionar aos favoritos',
     removeFavorite: 'Remover dos favoritos',
     favoriteAdded: (name: string) => `${name} adicionado aos favoritos`,

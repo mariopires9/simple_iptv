@@ -118,5 +118,7 @@ export const player = {
   /** Shown briefly when the device turns to landscape (fullscreen needs a tap). */
   tapForFullscreen: 'Tap for fullscreen',
   /** iPhone: fullscreen is the system player (our controls are not shown there). */
+  /** VOD-03 AC4: the saved position cannot be reached (no range requests / not seekable). */
+  resumeUnsupported: 'Starting from the beginning',
   nativeFullscreenNote: 'On this device, fullscreen uses the system player and its controls.',
 };

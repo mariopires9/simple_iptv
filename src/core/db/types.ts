@@ -232,11 +232,30 @@ export interface Season {
   episodes: Episode[];
 }
 
+/** Series-level metadata of `get_series_info` (SER-02). Every field is optional. */
+export interface SeriesDetailsInfo {
+  plot?: string;
+  genre?: string;
+  director?: string;
+  cast?: string;
+  year?: number;
+  rating?: number;
+  cover?: string;
+  backdrop?: string;
+}
+
 export interface SeriesDetails {
   seriesKey: string;
   sourceId: string;
   fetchedAt: number;
   seasons: Season[];
+  /**
+   * Version of the source the details were fetched with (account fields + `lastSyncAt`), so an
+   * edited or re-synced source does not reuse them (SER-02). Not indexed.
+   */
+  identity?: string;
+  /** Series-level metadata from the same response. Not indexed. */
+  info?: SeriesDetailsInfo;
 }
 
 // ---------------------------------------------------------------------------

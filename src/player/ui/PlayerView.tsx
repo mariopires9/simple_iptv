@@ -12,7 +12,7 @@ import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
@@ -58,6 +58,8 @@ export const SUSTAINED_PLAYBACK_S = 10;
  * The action is a router link: PlayerView is always rendered inside the app's router.
  */
 export const DIAGNOSTICS_PATH = '/settings/sources';
+/** How long the "Starting from the beginning" notice stays (VOD-03 AC4). */
+export const RESUME_NOTICE_MS = 6_000;
 
 /** A track the browser cannot decode, for one load (dismissible banner). */
 interface TrackWarning {
@@ -109,6 +111,11 @@ export interface PlayerViewProps {
    * from — the automatic live reconnects — are never reported (LIV-05).
    */
   onFinalError?: (error: PlaybackError) => void;
+  /**
+   * The <video> element once mounted (`null` when it goes): VOD progress saving (VOD-03) and the
+   * next-episode card (SER-03) read its time and listen to its media events.
+   */
+  onVideoElement?: (video: HTMLVideoElement | null) => void;
 }
 
 export function PlayerView({
@@ -127,11 +134,20 @@ export function PlayerView({
   createController,
   overlay,
   onFinalError,
+  onVideoElement,
 }: PlayerViewProps) {
   const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
   const { videoRef, bound } = usePlayerController(createController);
   const video = bound?.video ?? null;
   const controller = bound?.controller;
+  const onVideoElementRef = useRef(onVideoElement);
+  useEffect(() => {
+    onVideoElementRef.current = onVideoElement;
+  });
+  useEffect(() => {
+    onVideoElementRef.current?.(video);
+    return () => onVideoElementRef.current?.(null);
+  }, [video]);
   const media = useMediaState(video);
   const [region, setRegion] = useState<HTMLDivElement | null>(null);
   const [controls, setControls] = useState<HTMLDivElement | null>(null);
@@ -183,6 +199,9 @@ export function PlayerView({
   const [noVideo, setNoVideo] = useState<TrackWarning>();
   /** The load whose engine found no audio track at all (silence is expected there). */
   const noAudioTrackFor = useRef<object>(undefined);
+  /** The load whose resume position could not be reached (VOD-03 AC4): plays from the start. */
+  const [resumeFailedFor, setResumeFailedFor] = useState<object>();
+  const dismissResumeNotice = useCallback(() => setResumeFailedFor(undefined), []);
 
   useEffect(() => {
     if (!controller || !video) return undefined;
@@ -221,6 +240,7 @@ export function PlayerView({
       if (notice.type === 'audio-unsupported') setNoAudio(warning(notice.codec));
       else if (notice.type === 'video-unsupported') setNoVideo(warning(notice.codec));
       else if (notice.type === 'no-audio-track') noAudioTrackFor.current = load;
+      else if (notice.type === 'resume-unsupported') setResumeFailedFor(load);
     });
     // Readiness listeners are attached only once controller.play() resolved: by then the
     // previous stream has been torn down, so its late events cannot mark this load ready.
@@ -444,6 +464,7 @@ export function PlayerView({
   const showUnmute = autoplayMuted && silent && error === undefined;
   const shown = (w: TrackWarning | undefined) =>
     w?.load === load && w.dismissed !== true && error === undefined ? w : undefined;
+  const resumeNotice = resumeFailedFor === load && error === undefined;
   const audioWarning = shown(noAudio);
   const videoWarning = shown(noVideo);
   const reconnectAttempt =
@@ -579,7 +600,7 @@ export function PlayerView({
         </Button>
       )}
 
-      {(audioWarning || videoWarning || fullscreen.nativeNote) && (
+      {(resumeNotice || audioWarning || videoWarning || fullscreen.nativeNote) && (
         <Box
           sx={{
             position: 'absolute',
@@ -594,6 +615,7 @@ export function PlayerView({
             '& > *': { pointerEvents: 'auto', maxWidth: 560 },
           }}
         >
+          {resumeNotice && <ResumeNotice onDone={dismissResumeNotice} />}
           {audioWarning && (
             <Alert
               severity="warning"
@@ -694,5 +716,24 @@ export function PlayerView({
         </Box>
       )}
     </Box>
+  );
+}
+
+/** "Starting from the beginning" (VOD-03 AC4): the saved position was not seekable. */
+function ResumeNotice({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onDone, RESUME_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [onDone]);
+  return (
+    <Alert
+      severity="info"
+      role="status"
+      data-testid="player-resume-unsupported"
+      closeText={t.player.dismiss}
+      onClose={onDone}
+    >
+      {t.player.resumeUnsupported}
+    </Alert>
   );
 }

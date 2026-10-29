@@ -5,13 +5,15 @@
 //   most recent first, at most `RECENT_CHANNELS_LIMIT`. Channels that left the list are skipped.
 // - Continue watching (FAV-02 AC2): movies and series (episodes) with a saved position between
 //   `MIN_RESUME_SEC` and `MAX_RESUME_FRACTION` of the duration, not completed, most recent first,
-//   at most `CONTINUE_WATCHING_LIMIT`.
+//   at most `CONTINUE_WATCHING_LIMIT`. A series has one entry pointing at its current episode
+//   (`episodeKey`); the per-episode entries (SER-02/03, `isEpisodeItemKey`) are skipped.
 // - Favorites (FAV-01 AC2/AC3): those of the active list only; a favorite whose item is no longer
 //   in the catalogue (removed by a re-sync) is kept and reported as unavailable.
 import {
   catalogRepo,
   favoritesRepo,
   historyRepo,
+  isEpisodeItemKey,
   parseCategoryKey,
   type CatalogItemByType,
   type ContentType,
@@ -118,7 +120,8 @@ async function recentChannelsRow(sourceId: string): Promise<HistoryRow> {
 async function continueWatchingRow(sourceId: string): Promise<HistoryRow> {
   const { items, scanned } = await historyRepo.listRecentItems(sourceId, ['movie', 'series'], {
     limit: CONTINUE_WATCHING_LIMIT,
-    accept: (entry) => resumeFraction(entry) !== undefined,
+    // Episode entries are the series' own bookkeeping: the series entry stands for them.
+    accept: (entry) => !isEpisodeItemKey(entry.itemKey) && resumeFraction(entry) !== undefined,
   });
   const series = items.filter(({ entry }) => entry.type === 'series').map(({ entry }) => entry);
   const found = await episodesOf(series);

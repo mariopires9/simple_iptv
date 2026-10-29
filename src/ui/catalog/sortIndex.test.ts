@@ -84,7 +84,7 @@ describe('projection over IndexedDB', () => {
 
   it('reads each category once through the [categoryKey+order] index, keeping only sort fields', async () => {
     const spy = vi.spyOn(catalogRepo, 'listByCategory');
-    const projection = await readProjection([k2, k1]);
+    const projection = await readProjection('movie', [k2, k1]);
     expect(projection.rows).toHaveLength(25);
     // "All": category order, then the source order inside each category.
     expect(projection.rows.slice(0, 6).map((r) => r.name)).toEqual([
@@ -111,21 +111,45 @@ describe('projection over IndexedDB', () => {
   });
 
   it('hasRatings is false when no movie of the categories is rated', async () => {
-    expect((await readProjection([k2])).hasRatings).toBe(false);
+    expect((await readProjection('movie', [k2])).hasRatings).toBe(false);
   });
 
   it('loadProjection is memoised per (source, sync, categories); a new sync reads again', async () => {
     const spy = vi.spyOn(catalogRepo, 'listByCategory');
-    const first = await loadProjection('s1', 1, [k1]);
-    expect(await loadProjection('s1', 1, [k1])).toBe(first);
+    const first = await loadProjection('movie', 's1', 1, [k1]);
+    expect(await loadProjection('movie', 's1', 1, [k1])).toBe(first);
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(await loadProjection('s1', 2, [k1])).not.toBe(first);
+    expect(await loadProjection('movie', 's1', 2, [k1])).not.toBe(first);
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it('a failed read is not memoised', async () => {
     vi.spyOn(catalogRepo, 'listByCategory').mockRejectedValueOnce(new Error('boom'));
-    await expect(loadProjection('s1', 1, [k1])).rejects.toThrow('boom');
-    expect((await loadProjection('s1', 1, [k1])).rows).toHaveLength(20);
+    await expect(loadProjection('movie', 's1', 1, [k1])).rejects.toThrow('boom');
+    expect((await loadProjection('movie', 's1', 1, [k1])).rows).toHaveLength(20);
+  });
+});
+
+describe('readProjection — series (SER-01)', () => {
+  afterAll(async () => {
+    await wipeAll();
+  });
+
+  it('reads the series table; series have no addedAt, so "added" keeps the source order', async () => {
+    await catalogRepo.replaceForSource('s2', 'series', {
+      categories: [{ externalId: '1', name: 'One' }],
+      items: [
+        { externalId: 'b', categoryExternalId: '1', name: 'Bravo', rating: 5 },
+        { externalId: 'a', categoryExternalId: '1', name: 'Alpha' },
+      ],
+    });
+    const projection = await readProjection('series', [categoryKey('s2', 'series', '1')]);
+    expect(projection.rows.map((r) => [r.name, r.addedAt])).toEqual([
+      ['Bravo', undefined],
+      ['Alpha', undefined],
+    ]);
+    expect(projection.hasRatings).toBe(true);
+    expect(sortedKeys(projection.rows, 'added', 'en')).toEqual(['s2:series:b', 's2:series:a']);
+    expect(sortedKeys(projection.rows, 'name', 'en')).toEqual(['s2:series:a', 's2:series:b']);
   });
 });
