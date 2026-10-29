@@ -22,6 +22,7 @@ import {
 import { clearLogBuffer, getLogEntries } from '@/core/log';
 import { forgetActiveSource } from '@/core/session';
 import type { PlayerViewProps } from '@/player/ui';
+import { M3uCatalogBuilder, parseM3uText } from '@/providers/m3u';
 import { mapSeries } from '@/providers/xtream';
 import {
   XTREAM_TEST_BASE_URL,
@@ -546,5 +547,85 @@ describe('SeriesDetailsScreen — playing episodes (SER-03)', () => {
       }),
     );
     expect(await historyRepo.get(epKey('3001', '40201'))).toMatchObject({ completed: true });
+  });
+});
+
+// --- VOD-04 AC3 / SER-02 AC4: an M3U show grouped at import ----------------------------------------
+describe('SeriesDetailsScreen — grouped M3U series (VOD-04, SER-02 AC4)', () => {
+  const M3U_GROUPED = 'm2';
+  const CDN = 'https://cdn.example.test/grouped';
+  const LIST = [
+    '#EXTM3U',
+    '#EXTINF:-1 group-title="Séries | Drama",Lista Exemplo S01E01 - Início',
+    `${CDN}/s1e1.mp4`,
+    '#EXTINF:-1 group-title="Séries | Drama",Lista Exemplo S02E01',
+    `${CDN}/s2e1.mkv`,
+    '#EXTINF:-1 group-title="Séries | Drama",Lista Exemplo S01E02 - Meio',
+    `${CDN}/s1e2.mp4`,
+  ].join('\n');
+  let showId = '';
+  const showKey = () => itemKey(M3U_GROUPED, 'series', showId);
+  const groupedEp = (episodeExternalId: string) => episodeItemKey(showKey(), episodeExternalId);
+
+  beforeAll(async () => {
+    await sourcesRepo.put(m3uSource(M3U_GROUPED, 'Grouped list', 3));
+    const builder = new M3uCatalogBuilder();
+    for (const entry of parseM3uText(LIST).entries) builder.add(entry);
+    const catalog = builder.build();
+    showId = catalog.series.items[0]!.externalId;
+    await catalogRepo.replaceAllForExistingSource(M3U_GROUPED, catalog);
+  });
+
+  async function episodeIds() {
+    const details = await catalogRepo.getSeriesDetails(showKey());
+    return details!.seasons.flatMap((s) => s.episodes.map((e) => e.externalId));
+  }
+
+  it('shows seasons and episodes from local data, without a network request', async () => {
+    await open(`/series/${showId}`, M3U_GROUPED);
+    expect(screen.getByRole('heading', { level: 1, name: 'Lista Exemplo' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Play S1 E1' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Season 1' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Season 2' })).toBeInTheDocument();
+    expect(rowTexts()).toEqual([
+      expect.stringContaining('Início'),
+      expect.stringContaining('Meio'),
+    ]);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('"Continue" follows the episode history; each episode plays its own URL', async () => {
+    // Playing order: S1 E1, S1 E2, S2 E1.
+    const [, s1e2] = await episodeIds();
+    await historyRepo.upsert({
+      itemKey: groupedEp(s1e2!),
+      positionSec: 290,
+      durationSec: 300,
+      completed: true,
+    });
+    await historyRepo.upsert({ itemKey: showKey(), episodeKey: groupedEp(s1e2!) });
+    await open(`/series/${showId}`, M3U_GROUPED);
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue S2 E1' }));
+    await screen.findByRole('region', { name: /S2 E1/ });
+    expect(lastView().descriptor).toEqual({
+      url: `${CDN}/s2e1.mkv`,
+      kind: 'vod',
+      container: 'mkv',
+    });
+  });
+
+  it('the next episode is offered at the end, crossing into season 2', async () => {
+    await open(`/series/${showId}`, M3U_GROUPED);
+    await screen.findByRole('tablist', { name: 'Seasons' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Season 1' }));
+    await userEvent.click(playRow(1));
+    await screen.findByRole('region', { name: /S1 E2/ });
+    expect(lastView().descriptor.url).toBe(`${CDN}/s1e2.mp4`);
+    await attached();
+    video().at(1185, 1200);
+    const card = await screen.findByTestId('next-episode-card');
+    await userEvent.click(within(card).getByRole('button', { name: 'Play now' }));
+    await screen.findByRole('region', { name: /S2 E1/ });
+    expect(lastView().descriptor.url).toBe(`${CDN}/s2e1.mkv`);
   });
 });

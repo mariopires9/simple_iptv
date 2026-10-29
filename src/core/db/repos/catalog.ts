@@ -1,6 +1,13 @@
 // Catalog repository: categories, channels, movies, series, series details and search index.
 import { getDb } from '../database';
-import { categoryKey, itemKey, normalizeName, parseCategoryKey, typePrefix } from '../keys';
+import {
+  categoryKey,
+  episodeItemKey,
+  itemKey,
+  normalizeName,
+  parseCategoryKey,
+  typePrefix,
+} from '../keys';
 import { Dexie, type Collection, type Table } from 'dexie';
 import type { SimpleIptvDb } from '../schema';
 import type {
@@ -10,6 +17,7 @@ import type {
   ContentType,
   SearchIndexEntry,
   SeriesDetails,
+  SeriesDetailsInput,
 } from '../types';
 
 /** Size of each `bulkPut` inside the transaction (limits memory spikes). */
@@ -189,8 +197,44 @@ async function replace<T extends ContentType>(
   return resultOf(prepared);
 }
 
-/** One replacement per content type (`replaceAllForExistingSource`). */
-export type CatalogReplacementByType = { [T in ContentType]: CatalogReplacement<T> };
+/**
+ * One replacement per content type (`replaceAllForExistingSource`). With `seriesDetails`, the
+ * stored seasons/episodes of the source's series are replaced as well (M3U lists, VOD-04): the
+ * previous ones are deleted and these written, in the same transaction.
+ */
+export type CatalogReplacementByType = { [T in ContentType]: CatalogReplacement<T> } & {
+  seriesDetails?: readonly SeriesDetailsInput[];
+};
+
+/**
+ * Keys the details of `inputs` (episode keys derive from the series key). Details of a series
+ * that is not among `seriesKeys` are dropped: no record without its series row.
+ */
+function prepareSeriesDetails(
+  sourceId: string,
+  inputs: readonly SeriesDetailsInput[],
+  seriesKeys: ReadonlySet<string>,
+  fetchedAt: number,
+): SeriesDetails[] {
+  const out: SeriesDetails[] = [];
+  for (const input of inputs) {
+    const seriesKey = itemKey(sourceId, 'series', input.seriesExternalId);
+    if (!seriesKeys.has(seriesKey)) continue;
+    out.push({
+      seriesKey,
+      sourceId,
+      fetchedAt,
+      seasons: input.seasons.map((season) => ({
+        ...season,
+        episodes: season.episodes.map((e) => ({
+          ...e,
+          key: episodeItemKey(seriesKey, e.externalId),
+        })),
+      })),
+    });
+  }
+  return out;
+}
 
 export const catalogRepo = {
   /**
@@ -233,17 +277,44 @@ export const catalogRepo = {
       movie: prepare(sourceId, 'movie', data.movie),
       series: prepare(sourceId, 'series', data.series),
     };
+    const details =
+      data.seriesDetails === undefined
+        ? undefined
+        : prepareSeriesDetails(
+            sourceId,
+            data.seriesDetails,
+            new Set(prepared.series.items.map((s) => s.key)),
+            Date.now(),
+          );
     const db = await getDb();
     notifyCatalogWrite(sourceId);
     const written = await db.transaction(
       'rw',
-      [db.sources, db.categories, db.channels, db.movies, db.series, db.searchIndex],
+      [
+        db.sources,
+        db.categories,
+        db.channels,
+        db.movies,
+        db.series,
+        db.seriesDetails,
+        db.searchIndex,
+      ],
       async () => {
         if ((await db.sources.get(sourceId)) === undefined) return false;
         await db.searchIndex.delete(sourceId);
         await writePrepared(db, sourceId, prepared.live);
         await writePrepared(db, sourceId, prepared.movie);
         await writePrepared(db, sourceId, prepared.series);
+        if (details !== undefined) {
+          // Series keys are `${sourceId}:series:…`: one primary-key range covers the source.
+          await db.seriesDetails
+            .where('seriesKey')
+            .startsWith(typePrefix(sourceId, 'series'))
+            .delete();
+          for (let i = 0; i < details.length; i += BULK_CHUNK_SIZE) {
+            await db.seriesDetails.bulkPut(details.slice(i, i + BULK_CHUNK_SIZE));
+          }
+        }
         return true;
       },
     );

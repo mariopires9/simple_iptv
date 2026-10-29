@@ -228,6 +228,13 @@ export interface Episode {
   durationSec?: number;
   plot?: string;
   image?: string;
+  // --- M3U only (VOD-04): the list entry the episode came from. Not indexed. ---
+  /** The entry's full stream URL (plain text, like M3U catalogue items — ARCHITECTURE.md §5). */
+  streamUrl?: string;
+  container?: StreamContainer;
+  drm?: boolean;
+  requiredHeaders?: RequiredHeader[];
+  audioOnly?: boolean;
 }
 
 export interface Season {
@@ -261,6 +268,18 @@ export interface SeriesDetails {
   identity?: string;
   /** Series-level metadata from the same response. Not indexed. */
   info?: SeriesDetailsInfo;
+}
+
+/** An episode as built by a provider; the repository derives `key` from the series key. */
+export type EpisodeInput = Omit<Episode, 'key'>;
+
+/**
+ * Seasons of one series written together with the catalogue (M3U lists grouped by VOD-04 —
+ * `catalogRepo.replaceAllForExistingSource`). `seriesExternalId` is the series item's external id.
+ */
+export interface SeriesDetailsInput {
+  seriesExternalId: string;
+  seasons: (Omit<Season, 'episodes'> & { episodes: EpisodeInput[] })[];
 }
 
 // ---------------------------------------------------------------------------

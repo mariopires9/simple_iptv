@@ -9,7 +9,9 @@ import { credentialVault } from '@/core/crypto';
 import {
   catalogRepo,
   closeDatabase,
+  episodeItemKey,
   favoritesRepo,
+  historyRepo,
   itemKey,
   openDatabase,
   sourcesRepo,
@@ -227,6 +229,110 @@ describe('syncM3uSource — success', () => {
   });
 });
 
+// VOD-04: a list mixing live channels, movies and series lands in the right sections; episodes
+// are grouped into shows and seasons, with keys that survive a re-import.
+const MIXED_LIST = [
+  '#EXTM3U',
+  '#EXTINF:-1 group-title="Notícias",Canal Notícias',
+  'https://s.example.test/hls/news.m3u8',
+  '#EXTINF:-1 radio="true" group-title="Rádios",Rádio Um',
+  'https://s.example.test/radio/um.m3u8',
+  '#EXTINF:-1 group-title="Filmes | Ação",Um Filme (2024)',
+  'https://s.example.test/hls/filme/index.m3u8',
+  '#EXTINF:-1 group-title="Documentários",Documentário Exemplo',
+  'https://s.example.test/files/doc.mp4',
+  '#EXTINF:-1 media="true" group-title="Programa",Programa - 22/10/2026',
+  'https://s.example.test/hls/prog-2210.m3u8',
+  '#EXTINF:-1 group-title="Séries | Drama",Série Exemplo S01E01',
+  'https://s.example.test/hls/se-s1e1.m3u8',
+  '#EXTINF:-1 group-title="Séries | Drama",Série Exemplo S01E02',
+  'https://s.example.test/hls/se-s1e2.m3u8',
+  '#EXTINF:-1 group-title="Séries | Drama",Série Exemplo S02E01',
+  'https://s.example.test/hls/se-s2e1.m3u8',
+  '#EXTINF:-1 media="true" group-title="Talk",Talk T03E04 25-10-2026',
+  'https://s.example.test/hls/talk-t3e4.m3u8',
+  '#EXTINF:-1 group-title="Desporto",Jogo 1x2 Resumo',
+  'https://s.example.test/hls/jogo.m3u8',
+  '',
+].join('\n');
+
+describe('syncM3uSource — VOD-04 classification and grouping', () => {
+  async function names(type: ContentType) {
+    return (await allItems()).filter((i) => i.type === type).map((i) => i.name);
+  }
+
+  it('mixed content lands in Live, Movies and Series; episodes grouped by show and season', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    serveList(MIXED_LIST);
+    const result = await sync();
+    expect(result).toMatchObject({ status: 'ok', entries: 10 });
+    expect(result.stats).toEqual({ live: 3, movies: 3, series: 2 });
+    expect(await names('live')).toEqual(['Canal Notícias', 'Rádio Um', 'Jogo 1x2 Resumo']);
+    expect(await names('movie')).toEqual([
+      'Um Filme (2024)',
+      'Documentário Exemplo',
+      'Programa - 22/10/2026',
+    ]);
+    expect(await names('series')).toEqual(['Série Exemplo', 'Talk']);
+
+    const show = (await allItems()).find((i) => i.name === 'Série Exemplo');
+    expect(show).toMatchObject({ seasonCount: 2 });
+    const details = await catalogRepo.getSeriesDetails(show!.key);
+    expect(details).toMatchObject({ sourceId: SOURCE_ID, seriesKey: show!.key });
+    expect(details?.seasons.map((s) => [s.number, s.episodes.map((e) => e.number)])).toEqual([
+      [1, [1, 2]],
+      [2, [1]],
+    ]);
+    const episode = details!.seasons[0]!.episodes[1]!;
+    expect(episode.key).toBe(episodeItemKey(show!.key, episode.externalId));
+    expect(episode.streamUrl).toBe('https://s.example.test/hls/se-s1e2.m3u8');
+  });
+
+  it('series, episode keys and history survive a re-import with another order', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    serveList(MIXED_LIST);
+    await sync();
+    const show = (await allItems()).find((i) => i.name === 'Série Exemplo')!;
+    const before = await catalogRepo.getSeriesDetails(show.key);
+    const episode = before!.seasons[1]!.episodes[0]!;
+    await historyRepo.upsert({ itemKey: episode.key, positionSec: 600, durationSec: 1800 });
+    await historyRepo.upsert({ itemKey: show.key, episodeKey: episode.key, positionSec: 600 });
+    await favoritesRepo.add(show.key, 5);
+
+    // Same entries, reversed, plus a new episode: the show and its episodes keep their keys.
+    const lines = MIXED_LIST.trim().split('\n');
+    const pairs: string[][] = [];
+    for (let i = 1; i < lines.length; i += 2) pairs.push(lines.slice(i, i + 2));
+    const reversed = [
+      lines[0]!,
+      '#EXTINF:-1 group-title="Séries | Drama",Série Exemplo S02E02',
+      'https://s.example.test/hls/se-s2e2.m3u8',
+      ...pairs.reverse().flat(),
+    ].join('\n');
+    serveList(reversed);
+    await sync();
+    const again = (await allItems()).find((i) => i.name === 'Série Exemplo')!;
+    expect(again.key).toBe(show.key);
+    const after = await catalogRepo.getSeriesDetails(show.key);
+    expect(after?.seasons[1]?.episodes.map((e) => e.key)).toContain(episode.key);
+    expect(after?.seasons[1]?.episodes).toHaveLength(2);
+    expect((await historyRepo.get(show.key))?.episodeKey).toBe(episode.key);
+    expect(await favoritesRepo.has(show.key)).toBe(true);
+  });
+
+  it('a show removed from the list loses its stored episodes', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    serveList(MIXED_LIST);
+    await sync();
+    const show = (await allItems()).find((i) => i.name === 'Talk')!;
+    expect(await catalogRepo.getSeriesDetails(show.key)).toBeDefined();
+    serveList(MIXED_LIST.replace(/#EXTINF[^\n]*Talk T03E04[^\n]*\n[^\n]*\n/, ''));
+    const result = await sync();
+    expect(result.stats.series).toBe(1);
+    expect(await catalogRepo.getSeriesDetails(show.key)).toBeUndefined();
+  });
+});
+
 describe('syncM3uSource — failures keep the previous catalogue', () => {
   async function seedWithData() {
     await seedSource(`${LIST_HOST}/list.m3u`);
@@ -395,8 +501,19 @@ describe('credentials never leave the vault except as stream URLs', () => {
     for (const item of items) {
       const { streamUrl, ...rest } = item;
       const others = rest; // streamPath included: it is empty for M3U items
-      expect(streamUrl).toContain(PASS); // documented: M3U stream URLs are stored as-is
+      // Documented: M3U stream URLs are stored as-is. A grouped show (VOD-04) has none: its
+      // episodes keep their own.
+      if (item.type === 'series') expect(streamUrl).toBeUndefined();
+      else expect(streamUrl).toContain(PASS);
       expect(leaks(JSON.stringify(others))).toBe(false);
+    }
+    const show = items.find((i) => i.type === 'series');
+    const details = await catalogRepo.getSeriesDetails(show!.key);
+    const episodes = details?.seasons.flatMap((s) => s.episodes) ?? [];
+    expect(episodes).toHaveLength(1);
+    for (const { streamUrl, ...rest } of episodes) {
+      expect(streamUrl).toContain(PASS);
+      expect(leaks(JSON.stringify(rest))).toBe(false);
     }
   });
 });

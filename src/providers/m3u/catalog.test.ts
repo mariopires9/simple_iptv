@@ -9,6 +9,7 @@ import {
   entryBaseId,
   groupCategoryId,
   hash64,
+  showSeriesId,
 } from './catalog';
 import { parseM3uText } from './parser';
 
@@ -152,5 +153,90 @@ describe('M3uCatalogBuilder', () => {
     const { live } = build(LIST, (href) => !href.includes('img.') && !href.includes('/ts/'));
     expect(live.items[0]?.logo).toBeUndefined();
     expect(live.items.find((i) => i.name === 'C')?.catchup).toEqual({ days: 3 });
+  });
+});
+
+describe('M3uCatalogBuilder — grouped series (VOD-04 AC3)', () => {
+  const SHOWS = [
+    '#EXTM3U',
+    '#EXTINF:-1 tvg-logo="https://img.example.test/a1.jpg" group-title="Séries",Ação Total S01E02',
+    'https://s.example.test/v/a-s1e2.mp4',
+    '#EXTINF:-1 group-title="Séries",Ação Total S01E01 - Piloto',
+    'https://s.example.test/v/a-s1e1.mp4',
+    '#EXTINF:-1 group-title="News",Live Channel',
+    'https://s.example.test/live/n.m3u8',
+    '#EXTINF:3600 group-title="Séries",ACAO TOTAL - S02E01',
+    'https://s.example.test/v/a-s2e1.mkv',
+    '#EXTINF:-1 group-title="Séries Kids",Ação Total S01E01',
+    'https://s.example.test/v/kids-s1e1.mp4',
+    '#EXTINF:-1 group-title="Séries",Other Show 1x03',
+    'https://s.example.test/v/o-103.mp4',
+    '#EXTINF:-1 group-title="Séries",Single Entry Without Marker',
+    'https://s.example.test/v/single.mp4',
+  ].join('\n');
+
+  it('one series row per show and group, at its first episode, with seasons in order', () => {
+    const { series, seriesDetails, live } = build(SHOWS);
+    expect(live.items.map((i) => i.name)).toEqual(['Live Channel']);
+    expect(series.items.map((i) => i.name)).toEqual([
+      'Ação Total',
+      'Ação Total',
+      'Other Show',
+      'Single Entry Without Marker',
+    ]);
+    const [main, kids] = series.items;
+    expect(main?.externalId).toBe(showSeriesId('Ação Total', 'Séries'));
+    // Case, accents and punctuation do not split a show; another group does.
+    expect(showSeriesId('ACAO TOTAL', 'Séries')).toBe(main?.externalId);
+    expect(kids?.externalId).toBe(showSeriesId('Ação Total', 'Séries Kids'));
+    expect(kids?.externalId).not.toBe(main?.externalId);
+    expect(main).toMatchObject({ seasonCount: 2, cover: 'https://img.example.test/a1.jpg' });
+    expect(main?.streamUrl).toBeUndefined();
+    // A series entry without a marker stays one row with its own URL.
+    expect(series.items[3]).toMatchObject({ streamUrl: 'https://s.example.test/v/single.mp4' });
+
+    const details = seriesDetails.find((d) => d.seriesExternalId === main?.externalId);
+    expect(details?.seasons.map((s) => s.number)).toEqual([1, 2]);
+    expect(details?.seasons[0]?.episodes.map((e) => [e.number, e.title])).toEqual([
+      [1, 'Piloto'],
+      [2, 'Ação Total S01E02'],
+    ]);
+    expect(details?.seasons[1]?.episodes[0]).toEqual({
+      externalId: entryBaseId('https://s.example.test/v/a-s2e1.mkv', 'ACAO TOTAL - S02E01'),
+      season: 2,
+      number: 1,
+      title: 'ACAO TOTAL - S02E01',
+      streamPath: '',
+      streamUrl: 'https://s.example.test/v/a-s2e1.mkv',
+      container: 'mkv',
+      ext: 'mkv',
+      durationSec: 3600,
+    });
+    expect(seriesDetails).toHaveLength(3);
+  });
+
+  it('episode ids depend on the entry, not on its position (resume survives re-imports)', () => {
+    const lines = SHOWS.split('\n');
+    const reordered = [lines[0]!, ...lines.slice(7, 9), ...lines.slice(1, 7), ...lines.slice(9)];
+    const ids = (text: string) =>
+      build(text)
+        .seriesDetails.flatMap((d) => d.seasons.flatMap((s) => s.episodes.map((e) => e.externalId)))
+        .sort();
+    expect(ids(reordered.join('\n'))).toEqual(ids(SHOWS));
+    expect(
+      build(reordered.join('\n'))
+        .series.items.map((i) => i.externalId)
+        .sort(),
+    ).toEqual(
+      build(SHOWS)
+        .series.items.map((i) => i.externalId)
+        .sort(),
+    );
+  });
+
+  it('the cover comes from the first episode that has an image; rejected images are dropped', () => {
+    const { series, seriesDetails } = build(SHOWS, (href) => !href.includes('img.'));
+    expect(series.items[0]?.cover).toBeUndefined();
+    expect(seriesDetails[0]?.seasons[0]?.episodes.every((e) => e.image === undefined)).toBe(true);
   });
 });

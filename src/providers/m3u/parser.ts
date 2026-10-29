@@ -26,6 +26,12 @@
 // skipped (`no-extinf`); an `#EXTINF` without a URL is skipped (`missing-url`).
 import type { ContentType, RequiredHeader, StreamContainer } from '@/core/db';
 import { parseExternalUrl } from '@/core/net';
+import {
+  DEFAULT_M3U_RULES,
+  M3uClassifier,
+  type EpisodeInfo,
+  type M3uClassificationRules,
+} from './classify';
 
 /** Lines longer than this (in UTF-16 code units, ~64 KB of ASCII) are dropped. */
 export const MAX_LINE_LENGTH = 64 * 1024;
@@ -49,6 +55,8 @@ export interface M3uAttributes {
   timeshift?: string;
   /** `radio="true"`. */
   radio?: boolean;
+  /** `media="true"` (Kodi IPTV Simple's on-demand marker, VOD-04). */
+  media?: boolean;
 }
 
 export interface M3uOption {
@@ -71,8 +79,10 @@ export interface M3uEntry {
   group?: string;
   vlcOpts: M3uOption[];
   kodiProps: M3uOption[];
-  /** AC7 basic classification: `/movie/` → movie, `/series/` → series, else live. */
+  /** Live / movie / series (VOD-04 rules, `./classify.ts`); uncertain entries are live. */
   type: ContentType;
+  /** Series entries with an episode marker: show, season, episode and title (VOD-04 AC3). */
+  episode?: EpisodeInfo;
   // --- AC8 flags ---
   drm: boolean;
   requiredHeaders: RequiredHeader[];
@@ -261,7 +271,10 @@ export function containerFromUrl(url: URL): StreamContainer | undefined {
   return EXTENSION_CONTAINERS[segment.slice(dot + 1).toLowerCase()];
 }
 
-/** AC7 (basic; VOD-04 refines it): `/movie/` → movie, `/series/` → series, else live. */
+/**
+ * The URL rule alone (SRC-04 AC7): `/movie/` → movie, `/series/` → series, else live. Entries are
+ * classified with the full VOD-04 rule chain (`./classify.ts`); kept for callers of the URL rule.
+ */
 export function classifyUrl(url: URL): ContentType {
   const path = url.pathname.toLowerCase();
   if (path.includes('/movie/')) return 'movie';
@@ -323,6 +336,7 @@ function toAttributes(raw: Map<string, string>): M3uAttributes {
   set('catchupSource', textAttr(raw, MAX_ATTRIBUTE_LENGTH, 'catchup-source'));
   set('timeshift', textAttr(raw, 16, 'timeshift'));
   if (raw.get('radio')?.trim().toLowerCase() === 'true') attrs.radio = true;
+  if (raw.get('media')?.trim().toLowerCase() === 'true') attrs.media = true;
   return attrs;
 }
 
@@ -360,6 +374,8 @@ function nameFromUrl(url: URL): string {
 export interface M3uParserOptions {
   /** Called for every valid entry, in list order. */
   onEntry: (entry: M3uEntry) => void;
+  /** Live/movie/series classification rules (VOD-04); defaults to {@link DEFAULT_M3U_RULES}. */
+  rules?: M3uClassificationRules;
 }
 
 /**
@@ -390,9 +406,11 @@ export class M3uParser {
   private options: PendingOptions = emptyOptions();
   private ended = false;
   private readonly epgSeen = new Set<string>();
+  private readonly classifier: M3uClassifier;
 
-  constructor({ onEntry }: M3uParserOptions) {
+  constructor({ onEntry, rules = DEFAULT_M3U_RULES }: M3uParserOptions) {
     this.onEntry = onEntry;
+    this.classifier = new M3uClassifier(rules);
   }
 
   /** Pushes a chunk of decoded text. */
@@ -581,21 +599,31 @@ export class M3uParser {
       }
     }
 
+    const audioOnly =
+      info.attrs.radio === true || (container !== undefined && AUDIO_CONTAINERS.has(container));
+    const group = info.attrs.groupTitle ?? options.extGrp;
+    const classification = this.classifier.classify({
+      name,
+      path: url.pathname,
+      group,
+      container,
+      media: info.attrs.media,
+      audioOnly,
+    });
     const entry: M3uEntry = {
       name,
       url: url.href,
       attrs: info.attrs,
       vlcOpts: options.vlcOpts,
       kodiProps: options.kodiProps,
-      type: classifyUrl(url),
+      type: classification.type,
       drm,
       requiredHeaders: [...headers],
-      audioOnly:
-        info.attrs.radio === true || (container !== undefined && AUDIO_CONTAINERS.has(container)),
+      audioOnly,
     };
+    if (classification.episode !== undefined) entry.episode = classification.episode;
     if (info.duration !== undefined) entry.duration = info.duration;
     if (options.extGrp !== undefined) entry.extGrp = options.extGrp;
-    const group = info.attrs.groupTitle ?? options.extGrp;
     if (group !== undefined) entry.group = group;
     if (container !== undefined) entry.container = container;
     this.stats.entries++;

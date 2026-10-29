@@ -6,7 +6,7 @@
 //
 // - The series comes from the active list's catalogue (`/series/:seriesId`, the provider's id).
 // - Xtream seasons/episodes: `get_series_info`, cached 24 h (seriesDetails.ts); a failure keeps the
-//   catalogue data and offers Retry. M3U: the entry is its own episode.
+//   catalogue data and offers Retry. M3U: seasons/episodes stored at import (VOD-04).
 // - Progress: one history entry per episode + the series entry (seriesHistory.ts).
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import PlayArrowRounded from '@mui/icons-material/PlayArrowRounded';

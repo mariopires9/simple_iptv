@@ -130,3 +130,31 @@ describe('localSeriesDetails (M3U)', () => {
     expect(plain.seasons[0]?.episodes[0]).toMatchObject({ season: 1, number: 1 });
   });
 });
+
+describe('loadSeriesDetails (M3U, VOD-04)', () => {
+  const m3u: Source = { ...source, id: 'm9', kind: 'm3u-url', serverUrl: undefined };
+  const show: Series = { ...series('s1'), key: itemKey('m9', 'series', 's1'), sourceId: 'm9' };
+
+  it('reads the seasons stored at import, without a request', async () => {
+    const stored = {
+      seriesKey: show.key,
+      sourceId: 'm9',
+      fetchedAt: 5,
+      seasons: [
+        { number: 1, episodes: [] },
+        { number: 2, episodes: [] },
+      ],
+    };
+    await catalogRepo.putSeriesDetails(stored);
+    expect(await loadSeriesDetails(m3u, show)).toEqual(stored);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('falls back to the entry itself when nothing is stored', async () => {
+    const single = { ...show, key: itemKey('m9', 'series', 'one'), externalId: 'one' };
+    const details = await loadSeriesDetails(m3u, { ...single, name: 'Show S02E01' });
+    expect(details.seasons).toEqual([
+      { number: 2, episodes: [expect.objectContaining({ season: 2, number: 1 })] },
+    ]);
+  });
+});

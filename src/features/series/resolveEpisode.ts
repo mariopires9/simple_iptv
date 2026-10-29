@@ -1,7 +1,8 @@
 // Episode → playable VOD stream (SER-03), through the shared VOD resolver (`@/ui/vod/resolveVod`).
 // - Xtream: `${server}/series/${user}/${pass}/${episodeId}.${ext}`, built in memory at play time
 //   with the vault's password; never logged.
-// - M3U: the entry's own URL (`streamUrl`), DRM/DASH never attempted.
+// - M3U: the episode's own list entry (`Episode.streamUrl`, VOD-04 grouped shows), else the series
+//   entry itself (a series entry without an episode marker); DRM/DASH never attempted.
 import type { CredentialVault } from '@/core/crypto';
 import type { Episode, Series, Source } from '@/core/db';
 import {
@@ -35,8 +36,9 @@ export function resolveEpisodeStream(
   episode: Episode,
   deps: ResolveEpisodeDeps = {},
 ): Promise<ResolvedVod> {
-  // M3U (until VOD-04 groups series): the entry is the episode.
-  if (source.kind !== 'xtream') return Promise.resolve(resolveM3uVod(series));
+  if (source.kind !== 'xtream') {
+    return Promise.resolve(resolveM3uVod(episode.streamUrl !== undefined ? episode : series));
+  }
   const ext = episode.ext ?? extensionOf(episode.streamPath) ?? DEFAULT_VOD_EXT;
   return resolveXtreamVod('series', source, episode.externalId, ext, deps);
 }

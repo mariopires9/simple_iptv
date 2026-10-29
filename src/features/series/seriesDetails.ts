@@ -4,8 +4,9 @@
 //   the `seriesDetails` table for 24 h. A cached record is only reused when it was fetched with
 //   the same source identity (account fields + `lastSyncAt`, like the movie details): editing or
 //   syncing the source refetches. A failed or aborted request is not cached.
-// - M3U: no details endpoint; the entry itself is the only episode (its `S01E02` marker, if any,
-//   gives the numbers) until VOD-04 groups M3U series. Same UI, local data.
+// - M3U: no details endpoint. Shows grouped at import (VOD-04 AC3) have their seasons/episodes
+//   stored with the catalogue (`seriesDetails` row written by the sync, replaced on every sync);
+//   a series entry without an episode marker is its own only episode. Same UI, local data.
 //
 // The request needs the account password (vault → client only); nothing sensitive is logged.
 import {
@@ -66,7 +67,7 @@ export function toSeriesDetails(
   };
 }
 
-/** M3U: the entry is its own (only) episode. */
+/** M3U series entry without stored episodes: the entry is its own (only) episode. */
 export function localSeriesDetails(series: Series): SeriesDetails {
   const marker = parseEpisodeMarker(series.name);
   const season = marker?.season ?? 1;
@@ -95,7 +96,10 @@ export async function loadSeriesDetails(
   series: Series,
   deps: DetailsDeps = {},
 ): Promise<SeriesDetails> {
-  if (source.kind !== 'xtream') return localSeriesDetails(series);
+  if (source.kind !== 'xtream') {
+    const stored = await catalogRepo.getSeriesDetails(series.key);
+    return stored !== undefined && stored.seasons.length > 0 ? stored : localSeriesDetails(series);
+  }
   const now = deps.now ?? Date.now;
   const identity = sourceIdentity(source);
   const cached = await catalogRepo.getSeriesDetails(series.key);

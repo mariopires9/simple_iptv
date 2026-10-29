@@ -252,7 +252,7 @@ describe('fixtures', () => {
     expect(entries.some((e) => e.name === '<script>alert("name")</script>')).toBe(true);
   });
 
-  it('vod-series-patterns.m3u: AC7 basic classification by path', () => {
+  it('vod-series-patterns.m3u: classification by path, group, extension and marker (VOD-04)', () => {
     const { entries } = parseM3uText(fixture('vod-series-patterns.m3u'));
     const types = Object.fromEntries(entries.map((e) => [e.name, e.type]));
     expect(types['Plain Live Channel']).toBe('live');
@@ -260,12 +260,20 @@ describe('fixtures', () => {
     expect(types['Test Pattern Returns']).toBe('movie');
     expect(types['Example Drama S01E01']).toBe('series');
     expect(types['A Série de Teste 1x01']).toBe('series');
-    // Refinements (group prefixes, extensions, SxxEyy without /series/) are VOD-04.
-    expect(types['Documentary By Group Prefix Only']).toBe('live');
-    expect(types['Pattern Without Series Path S03E10']).toBe('live');
+    expect(types['Documentary By Group Prefix Only']).toBe('movie');
+    expect(types['Movie By Extension Only']).toBe('movie');
+    expect(types['Pattern Without Series Path S03E10']).toBe('series');
     expect(types['Test Sports 1x2 Live (not an episode)']).toBe('live');
-    expect(entries.filter((e) => e.type === 'movie')).toHaveLength(4);
-    expect(entries.filter((e) => e.type === 'series')).toHaveLength(6);
+    expect(types['Movie 1984 (not an episode)']).toBe('movie');
+    expect(entries.filter((e) => e.type === 'movie')).toHaveLength(6);
+    expect(entries.filter((e) => e.type === 'series')).toHaveLength(7);
+    const drama = entries.find((e) => e.name === 'Example Drama S02 E01');
+    expect(drama?.episode).toEqual({
+      season: 2,
+      episode: 1,
+      show: 'Example Drama',
+      title: drama?.name,
+    });
   });
 });
 
