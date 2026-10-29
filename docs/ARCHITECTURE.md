@@ -70,8 +70,12 @@ simple_iptv/
 │  └─ test/                # shared utilities and fixtures
 ├─ e2e/                    # Playwright
 ├─ fixtures/               # synthetic M3U/Xtream/XMLTV (no real data)
+├─ proxy/                  # optional personal proxy (PRX-01, ADR-010): standalone Node 24 program,
+│                          #   no dependencies, run on the owner's PC behind Tailscale Serve
 └─ docs/
 ```
+
+`proxy/` is not part of the app build: it only imports `node:` built-ins and its own files (ESLint bans `@/` and `src` imports there), is type-checked with `proxy/tsconfig.json` and run with Node type stripping (`node proxy/server.ts`). The app never imports it at runtime; only `proxy/url.ts` (pure, no `node:` imports) may be imported by app tests, as the shared URL contract (§4).
 
 Dependency rule: `features → (worker, player, providers, core, ui)`; `worker → (providers, core)`; `providers → core`; `core` imports nothing from above; features do not import from each other except via routes or `core/db` (enforceable with `eslint-plugin-boundaries` or `no-restricted-imports` rules).
 
@@ -153,6 +157,22 @@ export function selectEngine(s: StreamDescriptor, caps: Capabilities): PlayerEng
 // { kind, engine, detail?, status?, hint?, target? } where target = shortenUrl(url) (never the raw URL);
 // createPlayerController(video, { rewriter, capabilities }) emits 'attempt' | 'skipped' | 'fallback' |
 // 'notice' (e.g. resume-unsupported) | 'error'; play() never rejects. Audio/text track methods: PLY-05.
+
+// personal proxy URL contract (PRX-01, implemented in proxy/url.ts; the app's UrlRewriter mirrors it)
+// B = configured proxy base URL without trailing slash (a path prefix is allowed)
+//   B/v1/<token>/health                       → 200 { service: 'simple-iptv-proxy', api: 1, activeUpstreams }
+//   B/v1/<token>/health/<b64u(url)>           → same + upstreamAllowed (allowlist only, no DNS)
+//   B/v1/<token>/u/<b64u(url)>/<name>         → relay; built by the app; host must be allowlisted
+//   B/v1/<token>/g/<grant>/<b64u(url)>/<name> → relay; built only by the proxy in rewritten HLS playlists
+// b64u = unpadded base64url of the UTF-8 absolute http(s) URL (≤ 8 KiB decoded); <name> = sanitized
+// last path segment [A-Za-z0-9._-]{1,64} else '_' (cosmetic); no query strings. Refusals carry
+// X-Simple-Iptv-Proxy-Error: <code> (400 malformed/bad-url, 401 bad-token, 403 host-not-allowed/
+// address-blocked/bad-grant/origin-not-allowed, 404, 405, 429, 502, 504); see proxy/README.md.
+export function buildProxyUrl(base: string, token: string, upstreamUrl: string, grant?: string): string;
+export function parseProxyPath(pathname: string): ParsedProxyPath;
+export function b64uEncode(text: string): string;
+export function b64uDecode(value: string): string | null;
+export function sanitizeName(upstreamUrl: string): string;
 
 // search (worker)
 export interface SearchApi {
