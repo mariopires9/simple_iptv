@@ -37,7 +37,7 @@ Allowed statuses (exactly one per story):
 | UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | Done |
 | SRC-03 | Add Xtream source (UI) | E1 | Must | 3 | SRC-01, SRC-02, FND-04, UX-02 | 3 | M1 | Done |
 | SRC-05 | Import M3U by URL | E1 | Must | 3 | SRC-04, SRC-01, FND-05 | 3 | M1 | Done |
-| SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | In Progress |
+| SRC-06 | Import M3U file | E1 | Must | 2 | SRC-04, FND-05 | 3 | M1 | Done |
 | SRC-07 | Sync Xtream catalog | E1 | Must | 5 | SRC-02, FND-05, FND-07 | 3 | M1 | Done |
 | VOD-04 | VOD/series classification in M3U | E5 | Must | 3 | SRC-04 | 3 | M2 | Done |
 | PLY-02 | Player UI | E3 | Must | 5 | PLY-01, FND-03 | 3 | M1 | Done |
@@ -47,7 +47,7 @@ Allowed statuses (exactly one per story):
 | QA-02 | Playwright E2E + axe | E13 | Must | 3 | FND-02, QA-01 | 3 | M1 | In Progress |
 | SRC-08 | "My lists" page | E1 | Must | 3 | SRC-03, SRC-05, SRC-07 | 4 | M2 | Done |
 | SRC-09 | Compatibility diagnostics | E1 | Must | 3 | SRC-02, PLY-01 | 4 | M1 | In Progress |
-| SRC-10 | Delete all data | E1 | Must | 2 | FND-05, SRC-01, PWA-02 | 4 | M3 | In Progress |
+| SRC-10 | Delete all data | E1 | Must | 2 | FND-05, SRC-01, PWA-02 | 4 | M3 | Done |
 | LIV-01 | Categories and channel list | E4 | Must | 5 | FND-04, FND-05, UX-02, SRC-07 | 4 | M1 | Done |
 | VOD-01 | Movie grid | E5 | Must | 3 | FND-04, FND-05, UX-02, SRC-07 | 4 | M2 | Done |
 | PLY-03 | Fullscreen and PiP | E3 | Must | 3 | PLY-02 | 4 | M1 | Done |
@@ -82,6 +82,7 @@ Allowed statuses (exactly one per story):
 | UX-05 | D-pad navigation | Should | 5 | UX-03 | Backlog |
 | MSS-01 | Media Session | Should | 1 | PLY-02 | Backlog |
 | TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | Done |
+| TEC-03 | Review follow-ups: shared Live routes, one player-open signal, resume rule, flaky tests | Should | 3 | TEC-02, PWA-03, UX-06 | Done |
 | SEC-03 | Parental control PIN | Could | 3 | LIV-01, VOD-01 | Backlog |
 | EPG-04 | EPG grid | Could | 8 | EPG-03 | Backlog |
 | PRF-01 | Multiple profiles | Could | 5 | FAV-03 | Backlog |
