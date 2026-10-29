@@ -234,6 +234,47 @@ describe('M3uCatalogBuilder — grouped series (VOD-04 AC3)', () => {
     );
   });
 
+  it('seasons split across groups ("Show T1", "Show T2", "Season 2", "S03") form one show', () => {
+    const { series, seriesDetails } = build(
+      [
+        '#EXTM3U',
+        '#EXTINF:-1 group-title="Breaking Point T1",Breaking Point S01E01',
+        'https://s.example.test/v/bp-101.mp4',
+        '#EXTINF:-1 group-title="Breaking Point T2",Breaking Point S02E01',
+        'https://s.example.test/v/bp-201.mp4',
+        '#EXTINF:-1 group-title="Breaking Point Season 3",Breaking Point S03E01',
+        'https://s.example.test/v/bp-301.mp4',
+        '#EXTINF:-1 group-title="Breaking Point S04",Breaking Point S04E01',
+        'https://s.example.test/v/bp-401.mp4',
+      ].join('\n'),
+    );
+    expect(series.items).toHaveLength(1);
+    expect(series.items[0]).toMatchObject({ name: 'Breaking Point', seasonCount: 4 });
+    expect(series.categories.map((c) => c.name)).toEqual(['Breaking Point T1']);
+    expect(seriesDetails[0]?.seasons.map((s) => s.number)).toEqual([1, 2, 3, 4]);
+    expect(showSeriesId('Breaking Point', 'Breaking Point T2')).toBe(
+      showSeriesId('Breaking Point', 'Breaking Point Temporada 1'),
+    );
+  });
+
+  it('"S01E01 - …" names in a generic group stay separate rows, not one merged show', () => {
+    const { series, seriesDetails } = build(
+      [
+        '#EXTM3U',
+        '#EXTINF:-1 group-title="Séries",S01E01 - Pilot',
+        'https://s.example.test/v/a.mp4',
+        '#EXTINF:-1 group-title="Séries",S01E01 - Winter is coming',
+        'https://s.example.test/v/b.mp4',
+      ].join('\n'),
+    );
+    expect(series.items.map((i) => i.name)).toEqual([
+      'S01E01 - Pilot',
+      'S01E01 - Winter is coming',
+    ]);
+    expect(series.items.every((i) => i.streamUrl !== undefined)).toBe(true);
+    expect(seriesDetails).toEqual([]);
+  });
+
   it('the cover comes from the first episode that has an image; rejected images are dropped', () => {
     const { series, seriesDetails } = build(SHOWS, (href) => !href.includes('img.'));
     expect(series.items[0]?.cover).toBeUndefined();

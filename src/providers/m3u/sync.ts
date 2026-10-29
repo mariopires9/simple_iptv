@@ -58,7 +58,7 @@ import { M3uParser, type M3uSkipReason } from './parser';
  * latest-wins progress throttle does not drop either kind):
  * - `download`: `done` = bytes read, `total` = Content-Length when known;
  * - `parse`: `done` = valid entries parsed so far.
- * Then `write` (`done`/`total` = items) and `done`.
+ * Then `write` (`done`/`total` = rows: items plus the episodes of grouped shows) and `done`.
  */
 export type M3uSyncPhase = 'download' | 'parse' | 'write' | 'done';
 
@@ -104,8 +104,10 @@ export interface SyncM3uResult {
   httpStatus?: number;
   /** With `error: 'blocked'`: the likely cause. */
   hint?: NetErrorHint;
-  /** Real stored counts after the import. */
+  /** Real stored counts after the import (`series` = shows, VOD-04). */
   stats: SourceStats;
+  /** Episodes stored in grouped shows (VOD-04): `stats` + `episodes` cover every entry kept. */
+  episodes?: number;
   /** Valid entries in the list (before deduplication). */
   entries: number;
   /** Entries skipped, total and by reason. */
@@ -471,7 +473,11 @@ async function runSync(
   // --- Write: the three types in one transaction (all or nothing); not cancellable ---
   ctx.throwIfCancelled();
   const catalog = builder.build();
-  const totalItems = CONTENT_TYPES.reduce((n, t) => n + catalog[t].items.length, 0);
+  const episodeCount = catalog.seriesDetails.reduce(
+    (n, d) => n + d.seasons.reduce((m, s) => m + s.episodes.length, 0),
+    0,
+  );
+  const totalItems = CONTENT_TYPES.reduce((n, t) => n + catalog[t].items.length, 0) + episodeCount;
   progress({ phase: 'write', done: 0, total: totalItems });
   let written: Awaited<ReturnType<typeof catalogRepo.replaceAllForExistingSource>>;
   try {
@@ -494,6 +500,8 @@ async function runSync(
       categories: written[type].categories,
     };
   }
+  const episodes = written.series.episodes ?? 0;
+  if (outcomes.series) outcomes.series.episodes = episodes;
 
   const epgUrls = parser.header.epgUrls.filter(isStorableUrl);
   const stats = await storedStats(sourceId);
@@ -516,7 +524,9 @@ async function runSync(
     epgUrlsWithheld: parser.header.epgUrls.length - epgUrls.length,
     bytes,
     stats,
+    episodes,
+    regrouped: written.series.regrouped,
     ms: now() - startedAt,
   });
-  return result('ok', stats, { epgUrls: epgUrls.length });
+  return result('ok', stats, { epgUrls: epgUrls.length, episodes });
 }

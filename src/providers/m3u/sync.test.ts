@@ -23,7 +23,7 @@ import { clearLogBuffer, clearSecrets, getLogEntries } from '@/core/log';
 import { WorkerTaskError, type TaskContext, type TaskProgress } from '@/core/worker';
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
-import { UNCATEGORIZED_CATEGORY_ID } from './catalog';
+import { UNCATEGORIZED_CATEGORY_ID, entryBaseId } from './catalog';
 import { M3uParser } from './parser';
 import {
   isM3uSourceSyncing,
@@ -265,8 +265,12 @@ describe('syncM3uSource — VOD-04 classification and grouping', () => {
     await seedSource(`${LIST_HOST}/list.m3u`);
     serveList(MIXED_LIST);
     const result = await sync();
-    expect(result).toMatchObject({ status: 'ok', entries: 10 });
+    expect(result).toMatchObject({ status: 'ok', entries: 10, episodes: 4 });
     expect(result.stats).toEqual({ live: 3, movies: 3, series: 2 });
+    // Stats + episodes account for every entry; so does the write progress (review #5).
+    expect(result.stats.live + result.stats.movies + result.episodes!).toBe(result.entries);
+    const source = await sourcesRepo.get(SOURCE_ID);
+    expect(source?.lastSyncByType?.series).toMatchObject({ items: 2, episodes: 4 });
     expect(await names('live')).toEqual(['Canal Notícias', 'Rádio Um', 'Jogo 1x2 Resumo']);
     expect(await names('movie')).toEqual([
       'Um Filme (2024)',
@@ -318,6 +322,88 @@ describe('syncM3uSource — VOD-04 classification and grouping', () => {
     expect(after?.seasons[1]?.episodes).toHaveLength(2);
     expect((await historyRepo.get(show.key))?.episodeKey).toBe(episode.key);
     expect(await favoritesRepo.has(show.key)).toBe(true);
+  });
+
+  it('write progress counts the episodes of grouped shows', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    serveList(MIXED_LIST);
+    const { ctx, seen } = fakeCtx();
+    await sync(ctx);
+    // Rows written: 8 items (3 live, 3 movies, 2 shows) + 4 episodes.
+    expect(seen.filter((p) => p.phase === 'write').at(-1)).toMatchObject({ done: 12, total: 12 });
+  });
+
+  it('moves pre-VOD-04 history and favourites of per-entry series rows to the grouped keys', async () => {
+    await seedSource(`${LIST_HOST}/list.m3u`);
+    // Before VOD-04 each episode entry was a series row of its own: `<src>:series:<entryId>`,
+    // played as its only episode `<…>:ep:<entryId>` (the old localSeriesDetails).
+    const entry = (name: string, url: string) => entryBaseId(url, name);
+    const e101 = entry('Série Exemplo S01E01', 'https://s.example.test/hls/se-s1e1.m3u8');
+    const e102 = entry('Série Exemplo S01E02', 'https://s.example.test/hls/se-s1e2.m3u8');
+    const e201 = entry('Série Exemplo S02E01', 'https://s.example.test/hls/se-s2e1.m3u8');
+    const oldKey = (id: string) => itemKey(SOURCE_ID, 'series', id);
+    const oldEp = (id: string) => episodeItemKey(oldKey(id), id);
+    await historyRepo.set({
+      itemKey: oldEp(e101),
+      positionSec: 1800,
+      durationSec: 1800,
+      completed: true,
+      lastWatchedAt: 100,
+    });
+    await historyRepo.set({
+      itemKey: oldKey(e101),
+      episodeKey: oldEp(e101),
+      positionSec: 1800,
+      durationSec: 1800,
+      completed: true,
+      lastWatchedAt: 100,
+    });
+    // Only the series entry (no episode entry) for S01E02: newer.
+    await historyRepo.set({
+      itemKey: oldKey(e102),
+      episodeKey: oldEp(e102),
+      positionSec: 300,
+      durationSec: 1800,
+      lastWatchedAt: 200,
+    });
+    await favoritesRepo.add(oldKey(e201), 50);
+    await favoritesRepo.add(oldKey(e102), 70);
+    // Unrelated data stays.
+    await favoritesRepo.add(itemKey(SOURCE_ID, 'live', 'other'), 1);
+
+    serveList(MIXED_LIST);
+    const result = await sync();
+    expect(result.status).toBe('ok');
+    const show = (await allItems()).find((i) => i.name === 'Série Exemplo')!;
+    const ep = (id: string) => episodeItemKey(show.key, id);
+
+    expect(await historyRepo.get(ep(e101))).toMatchObject({ positionSec: 1800, completed: true });
+    expect(await historyRepo.get(ep(e102))).toMatchObject({ positionSec: 300, completed: false });
+    expect(await historyRepo.get(show.key)).toMatchObject({
+      episodeKey: ep(e102),
+      positionSec: 300,
+      lastWatchedAt: 200,
+    });
+    for (const id of [e101, e102, e201]) {
+      expect(await historyRepo.get(oldKey(id))).toBeUndefined();
+      expect(await historyRepo.get(oldEp(id))).toBeUndefined();
+      expect(await favoritesRepo.has(oldKey(id))).toBe(false);
+    }
+    // One favourite for the show, with the earliest date.
+    const favorites = await favoritesRepo.list(SOURCE_ID, 'series');
+    expect(favorites).toEqual([expect.objectContaining({ itemKey: show.key, addedAt: 50 })]);
+    expect(await favoritesRepo.has(itemKey(SOURCE_ID, 'live', 'other'))).toBe(true);
+
+    // Idempotent: a second sync changes nothing.
+    const before = JSON.stringify([await historyRepo.get(show.key), favorites]);
+    serveList(MIXED_LIST);
+    await sync();
+    expect(
+      JSON.stringify([
+        await historyRepo.get(show.key),
+        await favoritesRepo.list(SOURCE_ID, 'series'),
+      ]),
+    ).toBe(before);
   });
 
   it('a show removed from the list loses its stored episodes', async () => {

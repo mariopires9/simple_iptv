@@ -8,7 +8,6 @@ import {
   episodeState,
   nextEpisode,
   orderSeasons,
-  parseEpisodeMarker,
   playOrder,
   type EpisodeProgress,
 } from './episodes';
@@ -124,18 +123,6 @@ describe('customSeasonName (SER-02 AC2)', () => {
     ['Season 1: The Beginning', 'Season 1: The Beginning'],
   ])('%s → %s', (name, expected) => {
     expect(customSeasonName({ ...(name !== undefined ? { name } : {}) })).toBe(expected);
-  });
-});
-
-describe('parseEpisodeMarker', () => {
-  it.each([
-    ['Show S01E02', { season: 1, episode: 2 }],
-    ['Show S1 E12 - Title', { season: 1, episode: 12 }],
-    ['Show 2x05', { season: 2, episode: 5 }],
-    ['Show', undefined],
-    ['Show S01E00', undefined],
-  ])('%s', (name, expected) => {
-    expect(parseEpisodeMarker(name)).toEqual(expected);
   });
 });
 

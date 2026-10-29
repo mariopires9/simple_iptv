@@ -19,10 +19,10 @@ import {
   type Source,
 } from '@/core/db';
 import { log } from '@/core/log';
+import { episodeMarker } from '@/providers/m3u';
 import { fetchSeriesInfo, type SeriesInfo } from '@/providers/xtream';
 import { sourceIdentity } from '@/ui/vod/resolveVod';
 import { xtreamClientFor, type XtreamClientDeps } from '@/ui/vod/xtreamClient';
-import { parseEpisodeMarker } from './episodes';
 
 export const DETAILS_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -69,7 +69,8 @@ export function toSeriesDetails(
 
 /** M3U series entry without stored episodes: the entry is its own (only) episode. */
 export function localSeriesDetails(series: Series): SeriesDetails {
-  const marker = parseEpisodeMarker(series.name);
+  // The same marker parser as the import (`@/providers/m3u`), on precomposed text.
+  const marker = episodeMarker(series.name.normalize('NFC'));
   const season = marker?.season ?? 1;
   const episode: Episode = {
     key: episodeItemKey(series.key, series.externalId),

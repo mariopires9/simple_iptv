@@ -11,6 +11,7 @@ import {
   classifyGroup,
   cleanShowName,
   episodeMarker,
+  showGroupIdentity,
   showIdentity,
   strongEpisodeMarker,
   type M3uClassificationRules,
@@ -187,17 +188,90 @@ const CASES: Record<string, Case> = {
     name: 'TVCine Exemplo',
     type: 'live',
   },
+  '"Ao Vivo" leading the group ignores an episode marker': {
+    attrs: 'group-title="Ao Vivo | Séries"',
+    url: `${H}/hls/s.m3u8`,
+    name: 'Show S01E02',
+    type: 'live',
+  },
+  '"Desporto Ao Vivo" (live word after a non-VOD word)': {
+    attrs: 'group-title="Desporto Ao Vivo"',
+    url: `${H}/hls/s2.mp4`,
+    name: 'Jogo Exemplo',
+    type: 'live',
+  },
+  '"Séries 24h" (looping channel, 24h wins anywhere)': {
+    attrs: 'group-title="Séries 24h"',
+    url: `${H}/hls/s3.m3u8`,
+    name: 'Show S01E02',
+    type: 'live',
+  },
+
+  // --- 3b'. A leading VOD keyword wins over a later live word (review #2) ---
+  '"Filmes Canal Hollywood"': {
+    attrs: 'group-title="Filmes Canal Hollywood"',
+    url: `${H}/hls/k1.m3u8`,
+    name: 'Um Filme',
+    type: 'movie',
+  },
+  '"Séries Live Action" with a marker': {
+    attrs: 'group-title="Séries Live Action"',
+    url: `${H}/hls/k2.m3u8`,
+    name: 'Heroes S01E03',
+    type: 'series',
+    episode: ['Heroes', 1, 3],
+  },
+  '"Movies Channel"': {
+    attrs: 'group-title="Movies Channel"',
+    url: `${H}/hls/k3.m3u8`,
+    name: 'Movie Night',
+    type: 'movie',
+  },
+  '"VOD | Live Concerts"': {
+    attrs: 'group-title="VOD | Live Concerts"',
+    url: `${H}/hls/k4.m3u8`,
+    name: 'Concert 2024',
+    type: 'movie',
+  },
   '"Movies Live"': {
     attrs: 'group-title="Movies Live"',
     url: `${H}/hls/r.mp4`,
     name: 'Live Movie Event',
+    type: 'movie',
+  },
+  '"S01E01 - Pilot" in a generic "Séries" group: ungrouped (review #3)': {
+    attrs: 'group-title="Séries"',
+    url: `${H}/hls/k5.m3u8`,
+    name: 'S01E01 - Pilot',
+    type: 'series',
+  },
+  '"S01E01" in a generic "VOD" group: ungrouped': {
+    attrs: 'group-title="VOD"',
+    url: `${H}/hls/k6.mp4`,
+    name: 'S01E01 Winter is coming',
+    type: 'series',
+  },
+  '"S01E01" without any group: ungrouped': {
+    url: `${H}/files/k7.mp4`,
+    name: 'S01E01 - Pilot',
+    type: 'series',
+  },
+  '"Temporada 2 e 3" is not S2E3 (review #7)': {
+    url: `${H}/hls/k8.m3u8`,
+    name: 'Resumo Temporada 2 e 3',
     type: 'live',
   },
-  '"Ao Vivo" group ignores an episode marker': {
-    attrs: 'group-title="Séries Ao Vivo"',
-    url: `${H}/hls/s.m3u8`,
-    name: 'Show S01E02',
-    type: 'live',
+  '"Season 1 E2" (bare E followed by digits)': {
+    url: `${H}/hls/k9.m3u8`,
+    name: 'Bare Season 1 E2',
+    type: 'series',
+    episode: ['Bare', 1, 2],
+  },
+  'decomposed (NFD) "Temporada 1 Episódio 4"': {
+    url: `${H}/hls/k10.m3u8`,
+    name: 'Série NFD Temporada 1 Episódio 4'.normalize('NFD'),
+    type: 'series',
+    episode: ['Série NFD', 1, 4],
   },
 
   // --- 3c. Not a prefix / ambiguous group → other rules or live ---
@@ -435,6 +509,16 @@ describe('episode markers', () => {
     expect(dated.episode?.title).toBe('25-10-2026');
   });
 
+  it('the single marker parser (also used by the Series screens)', () => {
+    expect(episodeMarker('Show S01E02')).toMatchObject({ season: 1, episode: 2 });
+    expect(episodeMarker('Show S1 E12 - Title')).toMatchObject({ season: 1, episode: 12 });
+    expect(episodeMarker('Show 2x05')).toMatchObject({ season: 2, episode: 5 });
+    expect(episodeMarker('Show')).toBeUndefined();
+    expect(episodeMarker('Show S01E00')).toBeUndefined();
+    expect(episodeMarker('Temporada 2 e 3')).toBeUndefined();
+    expect(strongEpisodeMarker('Temporada 2 Episódio 3')).toMatchObject({ season: 2, episode: 3 });
+  });
+
   it('strong vs weak markers', () => {
     expect(strongEpisodeMarker('Show 1x02')).toBeUndefined();
     expect(episodeMarker('Show 1x02')).toMatchObject({ season: 1, episode: 2 });
@@ -448,6 +532,19 @@ describe('episode markers', () => {
     expect(cleanShowName('Some.Show.2019.')).toBe('Some Show 2019');
     expect(showIdentity('Ação Total')).toBe(showIdentity('ACAO TOTAL'));
     expect(showIdentity('Show: Name')).toBe(showIdentity('Show - Name'));
+    // Season tokens are not part of the group identity (review #4).
+    const base = showGroupIdentity('Breaking Point');
+    for (const group of [
+      'Breaking Point T1',
+      'Breaking Point T2',
+      'Breaking Point Season 2',
+      'Breaking Point - Temporada 2',
+      'Breaking Point S02',
+    ]) {
+      expect(showGroupIdentity(group)).toBe(base);
+    }
+    expect(showGroupIdentity('Breaking Point 2')).not.toBe(base);
+    expect(showGroupIdentity(undefined)).toBe('');
   });
 });
 
@@ -456,6 +553,8 @@ describe('rules table', () => {
     expect(classifyGroup('VOD')).toBe('vod');
     expect(classifyGroup('PT | Séries')).toBe('series');
     expect(classifyGroup('Canais | Filmes')).toBe('live');
+    expect(classifyGroup('Filmes | Canais')).toBe('movie');
+    expect(classifyGroup('Filmes 24/7')).toBe('live');
     expect(classifyGroup('Drama Series')).toBeUndefined();
     expect(classifyGroup('')).toBeUndefined();
     expect(classifyGroup(undefined)).toBeUndefined();

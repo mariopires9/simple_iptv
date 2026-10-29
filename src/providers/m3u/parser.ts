@@ -27,6 +27,7 @@
 import type { ContentType, RequiredHeader, StreamContainer } from '@/core/db';
 import { parseExternalUrl } from '@/core/net';
 import {
+  AUDIO_CONTAINERS,
   DEFAULT_M3U_RULES,
   M3uClassifier,
   type EpisodeInfo,
@@ -261,25 +262,12 @@ const EXTENSION_CONTAINERS: Record<string, StreamContainer> = {
   flac: 'flac',
 };
 
-const AUDIO_CONTAINERS: ReadonlySet<StreamContainer> = new Set(['mp3', 'aac', 'ogg', 'flac']);
-
 /** Container from the last path segment's extension (`.mpd` → `dash`); undefined if unknown. */
 export function containerFromUrl(url: URL): StreamContainer | undefined {
   const segment = url.pathname.slice(url.pathname.lastIndexOf('/') + 1);
   const dot = segment.lastIndexOf('.');
   if (dot < 0) return undefined;
   return EXTENSION_CONTAINERS[segment.slice(dot + 1).toLowerCase()];
-}
-
-/**
- * The URL rule alone (SRC-04 AC7): `/movie/` → movie, `/series/` → series, else live. Entries are
- * classified with the full VOD-04 rule chain (`./classify.ts`); kept for callers of the URL rule.
- */
-export function classifyUrl(url: URL): ContentType {
-  const path = url.pathname.toLowerCase();
-  if (path.includes('/movie/')) return 'movie';
-  if (path.includes('/series/')) return 'series';
-  return 'live';
 }
 
 const HEADER_NAMES: Record<string, RequiredHeader> = {

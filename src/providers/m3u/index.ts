@@ -7,7 +7,6 @@ export {
   MAX_NAME_LENGTH,
   MAX_OPTIONS_PER_ENTRY,
   M3uParser,
-  classifyUrl,
   cleanText,
   containerFromUrl,
   feedM3uStream,

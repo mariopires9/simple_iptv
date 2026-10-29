@@ -12,7 +12,8 @@
 // - Categories are per content type, in order of first appearance in the list.
 // - Series episodes (VOD-04 AC3): entries classified as series with an episode marker are grouped
 //   into one series row per show — `externalId` = `s` + hash of the normalised show name + "\n" +
-//   the group (so the same show in two groups stays two series) — placed where its first episode
+//   the group without season tokens (the same show in two unrelated groups stays two series; "Show
+//   T1" / "Show T2" groups are one) — placed where its first episode
 //   appears. Its seasons/episodes are returned in `seriesDetails` and stored with the catalogue
 //   (read by the Series details screen, no network call). An episode's `externalId` is the entry's
 //   own id above (url + name), so its history key (`episodeItemKey`) does not depend on list order
@@ -32,7 +33,7 @@ import type {
   StreamContainer,
 } from '@/core/db';
 import { parseExternalUrl } from '@/core/net';
-import { showIdentity } from './classify';
+import { showGroupIdentity, showIdentity } from './classify';
 import type { M3uEntry } from './parser';
 
 /** Category id of entries without a group (AC9). Never collides with `g…` hashed ids. */
@@ -65,9 +66,17 @@ export function entryBaseId(url: string, name: string): string {
   return hash64(`${url}\n${name}`);
 }
 
-/** External id of a grouped show (VOD-04): its normalised name within its group. */
-export function showSeriesId(show: string, group: string | undefined): string {
-  return `s${hash64(`${showIdentity(show)}\n${group ?? ''}`)}`;
+/**
+ * External id of a grouped show (VOD-04): its normalised name within its group, the group without
+ * season tokens ("T1", "S02", "Season 2", "Temporada 2").
+ */
+export function showSeriesId(
+  show: string,
+  group: string | undefined,
+  groupIdentity: string = showGroupIdentity(group),
+): string {
+  // Season tokens of the group are ignored ("Show T1" / "Show T2" groups: one show).
+  return `s${hash64(`${showIdentity(show)}\n${groupIdentity}`)}`;
 }
 
 /** External id of a group (category). */
@@ -127,6 +136,8 @@ export class M3uCatalogBuilder {
   private readonly seen = new Map<string, number>();
   private readonly shows = new Map<string, Show>();
   private readonly showIds = new Map<string, string>();
+  /** Group → identity without season tokens (computed once per group). */
+  private readonly groupIds = new Map<string, string>();
   private readonly isStorableUrl: (href: string) => boolean;
 
   constructor(options: M3uCatalogOptions = {}) {
@@ -255,7 +266,13 @@ export class M3uCatalogBuilder {
     const cacheKey = `${info.show}\n${entry.group ?? ''}`;
     let showId = this.showIds.get(cacheKey);
     if (showId === undefined) {
-      showId = showSeriesId(info.show, entry.group);
+      const group = entry.group ?? '';
+      let groupIdentity = this.groupIds.get(group);
+      if (groupIdentity === undefined) {
+        groupIdentity = showGroupIdentity(entry.group);
+        this.groupIds.set(group, groupIdentity);
+      }
+      showId = showSeriesId(info.show, entry.group, groupIdentity);
       this.showIds.set(cacheKey, showId);
     }
     const image = this.image(entry.attrs.tvgLogo);

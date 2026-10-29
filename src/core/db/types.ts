@@ -59,6 +59,11 @@ export interface TypeSyncStatus {
   httpStatus?: number;
   /** Items written (after deduplication) on success. */
   items?: number;
+  /**
+   * Series of an M3U list: episodes stored in the grouped shows (VOD-04), so `items` (shows) plus
+   * `episodes` account for the list's series entries. Not indexed.
+   */
+  episodes?: number;
   /** Categories written on success. */
   categories?: number;
   /** Invalid items/categories skipped on success. */

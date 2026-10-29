@@ -6,9 +6,11 @@
 //
 //   1. URL path (Xtream pattern): `/movie/` → movie, `/series/` → series, `/live/` → live.
 //   2. Audio-only entries (`radio="true"`, audio file extension) → live (radios).
-//   3. Group title (see {@link DEFAULT_M3U_RULES}): a live word anywhere ("24/7", "Live", "Canais",
-//      "Ao vivo"…) → live; else a VOD keyword among the first significant words ("VOD", "Movies",
-//      "Filmes", "Series", "Séries"…) → movie / series / VOD.
+//   3. Group title (see {@link DEFAULT_M3U_RULES}), read word by word after country codes and
+//      quality tags: "24/7" anywhere → live; else the leading significant word decides — a live
+//      word ("Live", "Canais", "Ao vivo"…) → live, a VOD keyword ("VOD", "Movies", "Filmes",
+//      "Series", "Séries"…) → movie / series / VOD; if neither leads, a live word later in the
+//      group → live ("Desporto Ao Vivo"), while "Filmes Canal Hollywood" stays VOD.
 //   4. `media="true"` (Kodi IPTV Simple's VOD attribute, used by real Portuguese lists) → VOD.
 //   5. VOD file extension (`.mp4`, `.mkv`, `.avi`, `.mov`, `.m4v`) → VOD.
 //   6. A strong episode marker in the name (`S01E02`, `S01 E02`, `T01E02`, "Temporada 1
@@ -37,7 +39,12 @@ export type GroupKind = 'live' | 'movie' | 'series' | 'vod';
  * words.
  */
 export interface M3uClassificationRules {
-  /** Group words that mark live channels wherever they appear; checked before `groupKeywords`. */
+  /** Group words that mark live channels wherever they appear, even after a VOD keyword. */
+  alwaysLiveGroupWords: readonly string[];
+  /**
+   * Group words that mark live channels when they lead the group, or appear anywhere in a group
+   * whose leading word is not a VOD keyword.
+   */
   liveGroupWords: readonly string[];
   /** Group words → kind, matched among the first {@link groupLeadWords} significant words. */
   groupKeywords: Readonly<Record<string, Exclude<GroupKind, 'live'>>>;
@@ -54,10 +61,9 @@ export interface M3uClassificationRules {
 
 /** Default rules. Changing them only needs a re-sync of the list (no migration). */
 export const DEFAULT_M3U_RULES: M3uClassificationRules = {
+  // "Filmes 24/7", "Séries 24h": channels looping films or a series.
+  alwaysLiveGroupWords: ['24 7', '24x7', '247', '24h', '24 horas'],
   liveGroupWords: [
-    '24 7',
-    '24x7',
-    '247',
     'live',
     'ao vivo',
     'en vivo',
@@ -112,7 +118,7 @@ const TXE = new RegExp(
 /** "Temporada 1 Episódio 2", "Season 2 - Episode 5", "Temp. 1 Ep. 3", "Saison 1 Épisode 4". */
 const WORDS = new RegExp(
   `${NOT_ALNUM_BEFORE}(?:temporada|season|saison|staffel|temp\\.?)\\s*(\\d{1,3})\\s*[-–,:|.]?\\s*` +
-    `(?:epis[oó]dio|episode|[ée]pisode|episodio|folge|ep\\.?|e)\\s*(\\d{1,4})(?!\\d)`,
+    `(?:epis[oó]dio|episode|[ée]pisode|episodio|folge|ep\\.?|e(?=\\d))\\s*(\\d{1,4})(?!\\d)`,
   'iu',
 );
 const HAS_DIGIT = /\d/;
@@ -127,14 +133,21 @@ function markerFrom(match: RegExpExecArray | null): EpisodeMarker | undefined {
   return { season, episode, index: match.index, length: match[0].length };
 }
 
-/** A strong episode marker (`S01E02`, `S01 E02`, `T01E02`, "Temporada 1 Episódio 2"). */
+/**
+ * A strong episode marker (`S01E02`, `S01 E02`, `T01E02`, "Temporada 1 Episódio 2", "Season 1
+ * E2"). Pass NFC text (the parser normalises names): accented words such as "Episódio" are
+ * matched precomposed, and the returned indexes refer to the text as given.
+ */
 export function strongEpisodeMarker(name: string): EpisodeMarker | undefined {
   // Every marker has digits: most channel names are rejected without running the expressions.
   if (!HAS_DIGIT.test(name)) return undefined;
   return markerFrom(SXE.exec(name)) ?? markerFrom(TXE.exec(name)) ?? markerFrom(WORDS.exec(name));
 }
 
-/** Strong marker, else the weak `1x02` form (only used once the entry is known to be VOD). */
+/**
+ * Strong marker, else the weak `1x02` form (only used once the entry is known to be VOD). The
+ * app's single episode-marker parser: the Series screens use it too (`@/providers/m3u`).
+ */
 export function episodeMarker(name: string): EpisodeMarker | undefined {
   return strongEpisodeMarker(name) ?? markerFrom(NXE.exec(name));
 }
@@ -173,16 +186,21 @@ export interface EpisodeInfo {
 
 /**
  * Splits `name` around `marker`. The show is the text before the marker; when that is empty
- * ("S01E02 - Pilot"), the group, then the text after the marker, then the whole name.
+ * ("S01E02 - Pilot") it is the group, but only a group that names one show — not a generic
+ * VOD/series group ("Séries"), where unrelated shows would merge. Without a usable show name the
+ * result is `undefined`: the entry stays an ungrouped series row of its own.
  */
 export function episodeInfo(
   name: string,
   marker: EpisodeMarker,
   group: string | undefined,
-): EpisodeInfo {
+  groupKind: GroupKind | undefined,
+): EpisodeInfo | undefined {
   const before = cleanShowName(name.slice(0, marker.index));
   const after = cleanTitle(name.slice(marker.index + marker.length));
-  const show = before || (group !== undefined ? cleanShowName(group) : '') || after || name;
+  const show =
+    before || (group !== undefined && groupKind === undefined ? cleanShowName(group) : '');
+  if (show === '') return undefined;
   return { season: marker.season, episode: marker.episode, show, title: after || name };
 }
 
@@ -192,7 +210,44 @@ export function showIdentity(show: string): string {
   return words.length > 0 ? words.join(' ') : show.trim().toLowerCase();
 }
 
-const AUDIO_CONTAINERS: ReadonlySet<StreamContainer> = new Set(['mp3', 'aac', 'ogg', 'flac']);
+const SEASON_WORDS = new Set(['season', 'temporada', 'temp', 'saison', 'staffel']);
+const SEASON_TOKEN = /^[st]\d{1,3}$/;
+const NUMBER_TOKEN = /^\d{1,3}$/;
+
+/**
+ * Identity of a group for show grouping: normalised words without season tokens ("T1", "S02",
+ * "Season 2", "Temporada 2"), so a show whose seasons are split across groups stays one show.
+ */
+export function showGroupIdentity(group: string | undefined): string {
+  if (group === undefined) return '';
+  const words = tokenizeSearchText(group);
+  const kept: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i] as string;
+    if (SEASON_TOKEN.test(word)) continue;
+    if (SEASON_WORDS.has(word) && NUMBER_TOKEN.test(words[i + 1] ?? '')) {
+      i++;
+      continue;
+    }
+    kept.push(word);
+  }
+  return kept.join(' ');
+}
+
+/** Containers of audio-only streams (radios): the single list, shared with the parser. */
+export const AUDIO_CONTAINERS: ReadonlySet<StreamContainer> = new Set([
+  'mp3',
+  'aac',
+  'ogg',
+  'flac',
+]);
+
+/** Whether `words[i]` (alone or with the next word) is in `set`. */
+function hasWordAt(words: readonly string[], i: number, set: ReadonlySet<string>): boolean {
+  const word = words[i] as string;
+  const next = words[i + 1];
+  return set.has(word) || (next !== undefined && set.has(`${word} ${next}`));
+}
 
 /** What a group title says (undefined: nothing). Pure; cache the result per group string. */
 export function classifyGroup(
@@ -202,24 +257,25 @@ export function classifyGroup(
   if (group === undefined) return undefined;
   const words = tokenizeSearchText(group);
   if (words.length === 0) return undefined;
+  const always = new Set(rules.alwaysLiveGroupWords);
+  for (let i = 0; i < words.length; i++) if (hasWordAt(words, i, always)) return 'live';
   const live = new Set(rules.liveGroupWords);
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i] as string;
-    if (live.has(word)) return 'live';
-    const next = words[i + 1];
-    if (next !== undefined && live.has(`${word} ${next}`)) return 'live';
-  }
   const noise = new Set(rules.groupNoiseWords);
+  // The leading significant words decide first: a live word or a VOD keyword.
   let significant = 0;
-  for (let i = 0; i < words.length && significant < rules.groupLeadWords; i++) {
+  let i = 0;
+  for (; i < words.length && significant < rules.groupLeadWords; i++) {
     const word = words[i] as string;
     const next = words[i + 1];
+    if (hasWordAt(words, i, live)) return 'live';
     const pair = next !== undefined ? rules.groupKeywords[`${word} ${next}`] : undefined;
     if (pair !== undefined) return pair;
     const single = rules.groupKeywords[word];
     if (single !== undefined) return single;
     if (word.length > 2 && !noise.has(word)) significant++;
   }
+  // No VOD keyword leads: a live word anywhere still marks live channels.
+  for (; i < words.length; i++) if (hasWordAt(words, i, live)) return 'live';
   return undefined;
 }
 
@@ -254,16 +310,28 @@ function urlKind(path: string): ContentType | undefined {
   return undefined;
 }
 
+/** A series classification, with the grouping info when a show name is known. */
+function series(
+  input: ClassifyInput,
+  marker: EpisodeMarker,
+  reason: ClassifyReason,
+  groupKind: GroupKind | undefined,
+): Classification {
+  const episode = episodeInfo(input.name, marker, input.group, groupKind);
+  return episode !== undefined ? { type: 'series', reason, episode } : { type: 'series', reason };
+}
+
 function resolveVod(
   kind: Exclude<GroupKind, 'live'>,
   input: ClassifyInput,
   reason: ClassifyReason,
+  groupKind: GroupKind | undefined,
 ): Classification {
   // A movie group needs a strong marker to become a series ("Rocky 2x10" stays a movie).
   const marker = kind === 'movie' ? strongEpisodeMarker(input.name) : episodeMarker(input.name);
   if (kind === 'movie' && marker === undefined) return { type: 'movie', reason };
   if (marker === undefined) return { type: kind === 'series' ? 'series' : 'movie', reason };
-  return { type: 'series', reason, episode: episodeInfo(input.name, marker, input.group) };
+  return series(input, marker, reason, groupKind);
 }
 
 /** Classifies one entry (computing its group decision; lists use {@link M3uClassifier}). */
@@ -274,33 +342,34 @@ export function classifyEntry(
   return decide(input, rules, classifyGroup(input.group, rules));
 }
 
+const NON_ASCII = /[\u0080-\uffff]/;
+
 /** The rule chain, with the group decision already made. */
 function decide(
-  input: ClassifyInput,
+  raw: ClassifyInput,
   rules: M3uClassificationRules,
   groupKind: GroupKind | undefined,
 ): Classification {
+  // Markers match precomposed text ("Episódio"): NFC, only when there is anything to compose.
+  const input =
+    HAS_DIGIT.test(raw.name) && NON_ASCII.test(raw.name)
+      ? { ...raw, name: raw.name.normalize('NFC') }
+      : raw;
   const byUrl = urlKind(input.path);
   if (byUrl === 'live') return { type: 'live', reason: 'url' };
   if (byUrl === 'movie') return { type: 'movie', reason: 'url' };
-  if (byUrl === 'series') return resolveVod('series', input, 'url');
+  if (byUrl === 'series') return resolveVod('series', input, 'url', groupKind);
   if (input.audioOnly || (input.container !== undefined && AUDIO_CONTAINERS.has(input.container))) {
     return { type: 'live', reason: 'audio' };
   }
   if (groupKind === 'live') return { type: 'live', reason: 'group' };
-  if (groupKind !== undefined) return resolveVod(groupKind, input, 'group');
-  if (input.media === true) return resolveVod('vod', input, 'media');
+  if (groupKind !== undefined) return resolveVod(groupKind, input, 'group', groupKind);
+  if (input.media === true) return resolveVod('vod', input, 'media', groupKind);
   if (input.container !== undefined && rules.vodContainers.includes(input.container)) {
-    return resolveVod('vod', input, 'extension');
+    return resolveVod('vod', input, 'extension', groupKind);
   }
   const marker = strongEpisodeMarker(input.name);
-  if (marker !== undefined) {
-    return {
-      type: 'series',
-      reason: 'episode-marker',
-      episode: episodeInfo(input.name, marker, input.group),
-    };
-  }
+  if (marker !== undefined) return series(input, marker, 'episode-marker', groupKind);
   return { type: 'live', reason: 'default' };
 }
 

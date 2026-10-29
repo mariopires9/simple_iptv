@@ -10,6 +10,7 @@ import {
 } from '../keys';
 import { Dexie, type Collection, type Table } from 'dexie';
 import type { SimpleIptvDb } from '../schema';
+import { regroupUserData, type RegroupResult } from './regroup';
 import type {
   CatalogItemByType,
   CatalogReplacement,
@@ -61,6 +62,10 @@ export interface ReplaceResult {
   items: number;
   /** Items dropped because a later item has the same key (the last one wins). */
   duplicates: number;
+  /** Series only, with `seriesDetails`: episodes stored in the details (VOD-04). */
+  episodes?: number;
+  /** Series only, with `seriesDetails`: user data moved to the grouped keys (VOD-04). */
+  regrouped?: RegroupResult;
 }
 
 function byOrder(a: { order: number }, b: { order: number }): number {
@@ -200,7 +205,9 @@ async function replace<T extends ContentType>(
 /**
  * One replacement per content type (`replaceAllForExistingSource`). With `seriesDetails`, the
  * stored seasons/episodes of the source's series are replaced as well (M3U lists, VOD-04): the
- * previous ones are deleted and these written, in the same transaction.
+ * previous ones are deleted and these written, in the same transaction. History and favourites
+ * of episodes that used to be series rows of their own (`<src>:series:<episodeExternalId>`) are
+ * moved to the grouped keys in that transaction too (`./regroup.ts`).
  */
 export type CatalogReplacementByType = { [T in ContentType]: CatalogReplacement<T> } & {
   seriesDetails?: readonly SeriesDetailsInput[];
@@ -277,17 +284,14 @@ export const catalogRepo = {
       movie: prepare(sourceId, 'movie', data.movie),
       series: prepare(sourceId, 'series', data.series),
     };
+    const seriesKeys = new Set(prepared.series.items.map((s) => s.key));
     const details =
       data.seriesDetails === undefined
         ? undefined
-        : prepareSeriesDetails(
-            sourceId,
-            data.seriesDetails,
-            new Set(prepared.series.items.map((s) => s.key)),
-            Date.now(),
-          );
+        : prepareSeriesDetails(sourceId, data.seriesDetails, seriesKeys, Date.now());
     const db = await getDb();
     notifyCatalogWrite(sourceId);
+    let regrouped: RegroupResult | undefined;
     const written = await db.transaction(
       'rw',
       [
@@ -298,6 +302,8 @@ export const catalogRepo = {
         db.series,
         db.seriesDetails,
         db.searchIndex,
+        db.history,
+        db.favorites,
       ],
       async () => {
         if ((await db.sources.get(sourceId)) === undefined) return false;
@@ -314,16 +320,21 @@ export const catalogRepo = {
           for (let i = 0; i < details.length; i += BULK_CHUNK_SIZE) {
             await db.seriesDetails.bulkPut(details.slice(i, i + BULK_CHUNK_SIZE));
           }
+          regrouped = await regroupUserData(db, sourceId, details, seriesKeys);
         }
         return true;
       },
     );
     if (!written) return undefined;
-    return {
-      live: resultOf(prepared.live),
-      movie: resultOf(prepared.movie),
-      series: resultOf(prepared.series),
-    };
+    const series = resultOf(prepared.series);
+    if (details !== undefined) {
+      series.episodes = details.reduce(
+        (n, d) => n + d.seasons.reduce((m, s) => m + s.episodes.length, 0),
+        0,
+      );
+      if (regrouped !== undefined) series.regrouped = regrouped;
+    }
+    return { live: resultOf(prepared.live), movie: resultOf(prepared.movie), series };
   },
 
   /** Categories of a source+type in the source's original order. */
