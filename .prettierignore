@@ -6,3 +6,5 @@ package-lock.json
 spikes
 .claude
 fixtures/streams
+.vitest
+graphify-out
