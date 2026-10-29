@@ -84,6 +84,7 @@ Dependency rule: `features → (worker, player, providers, core, ui)`; `worker �
 | `core/db` | Dexie schema, migrations, typed repositories, `wipeAll()` | Network requests |
 | `core/log` | `log.debug/info/warn/error` with automatic redaction; 500-entry ring buffer | Remote sending |
 | `core/worker` | Heavy operations (sync, parse, index) with progress and cancellation | DOM access |
+| `core/session` | Framework-agnostic session state shared across features: the active list (`getActiveSourceSnapshot`, `subscribeActiveSource`, `setActiveSource`, `refreshActiveSource`, `loadActiveSource`); publishes the effective active id (stored if it exists, else the first list) and notifies only when it changes; loads `@/core/db` lazily. Features wrap it with `useSyncExternalStore` and reload their data on change (SRC-08) | UI/React code; imports above core |
 | `core/platform` | `capabilities()`: MSE/MMS, `isTypeSupported` for common codecs, iOS, standalone, PiP, fullscreen | — |
 | `providers/xtream` | Implements `SourceProvider` for Xtream | UI |
 | `providers/m3u` | Streaming M3U parser + `SourceProvider` for M3U | UI |
