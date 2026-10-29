@@ -3,6 +3,7 @@ import type { MessageShape } from '../types';
 import { app } from './app';
 import { db } from './db';
 import { live } from './live';
+import { movies } from './movies';
 import { nav } from './nav';
 import { onboarding } from './onboarding';
 import { player } from './player';
@@ -14,6 +15,7 @@ export const ptPT = {
   app,
   db,
   live,
+  movies,
   nav,
   onboarding,
   player,

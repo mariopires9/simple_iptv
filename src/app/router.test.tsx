@@ -47,8 +47,9 @@ describe('router — routes', () => {
     ['/live', 'Live TV', null],
     ['/live/category/7', 'Live TV', null],
     ['/movies', 'Movies', null],
-    ['/movies/category/123', 'Movies', 'Category: 123'],
-    ['/movies/42', 'Movie details', 'Item: 42'],
+    ['/movies/category/123', 'Movies', null],
+    // No list in this test: the details route answers "Movie not found" (VOD-02).
+    ['/movies/42', 'Movie not found', null],
     ['/series', 'Series', null],
     ['/series/category/5', 'Series', 'Category: 5'],
     ['/series/77', 'Series details', 'Item: 77'],
@@ -129,7 +130,9 @@ describe('router — not found', () => {
   it('paths match case-insensitively and the nav follows (/Movies/category/1)', async () => {
     renderRoute('/Movies/category/1');
     await heading('Movies');
-    expect(screen.getByText('Category: 1')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: "You don't have any IPTV lists yet" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { current: 'page' })).toHaveAccessibleName('Movies');
   });
 });
