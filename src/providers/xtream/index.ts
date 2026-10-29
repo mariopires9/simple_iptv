@@ -42,3 +42,5 @@ export type {
   HttpsAttempt,
   XtreamConnectionReport,
 } from './types';
+export { fetchVodInfo, parseVodInfo } from './vodInfo';
+export type { VodInfo } from './vodInfo';

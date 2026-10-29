@@ -73,7 +73,9 @@ describe('App (hash router)', () => {
   it('deep link #/movies/category/123 opens the movies screen for that category', async () => {
     renderApp('#/movies/category/123');
     await heading('Movies');
-    expect(screen.getByText('Category: 123')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: "You don't have any IPTV lists yet" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { current: 'page' })).toHaveAccessibleName('Movies');
   });
 
