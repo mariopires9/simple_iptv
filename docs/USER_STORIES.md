@@ -295,7 +295,7 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **AC:**
   1. Given the Fullscreen API available, Then the player container (with its own overlay) enters fullscreen.
   2. Given iPhone (no Fullscreen API on elements), Then it uses `video.webkitEnterFullscreen()` and the UI states that the controls are the system's.
-  3. Given mobile in landscape during playback and the option enabled, Then it enters fullscreen; `screen.orientation.lock` is used only where supported, with no errors where it is not.
+  3. Given mobile in landscape during playback and the option enabled, Then it enters fullscreen; `screen.orientation.lock` is used only where supported, with no errors where it is not. Note (2026-10-29): browsers refuse fullscreen requests without a user gesture, so rotation shows a large "Tap for fullscreen" prompt instead of entering automatically.
   4. Given PiP supported (`document.pictureInPictureEnabled` or `webkitSetPresentationMode`), Then the PiP button is visible; otherwise hidden.
 - **Dependencies:** PLY-02.
 - **Tests:** unit with mocked feature detection; manual on devices (DEP-02).
