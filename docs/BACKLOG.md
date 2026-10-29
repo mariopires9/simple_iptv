@@ -55,14 +55,14 @@ Allowed statuses (exactly one per story):
 | LIV-02 | Play channel and zapping | E4 | Must | 5 | LIV-01, PLY-02 | 5 | M1 | Done |
 | LIV-04 | Quick channel filter | E4 | Must | 2 | LIV-01 | 5 | M1 | Done |
 | VOD-02 | Movie details | E5 | Must | 3 | VOD-01, PLY-02 | 5 | M2 | Done |
-| SER-01 | Series grid | E6 | Must | 2 | VOD-01 | 5 | M2 | In Progress |
+| SER-01 | Series grid | E6 | Must | 2 | VOD-01 | 5 | M2 | Done |
 | EPG-01 | Xtream now/next | E7 | Must | 3 | LIV-01, SRC-02 | 5 | M2 | Done |
 | SCH-02 | Global search | E8 | Must | 3 | SCH-01, FND-04 | 5 | M2 | Done |
 | UX-04 | Settings and privacy | E11 | Must | 2 | FND-04, SRC-08 | 5 | M3 | Backlog |
 | LIV-03 | Remember last channel | E4 | Must | 2 | LIV-02, FND-05 | 6 | M1 | Done |
-| VOD-03 | VOD with resume | E5 | Must | 3 | VOD-02, FAV-02 | 6 | M2 | In Progress |
-| SER-02 | Series details | E6 | Must | 5 | SER-01, PLY-02 | 6 | M2 | In Progress |
-| SER-03 | Episode, resume, next | E6 | Must | 3 | SER-02, VOD-03 | 7 | M2 | In Progress |
+| VOD-03 | VOD with resume | E5 | Must | 3 | VOD-02, FAV-02 | 6 | M2 | Done |
+| SER-02 | Series details | E6 | Must | 5 | SER-01, PLY-02 | 6 | M2 | Done |
+| SER-03 | Episode, resume, next | E6 | Must | 3 | SER-02, VOD-03 | 7 | M2 | Done |
 | FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | Done |
 | UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | Backlog |
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
