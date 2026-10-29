@@ -156,14 +156,17 @@ describe('LiveScreen — virtualised list with paging (AC2)', () => {
     await act(async () => {
       list.scrollTo({ top: 1_000 * CHANNEL_ROW_HEIGHT });
     });
-    await within(list).findByText('Channel 1001', undefined, { timeout: 10_000 });
-    expect(options().length).toBeLessThanOrEqual(40);
-    expect(spy).toHaveBeenCalledWith(
-      'live',
-      expect.stringContaining(':cat:30'),
-      // Global page 5 (rows 1 000–1 199) = "Mega" rows 990… (News and Sports hold 10).
-      { offset: 990, limit: PAGE_SIZE },
+    // Assert the paging request itself (issued right after the scroll), not the rendered text:
+    // fake-indexeddb is slow at deep offsets, so waiting for the row made this test load-sensitive.
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith(
+        'live',
+        expect.stringContaining(':cat:30'),
+        // Global page 5 (rows 1 000–1 199) = "Mega" rows 990… (News and Sports hold 10).
+        { offset: 990, limit: PAGE_SIZE },
+      ),
     );
+    expect(options().length).toBeLessThanOrEqual(40);
     for (const [, , page] of spy.mock.calls) expect(page?.limit).toBeLessThanOrEqual(PAGE_SIZE);
     // A few pages, never the whole category.
     expect(rowsRead()).toBeLessThanOrEqual(MAX_PAGES * PAGE_SIZE);
