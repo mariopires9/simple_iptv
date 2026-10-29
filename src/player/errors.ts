@@ -36,6 +36,7 @@ function make(
   kind: PlaybackErrorKind,
   detail: string,
   status?: number,
+  codec?: string,
 ): PlaybackError {
   return new PlaybackError({
     kind,
@@ -44,7 +45,26 @@ function make(
     url: ctx.url,
     ...(status !== undefined && status > 0 ? { status } : {}),
     ...(kind === 'blocked' ? { hint: blockedHint(ctx) } : {}),
+    ...(codec !== undefined ? { codec } : {}),
   });
+}
+
+const MAX_CODEC_LENGTH = 64;
+
+/**
+ * The `codecs` parameter of a MIME type found in `text` (a MIME type or a browser error message
+ * quoting one), e.g. `video/mp4;codecs="avc1.64001f,mp4a.40.2"` → `avc1.64001f, mp4a.40.2`.
+ * Only RFC 6381-like tokens are kept, so nothing else of the text (never a URL) leaks through.
+ */
+export function parseCodecs(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const match = /codecs\s*=\s*["']?([A-Za-z0-9.+-]+(?:\s*,\s*[A-Za-z0-9.+-]+)*)/i.exec(text);
+  const list = match?.[1]
+    ?.split(',')
+    .map((codec) => codec.trim())
+    .filter((codec) => codec !== '')
+    .join(', ');
+  return list && list.length <= MAX_CODEC_LENGTH ? list : undefined;
 }
 
 /** HTTP status of a failed request → kind. Status 0 means the browser refused to expose it. */
@@ -94,6 +114,10 @@ export interface HlsErrorLike {
   details: string;
   fatal: boolean;
   response?: { code?: number } | undefined;
+  /** `bufferAddCodecError`: the MIME type (with codecs) the browser refused. */
+  mimeType?: string | undefined;
+  /** `bufferAddCodecError`: which SourceBuffer could not be created. */
+  sourceBufferName?: string | undefined;
 }
 
 const HLS_CODEC_DETAILS = new Set([
@@ -109,7 +133,9 @@ const HLS_CONTAINER_DETAILS = new Set([
 
 export function mapHlsError(data: HlsErrorLike, ctx: ErrorContext): PlaybackError {
   const { type, details } = data;
-  if (HLS_CODEC_DETAILS.has(details)) return make(ctx, 'unsupported-codec', details);
+  if (HLS_CODEC_DETAILS.has(details)) {
+    return make(ctx, 'unsupported-codec', details, undefined, parseCodecs(data.mimeType));
+  }
   if (HLS_CONTAINER_DETAILS.has(details)) return make(ctx, 'unsupported-container', details);
   switch (type) {
     case 'networkError': {
@@ -126,6 +152,18 @@ export function mapHlsError(data: HlsErrorLike, ctx: ErrorContext): PlaybackErro
     default:
       return make(ctx, 'unknown', details);
   }
+}
+
+/**
+ * A non-fatal hls.js `bufferAddCodecError`: the browser refused one SourceBuffer and hls.js
+ * drops that track, playing the other one only — video without sound (PLY-04 AC3) or sound
+ * without picture. Returns which track was refused.
+ */
+export function hlsRejectedTrack(data: HlsErrorLike): 'audio' | 'video' | undefined {
+  if (data.fatal || data.details !== 'bufferAddCodecError') return undefined;
+  return data.sourceBufferName === 'audio' || data.sourceBufferName === 'video'
+    ? data.sourceBufferName
+    : undefined;
 }
 
 /** Whether a fatal hls.js error is worth one `recoverMediaError()` attempt. */
@@ -165,8 +203,16 @@ export function mapMpegtsError(
     case 'FormatUnsupported':
     case 'FormatError':
       return make(ctx, 'unsupported-container', detail);
-    case 'MediaMSEError':
-      return make(ctx, 'decode', detail);
+    case 'MediaMSEError': {
+      // `addSourceBuffer()` refusing the MIME type: the browser message quotes it, e.g.
+      // "The type provided ('audio/mp4;codecs=ac-3') is unsupported."
+      const codec = /unsupported|not supported/i.test(info?.msg ?? '')
+        ? parseCodecs(info?.msg)
+        : undefined;
+      return codec !== undefined
+        ? make(ctx, 'unsupported-codec', detail, undefined, codec)
+        : make(ctx, 'decode', detail);
+    }
   }
   if (type === 'NetworkError') return make(ctx, 'network', detail);
   if (type === 'MediaError') return make(ctx, 'decode', detail);

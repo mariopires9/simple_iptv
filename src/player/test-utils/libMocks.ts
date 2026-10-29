@@ -91,7 +91,11 @@ export class FakeBaseLoader {
 
 export class FakeHls extends Emitter {
   static isSupported = () => libState.hlsSupported;
-  static Events = { ERROR: 'hlsError', FRAG_BUFFERED: 'hlsFragBuffered' };
+  static Events = {
+    ERROR: 'hlsError',
+    FRAG_BUFFERED: 'hlsFragBuffered',
+    BUFFER_CODECS: 'hlsBufferCodecs',
+  };
   static DefaultConfig = { loader: FakeBaseLoader };
 
   readonly config: Record<string, unknown>;
@@ -117,8 +121,20 @@ export class FakeHls extends Emitter {
   }
 
   /** Fires `Hls.Events.ERROR` like hls.js does: `(event, data)`. */
-  error(data: { type: string; details: string; fatal: boolean; response?: { code?: number } }) {
+  error(data: {
+    type: string;
+    details: string;
+    fatal: boolean;
+    response?: { code?: number };
+    mimeType?: string;
+    sourceBufferName?: string;
+  }) {
     this.fire(FakeHls.Events.ERROR, FakeHls.Events.ERROR, data);
+  }
+
+  /** Fires `Hls.Events.BUFFER_CODECS` with the demuxed tracks. */
+  bufferCodecs(data: { audio?: object; video?: object; audiovideo?: object }) {
+    this.fire(FakeHls.Events.BUFFER_CODECS, FakeHls.Events.BUFFER_CODECS, data);
   }
 
   fragBuffered() {
@@ -161,6 +177,11 @@ export class FakeMpegtsPlayer extends Emitter {
     this.attachment.attach(media);
   }
 
+  /** Fires `Events.MEDIA_INFO` like mpegts.js does: `(mediaInfo)`. */
+  mediaInfo(info: { hasAudio?: boolean; hasVideo?: boolean }) {
+    this.fire('media_info', info);
+  }
+
   /** Fires `Events.ERROR` like mpegts.js does: `(type, detail, info)`. */
   error(type: string, detail: string, info?: { code: number; msg: string }) {
     this.fire('error', type, detail, info);
@@ -174,7 +195,7 @@ export function hlsModule() {
 export function mpegtsModule() {
   const mpegts = {
     isSupported: () => libState.mpegtsSupported,
-    Events: { ERROR: 'error' },
+    Events: { ERROR: 'error', MEDIA_INFO: 'media_info' },
     LoggingControl: {
       set enableAll(value: boolean) {
         libState.mpegtsLogging.enableAll = value;
