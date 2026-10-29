@@ -18,7 +18,7 @@ Allowed statuses (exactly one per story):
 | FND-05 | Dexie persistence | E0 | Must | 5 | FND-01 | 1 | M0 | Done |
 | FND-06 | Redacting logger and errors | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
 | FND-07 | Web Worker infra | E0 | Must | 2 | FND-01 | 1 | M0 | Done |
-| PWA-01 | Manifest and installability | E10 | Must | 2 | FND-01 | 1 | M0 | In Progress |
+| PWA-01 | Manifest and installability | E10 | Must | 2 | FND-01 | 1 | M0 | Done |
 | SEC-01 | CSP, URL validation, sanitization | E12 | Must | 3 | FND-01 | 1 | M0 | Done |
 | QA-01 | Fixtures, mocks and test streams | E13 | Must | 3 | FND-01 | 1 | M0 | Done |
 | FND-04 | Routing and skeleton | E0 | Must | 2 | FND-03 | 2 | M0 | Done |
@@ -29,7 +29,7 @@ Allowed statuses (exactly one per story):
 | PLY-01 | Playback core and engine selection | E3 | Must | 5 | FND-01, FND-06 | 2 | M1 | Done |
 | FAV-01 | Favorites | E9 | Must | 2 | FND-05 | 2 | M2 | Done |
 | FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | Done |
-| PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | In Progress |
+| PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | Done |
 | PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | Done |
 | QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Backlog |
 | DEP-01 | GitHub Pages deploy (**approval**) | E13 | Must | 2 | FND-02, PWA-01 | 2 | M0 | Done |
@@ -42,7 +42,7 @@ Allowed statuses (exactly one per story):
 | VOD-04 | VOD/series classification in M3U | E5 | Must | 3 | SRC-04 | 3 | M2 | Done |
 | PLY-02 | Player UI | E3 | Must | 5 | PLY-01, FND-03 | 3 | M1 | Done |
 | PLY-04 | Playback errors | E3 | Must | 3 | PLY-01, FND-06 | 3 | M1 | Done |
-| PWA-03 | Predictable updates | E10 | Must | 2 | PWA-02 | 3 | M3 | Backlog |
+| PWA-03 | Predictable updates | E10 | Must | 2 | PWA-02 | 3 | M3 | Done |
 | PWA-04 | Offline and network errors | E10 | Must | 2 | UX-02 | 3 | M3 | Backlog |
 | QA-02 | Playwright E2E + axe | E13 | Must | 3 | FND-02, QA-01 | 3 | M1 | Backlog |
 | SRC-08 | "My lists" page | E1 | Must | 3 | SRC-03, SRC-05, SRC-07 | 4 | M2 | Done |
