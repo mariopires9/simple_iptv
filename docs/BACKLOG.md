@@ -53,13 +53,13 @@ Allowed statuses (exactly one per story):
 | PLY-03 | Fullscreen and PiP | E3 | Must | 3 | PLY-02 | 4 | M1 | Done |
 | SCH-01 | Search index | E8 | Must | 3 | FND-07, SRC-07 | 4 | M2 | Backlog |
 | LIV-02 | Play channel and zapping | E4 | Must | 5 | LIV-01, PLY-02 | 5 | M1 | Done |
-| LIV-04 | Quick channel filter | E4 | Must | 2 | LIV-01 | 5 | M1 | In Review |
+| LIV-04 | Quick channel filter | E4 | Must | 2 | LIV-01 | 5 | M1 | Done |
 | VOD-02 | Movie details | E5 | Must | 3 | VOD-01, PLY-02 | 5 | M2 | Done |
 | SER-01 | Series grid | E6 | Must | 2 | VOD-01 | 5 | M2 | Backlog |
-| EPG-01 | Xtream now/next | E7 | Must | 3 | LIV-01, SRC-02 | 5 | M2 | In Review |
+| EPG-01 | Xtream now/next | E7 | Must | 3 | LIV-01, SRC-02 | 5 | M2 | Done |
 | SCH-02 | Global search | E8 | Must | 3 | SCH-01, FND-04 | 5 | M2 | Backlog |
 | UX-04 | Settings and privacy | E11 | Must | 2 | FND-04, SRC-08 | 5 | M3 | Backlog |
-| LIV-03 | Remember last channel | E4 | Must | 2 | LIV-02, FND-05 | 6 | M1 | In Review |
+| LIV-03 | Remember last channel | E4 | Must | 2 | LIV-02, FND-05 | 6 | M1 | Done |
 | VOD-03 | VOD with resume | E5 | Must | 3 | VOD-02, FAV-02 | 6 | M2 | Backlog |
 | SER-02 | Series details | E6 | Must | 5 | SER-01, PLY-02 | 6 | M2 | Backlog |
 | SER-03 | Episode, resume, next | E6 | Must | 3 | SER-02, VOD-03 | 7 | M2 | Backlog |
@@ -67,7 +67,7 @@ Allowed statuses (exactly one per story):
 | UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | Backlog |
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | In Review |
-| LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | In Progress |
+| LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Done |
 
 ## Post-MVP
 
