@@ -11,11 +11,17 @@ import {
   mapHlsError,
   toPlaybackError,
 } from '../errors';
-import { PlaybackError } from '../types';
-import type { EngineDeps, PlayerEngine, StreamDescriptor } from '../types';
+import { NO_TRACKS, PlaybackError } from '../types';
+import type { EngineDeps, MediaTracks, PlayerEngine, StreamDescriptor } from '../types';
 import { createRewritingLoader } from './hlsLoader';
 import type { LoaderConstructor } from './hlsLoader';
-import { createEngineEmitter, requireVideo, resetMediaElement, resumePosition } from './shared';
+import {
+  createEngineEmitter,
+  requireVideo,
+  resetMediaElement,
+  resumePosition,
+  toMediaTrack,
+} from './shared';
 
 /**
  * hls.js settings (1.7):
@@ -78,8 +84,38 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
   let detachListeners: (() => void) | undefined;
   let destroyed = false;
 
+  /** PLY-05: hls.js' alternate audio renditions and subtitle tracks; ids are list indexes. */
+  const readTracks = (): MediaTracks => {
+    if (!hls) return NO_TRACKS;
+    const audioIndex = hls.audioTrack;
+    const textIndex = hls.subtitleTrack;
+    return {
+      audio: hls.audioTracks.map((track, i) => toMediaTrack(String(i), track.name, track.lang)),
+      text: hls.subtitleTracks.map((track, i) => toMediaTrack(String(i), track.name, track.lang)),
+      ...(audioIndex >= 0 ? { audioId: String(audioIndex) } : {}),
+      ...(textIndex >= 0 ? { textId: String(textIndex) } : {}),
+    };
+  };
+
   return {
     id: 'hls',
+
+    tracks: readTracks,
+
+    selectAudioTrack(id) {
+      const index = Number(id);
+      if (hls && Number.isInteger(index) && index >= 0 && index < hls.audioTracks.length) {
+        hls.audioTrack = index; // switches the rendition in place, without reloading
+      }
+    },
+
+    selectTextTrack(id) {
+      if (!hls) return;
+      const index = id === undefined ? -1 : Number(id);
+      if (!Number.isInteger(index) || index < -1 || index >= hls.subtitleTracks.length) return;
+      hls.subtitleDisplay = index >= 0;
+      hls.subtitleTrack = index;
+    },
 
     attach(element) {
       video = element;
@@ -144,13 +180,22 @@ export function createHlsEngine({ rewriter, pageProtocol }: EngineDeps): PlayerE
           events.emit('notice', { type: 'no-audio-track' });
         }
       };
+      const onTracks = () => events.emit('tracks', readTracks());
+      const TRACK_EVENTS = [
+        HlsClass.Events.AUDIO_TRACKS_UPDATED,
+        HlsClass.Events.AUDIO_TRACK_SWITCHED,
+        HlsClass.Events.SUBTITLE_TRACKS_UPDATED,
+        HlsClass.Events.SUBTITLE_TRACK_SWITCH,
+      ] as const;
       instance.on(HlsClass.Events.ERROR, onError);
       instance.on(HlsClass.Events.FRAG_BUFFERED, onFragBuffered);
       instance.on(HlsClass.Events.BUFFER_CODECS, onBufferCodecs);
+      for (const evt of TRACK_EVENTS) instance.on(evt, onTracks);
       detachListeners = () => {
         instance.off(HlsClass.Events.ERROR, onError);
         instance.off(HlsClass.Events.FRAG_BUFFERED, onFragBuffered);
         instance.off(HlsClass.Events.BUFFER_CODECS, onBufferCodecs);
+        for (const evt of TRACK_EVENTS) instance.off(evt, onTracks);
       };
 
       try {

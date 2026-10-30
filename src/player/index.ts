@@ -11,12 +11,14 @@ export { NATIVE_AUDIO_CONTAINER, containerOfExtension, declaredContainer } from 
 export type { ContainerOrDash } from './containers';
 export { planPlayback, selectEngine } from './select';
 export type { EngineChoice, PlaybackCandidate, SelectionCapabilities } from './select';
-export { PlaybackError, isPlaybackError, withAttempts } from './types';
+export { NO_TRACKS, PlaybackError, isPlaybackError, withAttempts } from './types';
 export type {
   EngineDeps,
   EngineEvents,
   EngineFactory,
   EngineId,
+  MediaTrack,
+  MediaTracks,
   PlaybackAttempt,
   PlaybackErrorInit,
   PlaybackErrorKind,

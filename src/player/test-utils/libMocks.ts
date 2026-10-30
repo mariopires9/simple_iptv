@@ -95,6 +95,10 @@ export class FakeHls extends Emitter {
     ERROR: 'hlsError',
     FRAG_BUFFERED: 'hlsFragBuffered',
     BUFFER_CODECS: 'hlsBufferCodecs',
+    AUDIO_TRACKS_UPDATED: 'hlsAudioTracksUpdated',
+    AUDIO_TRACK_SWITCHED: 'hlsAudioTrackSwitched',
+    SUBTITLE_TRACKS_UPDATED: 'hlsSubtitleTracksUpdated',
+    SUBTITLE_TRACK_SWITCH: 'hlsSubtitleTrackSwitch',
   };
   static DefaultConfig = { loader: FakeBaseLoader };
 
@@ -104,6 +108,41 @@ export class FakeHls extends Emitter {
   readonly destroy = vi.fn(() => this.attachment.detach());
   source: string | undefined;
   attached = false;
+  /** PLY-05: alternate renditions as hls.js lists them (`MediaPlaylist` subset). */
+  audioTracks: Array<{ name: string; lang?: string }> = [];
+  subtitleTracks: Array<{ name: string; lang?: string }> = [];
+  subtitleDisplay = true;
+  private audioIndex = -1;
+  private subtitleIndex = -1;
+
+  get audioTrack(): number {
+    return this.audioIndex;
+  }
+  /** Like hls.js: switching fires AUDIO_TRACK_SWITCHED (without reloading the source). */
+  set audioTrack(index: number) {
+    this.audioIndex = index;
+    this.fire(FakeHls.Events.AUDIO_TRACK_SWITCHED, FakeHls.Events.AUDIO_TRACK_SWITCHED, {});
+  }
+  get subtitleTrack(): number {
+    return this.subtitleIndex;
+  }
+  set subtitleTrack(index: number) {
+    this.subtitleIndex = index;
+    this.fire(FakeHls.Events.SUBTITLE_TRACK_SWITCH, FakeHls.Events.SUBTITLE_TRACK_SWITCH, {});
+  }
+
+  /** Lists the manifest's renditions (AUDIO_TRACKS_UPDATED + SUBTITLE_TRACKS_UPDATED). */
+  setTracks(
+    audio: Array<{ name: string; lang?: string }>,
+    subtitles: Array<{ name: string; lang?: string }>,
+    audioIndex = audio.length > 0 ? 0 : -1,
+  ) {
+    this.audioTracks = audio;
+    this.subtitleTracks = subtitles;
+    this.audioIndex = audioIndex;
+    this.fire(FakeHls.Events.AUDIO_TRACKS_UPDATED, FakeHls.Events.AUDIO_TRACKS_UPDATED, {});
+    this.fire(FakeHls.Events.SUBTITLE_TRACKS_UPDATED, FakeHls.Events.SUBTITLE_TRACKS_UPDATED, {});
+  }
 
   constructor(config: Record<string, unknown> = {}) {
     super();

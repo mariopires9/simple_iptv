@@ -26,6 +26,15 @@ export const player = {
     close: 'Close player',
     goLive: 'Go live',
   },
+  /** PLY-05: the audio and subtitle track menu. */
+  tracks: {
+    menu: 'Audio and subtitles',
+    audio: 'Audio',
+    subtitles: 'Subtitles',
+    off: 'Off',
+    /** A track the stream gives no name or language. Argument: its formatted position. */
+    unnamed: (position: string) => `Track ${position}`,
+  },
   /** Slider value for assistive technology. Arguments are already formatted times. */
   timeOf: (current: string, total: string) => `${current} of ${total}`,
   /** Polite live-region announcements. */

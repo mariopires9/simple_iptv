@@ -1,5 +1,5 @@
 // Helpers shared by the engines (PLY-01).
-import type { EngineEvents, StreamDescriptor } from '../types';
+import type { EngineEvents, MediaTrack, StreamDescriptor } from '../types';
 
 export interface EngineEmitter {
   on<K extends keyof EngineEvents>(evt: K, cb: (payload: EngineEvents[K]) => void): () => void;
@@ -12,6 +12,7 @@ export function createEngineEmitter(): EngineEmitter {
   const listeners: Record<keyof EngineEvents, Set<AnyListener>> = {
     error: new Set(),
     notice: new Set(),
+    tracks: new Set(),
   };
   return {
     on(evt, cb) {
@@ -26,6 +27,7 @@ export function createEngineEmitter(): EngineEmitter {
     clear() {
       listeners.error.clear();
       listeners.notice.clear();
+      listeners.tracks.clear();
     },
   };
 }
@@ -86,4 +88,17 @@ export function requireVideo(
 ): HTMLVideoElement {
   if (!video) throw new Error(`${engine} engine: attach() must be called before load()`);
   return video;
+}
+
+const MAX_TRACK_LABEL = 80;
+const LANGUAGE_TAG = /^[a-z]{2,3}(?:-[a-z0-9]{1,8})*$/i;
+
+/**
+ * A track from what the stream declares (PLY-05): the name is trimmed and capped, a language
+ * that is not a plausible BCP 47 / ISO 639 tag is dropped. Playlist text is untrusted.
+ */
+export function toMediaTrack(id: string, label: unknown, language: unknown): MediaTrack {
+  const name = typeof label === 'string' ? label.trim().slice(0, MAX_TRACK_LABEL) : '';
+  const lang = typeof language === 'string' ? language.trim() : '';
+  return { id, label: name, ...(LANGUAGE_TAG.test(lang) ? { language: lang } : {}) };
 }

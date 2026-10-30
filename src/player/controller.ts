@@ -11,10 +11,11 @@ import { createNativeEngine } from './engines/native';
 import { currentPageProtocol, errorName, toPlaybackError } from './errors';
 import { planPlayback } from './select';
 import type { PlaybackCandidate } from './select';
-import { PlaybackError, withAttempts } from './types';
+import { NO_TRACKS, PlaybackError, withAttempts } from './types';
 import type {
   EngineFactory,
   EngineId,
+  MediaTracks,
   PlaybackAttempt,
   PlaybackNotice,
   PlayerEngine,
@@ -35,6 +36,11 @@ export interface PlayerEvents {
    * `attempts` list every candidate tried or skipped, in order (PLY-06).
    */
   error: PlaybackError;
+  /**
+   * PLY-05: the current engine's audio/subtitle tracks changed (empty lists once that engine is
+   * torn down, if it had listed any).
+   */
+  tracks: MediaTracks;
 }
 
 export interface PlayOptions {
@@ -56,6 +62,12 @@ export interface PlayerController {
   on<K extends keyof PlayerEvents>(evt: K, cb: (payload: PlayerEvents[K]) => void): () => void;
   /** Engine currently attached, if any. */
   readonly engine: EngineId | undefined;
+  /** PLY-05: the current engine's tracks (empty lists without an engine or track support). */
+  tracks(): MediaTracks;
+  /** PLY-05: switches the audio track in place (no reload). Unknown ids are ignored. */
+  selectAudioTrack(id: string): void;
+  /** PLY-05: shows a subtitle track, or none with `undefined`. Unknown ids are ignored. */
+  selectTextTrack(id: string | undefined): void;
 }
 
 export interface PlayerControllerOptions {
@@ -92,6 +104,7 @@ export function createPlayerController(
     fallback: new Set(),
     notice: new Set(),
     error: new Set(),
+    tracks: new Set(),
   };
   const emit = <K extends keyof PlayerEvents>(evt: K, payload: PlayerEvents[K]) => {
     for (const cb of [...listeners[evt]]) {
@@ -106,11 +119,17 @@ export function createPlayerController(
   /** Bumped by every play()/stop(); an operation whose token is stale stops at its next step. */
   let generation = 0;
   let current: { engine: PlayerEngine; unsubscribe: () => void } | undefined;
+  /** The current engine listed tracks: its teardown clears them for the listeners. */
+  let listedTracks = false;
 
   async function teardown(): Promise<void> {
     const active = current;
     current = undefined;
     if (!active) return;
+    if (listedTracks) {
+      listedTracks = false;
+      emit('tracks', NO_TRACKS);
+    }
     try {
       active.unsubscribe();
     } catch (e) {
@@ -232,6 +251,11 @@ export function createPlayerController(
         engine.on('notice', (notice) => {
           if (token === generation && !failed) emit('notice', notice);
         }),
+        engine.on('tracks', (tracks) => {
+          if (token !== generation || failed) return;
+          listedTracks = true;
+          emit('tracks', tracks);
+        }),
       ];
       current = { engine, unsubscribe: () => unsubscribers.forEach((off) => off()) };
       engine.attach(video);
@@ -284,6 +308,18 @@ export function createPlayerController(
 
     get engine() {
       return current?.engine.id;
+    },
+
+    tracks() {
+      return current?.engine.tracks?.() ?? NO_TRACKS;
+    },
+
+    selectAudioTrack(id) {
+      current?.engine.selectAudioTrack?.(id);
+    },
+
+    selectTextTrack(id) {
+      current?.engine.selectTextTrack?.(id);
     },
   };
 }

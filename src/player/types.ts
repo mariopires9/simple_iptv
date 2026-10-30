@@ -160,7 +160,38 @@ export interface PlayerEngine {
   /** Idempotent. Removes every listener, releases MediaSource/object URLs and empties the element. */
   destroy(): Promise<void>;
   on<K extends keyof EngineEvents>(evt: K, cb: (payload: EngineEvents[K]) => void): () => void;
+  /**
+   * PLY-05: the stream's alternative audio and subtitle tracks (empty lists when none). Engines
+   * without track support (mpegts.js) omit the three track methods. Changes arrive through
+   * `on('tracks')`; switching never reloads the stream.
+   */
+  tracks?(): MediaTracks;
+  selectAudioTrack?(id: string): void;
+  /** `undefined` turns subtitles off. */
+  selectTextTrack?(id: string | undefined): void;
 }
+
+/** One audio or subtitle track as the stream declares it (PLY-05). Untrusted text. */
+export interface MediaTrack {
+  /** Engine-specific, only meaningful to the engine that listed it. */
+  id: string;
+  /** Name declared by the stream (e.g. HLS `NAME`); may be empty. */
+  label: string;
+  /** BCP 47 / ISO 639 language code declared by the stream, if any. */
+  language?: string;
+}
+
+export interface MediaTracks {
+  audio: readonly MediaTrack[];
+  /** The active audio track. */
+  audioId?: string;
+  /** Subtitles and captions. */
+  text: readonly MediaTrack[];
+  /** The subtitle track shown; undefined = off. */
+  textId?: string;
+}
+
+export const NO_TRACKS: MediaTracks = { audio: [], text: [] };
 
 /**
  * Non-fatal information about the current playback.
@@ -181,6 +212,8 @@ export type PlaybackNotice =
 export interface EngineEvents {
   error: PlaybackError;
   notice: PlaybackNotice;
+  /** PLY-05: the track lists or the active tracks changed. */
+  tracks: MediaTracks;
 }
 
 export type EngineFactory = (deps: EngineDeps) => PlayerEngine;

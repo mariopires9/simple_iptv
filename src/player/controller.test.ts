@@ -632,3 +632,35 @@ describe('player controller — real engines with mocked hls.js/mpegts.js', () =
     expect(video.src).toBe(mp4().url);
   });
 });
+
+describe('controller tracks (PLY-05)', () => {
+  it('forwards the engine tracks, delegates switching and clears them on stop', async () => {
+    resetLibState();
+    const urls = stubObjectUrls();
+    try {
+      const controller = createPlayerController(new FakeVideo().asElement(), {
+        capabilities: CHROME,
+      });
+      const seen: PlayerEvents['tracks'][] = [];
+      controller.on('tracks', (tracks) => seen.push(tracks));
+      await controller.play(m3u8());
+      const hls = libState.hls[0];
+      hls?.setTracks(
+        [
+          { name: 'English', lang: 'en' },
+          { name: 'Português', lang: 'pt' },
+        ],
+        [],
+      );
+      expect(controller.tracks().audio).toHaveLength(2);
+      controller.selectAudioTrack('1');
+      expect(hls?.audioTrack).toBe(1);
+      expect(seen.at(-1)?.audioId).toBe('1');
+      await controller.stop();
+      expect(seen.at(-1)).toEqual({ audio: [], text: [] });
+      expect(controller.tracks()).toEqual({ audio: [], text: [] });
+    } finally {
+      urls.restore();
+    }
+  });
+});
