@@ -5,6 +5,8 @@
 // The category is in the path (`<base>/category/:categoryId`) and the sort in the query
 // (`?sort=name|rating`; "Recently added" is the default and leaves no parameter), so both survive
 // a reload and work as deep links. The feature gives its strings, routes and item mapping.
+// Parental control (SEC-03): while locked, restricted categories show a lock and a PIN gate
+// instead of their grid, and their items are left out of "All".
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import { useTheme } from '@mui/material/styles';
@@ -13,9 +15,11 @@ import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { isCategoryLocked } from '@/core/session/parental';
 import { activeLocale, t } from '@/i18n';
 import { useActiveSource } from '@/ui/hooks/useActiveSource';
 import { useFillHeight } from '@/ui/hooks/useFillHeight';
+import { ParentalGate, useParental } from '@/ui/parental';
 import { DelayedLoading, PosterGridSkeleton, StateView, errorDetails } from '@/ui/state';
 import type { BrowseState } from './browseState';
 import { loadCatalogSource, type CatalogSourceState } from './catalogSource';
@@ -141,17 +145,26 @@ export function PosterGridScreen<T extends PosterItem>({
 
   const ready = source.status === 'ready' ? source : undefined;
   const category = ready?.categories.find((c) => c.id === categoryId);
+  const parental = useParental();
+  const locked = parental.locked;
+  const categoryLocked = category?.kind === 'source' && isCategoryLocked(category.key, parental);
 
-  // The sort projection of the category (see sortIndex.ts), one per (source, category, attempt).
+  // The sort projection of the category (see sortIndex.ts), one per (source, category, attempt,
+  // parental lock state). None while the parental setting is unknown or the category is locked.
   const [projectionAttempt, setProjectionAttempt] = useState(0);
   const projectionKey =
-    ready && category ? `${ready.source.id}\n${attempt}\n${category.id}\n${projectionAttempt}` : '';
+    ready && category && parental.known && !categoryLocked
+      ? `${ready.source.id}\n${attempt}\n${category.id}\n${projectionAttempt}\n${locked.size}`
+      : '';
   const [projection, setProjection] = useState<ProjectionState>();
   useEffect(() => {
-    if (!ready || !category) return undefined;
+    if (!ready || !category || projectionKey === '') return undefined;
     let cancelled = false;
     const key = projectionKey;
-    const keys = category.kind === 'all' ? ready.sourceCategoryKeys : [category.key];
+    const keys =
+      category.kind === 'all'
+        ? ready.sourceCategoryKeys.filter((k) => !locked.has(k))
+        : [category.key];
     loadProjection(type, ready.source.id, ready.source.lastSyncAt, keys).then(
       (p) => {
         if (!cancelled) setProjection({ key, status: 'ready', projection: p });
@@ -268,7 +281,10 @@ export function PosterGridScreen<T extends PosterItem>({
   } else {
     const nav = (
       <CategoryNav
-        categories={source.categories}
+        categories={source.categories.map((c) =>
+          c.kind === 'source' && locked.has(c.key) ? { ...c, restricted: true } : c,
+        )}
+        restrictedLabel={t.parental.restrictedCategory}
         selectedId={categoryId}
         variant={isTablet ? 'list' : 'chips'}
         label={texts.categories}
@@ -295,6 +311,8 @@ export function PosterGridScreen<T extends PosterItem>({
           actions={showAll}
         />
       );
+    } else if (categoryLocked) {
+      gridPane = <ParentalGate categoryKey={category.key}>{null}</ParentalGate>;
     } else if (gridError !== undefined) {
       gridPane = loadError(gridError, retryGrid);
     } else if (!cache) {

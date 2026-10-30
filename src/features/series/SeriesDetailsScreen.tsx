@@ -39,6 +39,7 @@ import { DetailsHero } from '@/ui/catalog/DetailsHero';
 import { formatClock, formatInteger } from '@/ui/catalog/format';
 import { useFavoriteToggle } from '@/ui/catalog/useFavoriteToggle';
 import { useActiveSource } from '@/ui/hooks/useActiveSource';
+import { ParentalGate } from '@/ui/parental';
 import {
   DelayedLoading,
   DetailHeaderSkeleton,
@@ -194,7 +195,12 @@ export function SeriesDetailsScreen() {
       );
       break;
     case 'ready':
-      content = <SeriesDetails key={screen.series.key} {...screen} />;
+      // Parental control (SEC-03): a restricted series needs the PIN before it is shown or played.
+      content = (
+        <ParentalGate categoryKey={screen.series.categoryKey} headingLevel={1}>
+          <SeriesDetails key={screen.series.key} {...screen} />
+        </ParentalGate>
+      );
       break;
   }
 

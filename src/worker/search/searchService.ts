@@ -50,6 +50,8 @@ export interface SearchQueryInput {
   limit?: number;
   /** Settings › Playback "Hide protected content" (UX-07): leave DRM/DASH items out. */
   hideProtected?: boolean;
+  /** Parental control (SEC-03): category keys left out while locked (max. 10 000). */
+  excludeCategoryKeys?: readonly string[];
 }
 
 /** A search result, ready to display. Never contains stream URLs or images. */
@@ -311,6 +313,9 @@ export async function searchCatalog(input: SearchQueryInput): Promise<SearchQuer
     types,
     limit: clampLimit(input.limit),
     hideProtected: input.hideProtected === true,
+    excludeCategoryKeys: Array.isArray(input.excludeCategoryKeys)
+      ? input.excludeCategoryKeys.filter((k): k is string => typeof k === 'string').slice(0, 10_000)
+      : [],
   });
   await Promise.all(
     CONTENT_TYPES.map(async (type) => {

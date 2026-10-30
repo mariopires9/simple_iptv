@@ -424,6 +424,11 @@ export interface SettingsMap {
   masterPassword: unknown;
   /** Lock after this many minutes in the background (SEC-02); absent = 5. Validated on read. */
   masterPasswordLockMinutes: unknown;
+  /**
+   * Parental control (SEC-03): salted PBKDF2/SHA-256 hash of the PIN (never the PIN) and the
+   * restricted category keys. Untrusted on read: owned and validated by core/session.
+   */
+  parentalControl: unknown;
 }
 
 export type SettingsKey = keyof SettingsMap;

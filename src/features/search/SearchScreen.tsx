@@ -26,6 +26,7 @@ import Typography from '@mui/material/Typography';
 import {
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -46,6 +47,7 @@ import { DelayedLoading, StateView, errorDetails, visuallyHidden } from '@/ui/st
 import type { SearchHit, SearchQueryResult } from '@/worker';
 import { resultPath } from './paths';
 import { useActiveSource } from '@/ui/hooks/useActiveSource';
+import { useParental } from '@/ui/parental/useParental';
 import { GROUP_LIMIT, SEARCH_DEBOUNCE_MS, SEE_ALL_LIMIT } from './query';
 import { loadRecentSearches, updateRecentSearches, withRecentSearch } from './recentSearches';
 import { SEARCH_INPUT_ID } from './SearchAction';
@@ -179,12 +181,15 @@ export function SearchScreen() {
       active = false;
     };
   }, []);
+  // Parental control (SEC-03): while locked, restricted categories' items are not searched.
+  const parental = useParental();
+  const excluded = useMemo(() => [...parental.locked], [parental.locked]);
   const [attempt, setAttempt] = useState(0);
   const searchable = isSearchableQuery(query);
   const view = type ?? '';
   const requestKey =
-    searchable && sourceId !== undefined && hideProtected !== undefined
-      ? JSON.stringify([sourceId, query, type ?? '', attempt, hideProtected])
+    searchable && sourceId !== undefined && hideProtected !== undefined && parental.known
+      ? JSON.stringify([sourceId, query, type ?? '', attempt, hideProtected, excluded])
       : '';
   const [result, setResult] = useState<ResultState>();
   useEffect(() => {
@@ -197,6 +202,7 @@ export function SearchScreen() {
       query,
       limit: type ? SEE_ALL_LIMIT : GROUP_LIMIT,
       hideProtected: hideProtected === true,
+      excludeCategoryKeys: excluded,
     };
     searchClient.query(type ? { ...request, type } : request, controller.signal).then(
       (data) => {

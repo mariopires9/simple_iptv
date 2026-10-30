@@ -4,6 +4,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   catalogRepo,
+  categoryKey,
   episodeItemKey,
   favoritesRepo,
   historyRepo,
@@ -11,6 +12,13 @@ import {
   settingsRepo,
   wipeAll,
 } from '@/core/db';
+import {
+  loadParentalControl,
+  lockParental,
+  resetParentalForTests,
+  setParentalPin,
+  setRestrictedCategories,
+} from '@/core/session/parental';
 import { LIVE_RECENT_LIMIT } from '@/ui/routes/live';
 import {
   CONTINUE_WATCHING_LIMIT,
@@ -99,6 +107,8 @@ describe('protected content on Home (UX-07)', () => {
 
   it('reads the setting together with the rows, not before them', async () => {
     let release: (value: boolean) => void = () => undefined;
+    // Parental control (SEC-03) is read with the rows too; only this setting is held back.
+    await loadParentalControl();
     vi.spyOn(settingsRepo, 'get').mockImplementation(
       () => new Promise((resolve) => (release = resolve as (value: boolean) => void)),
     );
@@ -120,6 +130,46 @@ describe('protected content on Home (UX-07)', () => {
     expect((await loadFavorites(SOURCE, 'series')).map((f) => f.card?.name)).toContain(
       'Locked show',
     );
+  });
+});
+
+describe('parental control on Home and Favorites (SEC-03)', () => {
+  const ADULT = categoryKey(SOURCE, 'live', 'adult');
+  beforeEach(async () => {
+    resetParentalForTests({ iterations: 1_000 });
+    await catalogRepo.replaceForSource(SOURCE, 'live', {
+      categories: [
+        { externalId: 'kids', name: 'Kids' },
+        { externalId: 'adult', name: 'Adult' },
+      ],
+      items: [
+        { externalId: 'k1', categoryExternalId: 'kids', name: 'Toon TV', streamPath: '' },
+        { externalId: 'a1', categoryExternalId: 'adult', name: 'Night TV', streamPath: '' },
+      ],
+    });
+    await historyRepo.upsert({ itemKey: live('k1'), lastWatchedAt: 1 });
+    await historyRepo.upsert({ itemKey: live('a1'), lastWatchedAt: 2 });
+    await favoritesRepo.add(live('k1'), 1);
+    await favoritesRepo.add(live('a1'), 2);
+    await setParentalPin('1234');
+    await setRestrictedCategories(`${SOURCE}:live:`, [ADULT]);
+  });
+  afterEach(() => resetParentalForTests());
+
+  it('while locked, restricted items are left out of the Home rows and Favorites', async () => {
+    const names = (cards: { name: string }[]) => cards.map((c) => c.name);
+    // Unlocked (the PIN was just entered): everything shows.
+    let home = await loadHome(SOURCE);
+    expect(names(home.recentChannels)).toEqual(['Night TV', 'Toon TV']);
+    expect(names(home.favorites)).toContain('Night TV');
+
+    lockParental();
+    home = await loadHome(SOURCE);
+    expect(names(home.recentChannels)).toEqual(['Toon TV']);
+    expect(names(home.favorites)).not.toContain('Night TV');
+    expect(names(home.favorites)).toContain('Toon TV');
+    const favorites = await loadFavorites(SOURCE, 'live');
+    expect(favorites.map((f) => f.card?.name)).toEqual(['Toon TV']);
   });
 });
 

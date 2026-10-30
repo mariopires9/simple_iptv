@@ -5,7 +5,7 @@ import type { LazyNamespace } from '@/i18n';
 import { lazyScreen } from '@/ui/lazyScreen';
 
 /** Strings the Series screens read, loaded with them (TEC-01); `player` loads with `@/player/ui`. */
-const SERIES_STRINGS: readonly LazyNamespace[] = ['series'];
+const SERIES_STRINGS: readonly LazyNamespace[] = ['series', 'parental'];
 
 export const seriesRoutes: RouteObject[] = [
   {

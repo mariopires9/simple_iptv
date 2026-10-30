@@ -59,3 +59,6 @@ export {
   type AutoLockOptions,
   type VaultLockStatus,
 } from './vaultLock';
+
+// Parental control (SEC-03) is imported from `@/core/session/parental` directly, not from this
+// barrel: the barrel is in the initial bundle, and only the lazy catalogue screens need it.

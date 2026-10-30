@@ -113,11 +113,11 @@ describe('route strings (TEC-01)', () => {
   });
 
   it.each([
-    ['/live', ['live']],
-    ['/movies', ['movies']],
+    ['/live', ['live', 'parental']],
+    ['/movies', ['movies', 'parental']],
     ['/onboarding', ['onboarding']],
     ['/onboarding/xtream', ['sources']],
-    ['/series', ['series']],
+    ['/series', ['series', 'parental']],
     ['/search', ['search']],
   ] as const)('%s loads exactly %j with the screen', async (path, namespaces) => {
     renderRoute(path);

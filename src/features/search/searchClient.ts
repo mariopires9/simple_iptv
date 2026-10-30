@@ -10,6 +10,8 @@ export interface SearchRequest {
   limit: number;
   /** Leave protected items (DRM/DASH, UX-07) out of hits and totals. */
   hideProtected?: boolean;
+  /** Parental control (SEC-03): leave the items of these categories out of hits and totals. */
+  excludeCategoryKeys?: readonly string[];
 }
 
 /** `runTask` throws synchronously when no worker can be created: always a rejected promise. */
@@ -28,6 +30,9 @@ export const searchClient = {
       query: request.query,
       limit: request.limit,
       ...(request.hideProtected === true ? { hideProtected: true } : {}),
+      ...(request.excludeCategoryKeys && request.excludeCategoryKeys.length > 0
+        ? { excludeCategoryKeys: [...request.excludeCategoryKeys] }
+        : {}),
       ...(request.type ? { types: [request.type] } : {}),
     };
     return call(() => runTask('searchQuery', input, { signal }));

@@ -7,6 +7,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { createMemoryRouter, Outlet, RouterProvider, useLocation } from 'react-router';
 import { catalogRepo, itemKey, settingsRepo, sourcesRepo, wipeAll, type Source } from '@/core/db';
 import { forgetActiveSource, setActiveSource } from '@/core/session';
+import {
+  lockParental,
+  resetParentalForTests,
+  setParentalPin,
+  setRestrictedCategories,
+} from '@/core/session/parental';
 import { t } from '@/i18n';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
@@ -471,6 +477,28 @@ describe('protected content (UX-07)', () => {
       expect(searchCalls().at(-1)?.[1]).toMatchObject({ query: 'example', hideProtected: true });
     } finally {
       await settingsRepo.remove('hideProtectedContent');
+    }
+  });
+
+  it('parental control (SEC-03): locked restricted categories are left out of the worker query', async () => {
+    const restricted = 'any:movie:~c:late';
+    resetParentalForTests({ iterations: 1_000 });
+    await setParentalPin('1234');
+    await setRestrictedCategories('any:movie:', [restricted]);
+    try {
+      // Unlocked (the PIN was just set): nothing excluded.
+      renderAt('/search?q=example');
+      expect(await screen.findByText('Example Drama')).toBeInTheDocument();
+      expect(searchCalls().at(-1)?.[1]).not.toHaveProperty('excludeCategoryKeys');
+      cleanup();
+
+      lockParental();
+      renderAt('/search?q=example');
+      expect(await screen.findByText('Example Drama')).toBeInTheDocument();
+      expect(searchCalls().at(-1)?.[1]).toMatchObject({ excludeCategoryKeys: [restricted] });
+    } finally {
+      resetParentalForTests();
+      await settingsRepo.remove('parentalControl');
     }
   });
 });

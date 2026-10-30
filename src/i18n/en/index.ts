@@ -9,6 +9,7 @@ import { lock } from './lock';
 import { movies } from './movies';
 import { nav } from './nav';
 import { onboarding } from './onboarding';
+import { parental } from './parental';
 import { player } from './player';
 import { routes } from './routes';
 import { search } from './search';
@@ -33,6 +34,7 @@ export const en = {
   movies,
   nav,
   onboarding,
+  parental,
   player,
   routes,
   search,

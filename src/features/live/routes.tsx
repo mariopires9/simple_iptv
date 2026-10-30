@@ -5,7 +5,7 @@ import type { LazyNamespace } from '@/i18n';
 import { lazyScreen } from '@/ui/lazyScreen';
 
 /** Strings the Live screens read, loaded with them (TEC-01); `player` loads with `@/player/ui`. */
-const LIVE_STRINGS: readonly LazyNamespace[] = ['live'];
+const LIVE_STRINGS: readonly LazyNamespace[] = ['live', 'parental'];
 
 export const liveRoutes: RouteObject[] = [
   { path: 'live', lazy: lazyScreen(() => import('./LiveScreen'), 'LiveScreen', LIVE_STRINGS) },

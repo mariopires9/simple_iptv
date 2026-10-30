@@ -15,6 +15,8 @@
 //   "Continue watching" rows are read with their usual limit first and filtered after, so a row
 //   may show fewer cards than its limit (those items can't be played anyway). The Favorites
 //   screen keeps showing them, marked: they are the user's own choices.
+// - Parental control (SEC-03): while locked, items of restricted categories are left out of the
+//   Home rows and the Favorites screen (they need the PIN before they are shown).
 import {
   catalogRepo,
   favoritesRepo,
@@ -28,6 +30,11 @@ import {
   type Favorite,
   type HistoryEntry,
 } from '@/core/db';
+import {
+  isCategoryLocked,
+  loadParentalControl,
+  type ParentalSnapshot,
+} from '@/core/session/parental';
 import { LIVE_RECENT_LIMIT, liveChannelPath } from '@/ui/routes/live';
 import {
   RESUME_MIN_SEC,
@@ -54,6 +61,8 @@ export interface CardItem {
   episode?: { season: number; number: number } | undefined;
   /** Protected content (DRM/DASH, UX-07): shown with the "Protected" badge. */
   protected?: boolean | undefined;
+  /** The item's category (parental control, SEC-03). */
+  categoryKey?: string | undefined;
 }
 
 /** Route of a channel: its own category with the channel selected (LIV-03 `?channel=`). */
@@ -83,13 +92,21 @@ export function toCard(item: CatalogItemByType[ContentType]): CardItem {
     image,
     href: itemHref(item),
   };
+  if (item.categoryKey !== undefined) card.categoryKey = item.categoryKey;
   if (isProtectedItem(item)) card.protected = true;
   return card;
 }
 
-/** Cards without the protected ones when `hide` is on (UX-07). */
-function visible(cards: CardItem[], hide: boolean): CardItem[] {
-  return hide ? cards.filter((card) => card.protected !== true) : cards;
+/**
+ * Cards without the protected ones when `hide` is on (UX-07), and without those of categories
+ * locked by parental control (SEC-03).
+ */
+function visible(cards: CardItem[], hide: boolean, parental?: ParentalSnapshot): CardItem[] {
+  return cards.filter(
+    (card) =>
+      !(hide && card.protected === true) &&
+      !(parental && isCategoryLocked(card.categoryKey, parental)),
+  );
 }
 
 /**
@@ -186,15 +203,20 @@ export interface FavoriteEntry {
   card: CardItem | undefined;
 }
 
+/** The favorites of a type; while parental control is locked, without restricted items. */
 export async function loadFavorites(sourceId: string, type: ContentType): Promise<FavoriteEntry[]> {
-  const favorites = await favoritesRepo.list(sourceId, type);
+  const [favorites, parental] = await Promise.all([
+    favoritesRepo.list(sourceId, type),
+    loadParentalControl(),
+  ]);
   const items = await itemsByKey(
     type,
     favorites.map((f) => f.itemKey),
   );
-  return favorites.map((favorite) => {
+  return favorites.flatMap((favorite) => {
     const item = items.get(favorite.itemKey);
-    return { favorite, card: item ? toCard(item) : undefined };
+    if (item && isCategoryLocked(item.categoryKey, parental)) return [];
+    return [{ favorite, card: item ? toCard(item) : undefined }];
   });
 }
 
@@ -235,16 +257,17 @@ export interface HomeData {
 
 export async function loadHome(sourceId: string): Promise<HomeData> {
   // The setting is read with the rows (one round of reads); the rows are filtered after.
-  const [continueWatching, recentChannels, favorites, hideSetting] = await Promise.all([
+  const [continueWatching, recentChannels, favorites, hideSetting, parental] = await Promise.all([
     continueWatchingRow(sourceId),
     recentChannelsRow(sourceId),
     availableFavorites(sourceId),
     settingsRepo.get('hideProtectedContent'),
+    loadParentalControl(),
   ]);
   const hide = hideSetting === true;
   return {
-    continueWatching: visible(continueWatching.cards, hide),
-    recentChannels: visible(recentChannels.cards, hide),
+    continueWatching: visible(continueWatching.cards, hide, parental),
+    recentChannels: visible(recentChannels.cards, hide, parental),
     favorites: homeFavoritesRow(favorites, hide),
     hasHistory: continueWatching.hasHistory || recentChannels.hasHistory,
   };

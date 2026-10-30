@@ -37,6 +37,7 @@ import { DetailsHero } from '@/ui/catalog/DetailsHero';
 import { formatClock, formatDuration } from '@/ui/catalog/format';
 import { useFavoriteToggle } from '@/ui/catalog/useFavoriteToggle';
 import { useActiveSource } from '@/ui/hooks/useActiveSource';
+import { ParentalGate } from '@/ui/parental';
 import {
   DelayedLoading,
   DetailHeaderSkeleton,
@@ -193,7 +194,12 @@ export function MovieDetailsScreen() {
       );
       break;
     case 'ready':
-      content = <MovieDetails key={details.movie.key} {...details} />;
+      // Parental control (SEC-03): a restricted movie needs the PIN before it is shown or played.
+      content = (
+        <ParentalGate categoryKey={details.movie.categoryKey} headingLevel={1}>
+          <MovieDetails key={details.movie.key} {...details} />
+        </ParentalGate>
+      );
       break;
   }
 
