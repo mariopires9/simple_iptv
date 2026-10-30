@@ -1,5 +1,6 @@
 // Edit a saved list (SRC-08 AC2): Xtream lists reuse the add form in edit mode (rename, server,
-// username, password — re-tested before applying); M3U lists can be renamed.
+// username, password — re-tested before applying); M3U lists can be renamed and get a program
+// guide section (EPG-02).
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -11,6 +12,7 @@ import { sourcesRepo, type Source } from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { DelayedLoading, StateView, errorDetails, useToast } from '@/ui/state';
+import { EpgSettings } from './EpgSettings';
 import { renameSource } from './manage';
 import { MAX_SOURCE_NAME_LENGTH } from './xtream/saveXtreamSource';
 import { TextInput } from './xtream/TextInput';
@@ -96,7 +98,10 @@ export function EditSourceScreen({ xtreamDeps }: EditSourceScreenProps = {}) {
         state.source.kind === 'xtream' ? (
           <XtreamSourceForm doneTo={LISTS_PATH} editing={state.source} deps={xtreamDeps} />
         ) : (
-          <RenameForm source={state.source} />
+          <>
+            <RenameForm source={state.source} />
+            <EpgSettings source={state.source} />
+          </>
         );
   }
 

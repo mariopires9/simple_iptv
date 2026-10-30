@@ -60,6 +60,25 @@ export interface Source {
    * content" skip any filtering work for a list that has none. Not indexed.
    */
   protectedCounts?: SourceStats;
+  /** Outcome of the last XMLTV guide import (EPG-02/EPG-03, M3U lists). Not indexed. */
+  epgStatus?: EpgImportStatus;
+}
+
+/** Outcome of an XMLTV guide import. Never contains URLs or other sensitive data. */
+export interface EpgImportStatus {
+  status: 'ok' | 'error';
+  /** Last attempt (epoch ms). */
+  at: number;
+  /** Last successful import (epoch ms); kept across failed attempts. */
+  lastOkAt?: number;
+  /** Stable error code when `status` is `error` (e.g. a `NetErrorKind`, `not-xmltv`). */
+  error?: string;
+  /** Programmes stored by the last successful import. */
+  programmes?: number;
+  /** Live channels that received at least one programme (EPG-03 AC4). */
+  channelsWithEpg?: number;
+  /** Live channels of the list at that import. */
+  channels?: number;
 }
 
 /** Outcome of syncing one content type of a source (SRC-07). Never contains sensitive data. */
@@ -340,6 +359,7 @@ export interface HistoryUpsert {
 }
 
 export interface EpgProgram {
+  /** XMLTV imports: the matched app channel's item key (EPG-03). */
   channelEpgId: string;
   start: number;
   end: number;
