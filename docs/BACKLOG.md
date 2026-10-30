@@ -32,7 +32,7 @@ Allowed statuses (exactly one per story):
 | PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | Done |
 | PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | Done |
 | QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Done |
-| QA-04 | Start-up performance (Lighthouse mobile ≥ 90) | E13 | Must | 3 | QA-03 | 8 | M3 | Ready |
+| QA-04 | Start-up performance (Lighthouse mobile ≥ 90) | E13 | Must | 3 | QA-03 | 8 | M3 | In Review |
 | DEP-01 | GitHub Pages deploy (**approval**) | E13 | Must | 2 | FND-02, PWA-01 | 2 | M0 | Done |
 | UX-01 | Onboarding | E11 | Must | 2 | FND-04 | 3 | M1 | Done |
 | UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | Done |
@@ -65,7 +65,7 @@ Allowed statuses (exactly one per story):
 | SER-02 | Series details | E6 | Must | 5 | SER-01, PLY-02 | 6 | M2 | Done |
 | SER-03 | Episode, resume, next | E6 | Must | 3 | SER-02, VOD-03 | 7 | M2 | Done |
 | FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | Done |
-| UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | Backlog |
+| UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | In Progress |
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
 | LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Done |
@@ -79,11 +79,11 @@ Allowed statuses (exactly one per story):
 |---|---|---|---|---|---|
 | EPG-02 | Import XMLTV | Should | 5 | FND-07, FND-05 | Backlog |
 | EPG-03 | Channel↔EPG matching | Should | 3 | EPG-02, LIV-01 | Backlog |
-| PLY-05 | Audio tracks and subtitles | Should | 3 | PLY-02 | Backlog |
+| PLY-05 | Audio tracks and subtitles | Should | 3 | PLY-02 | In Progress |
 | SEC-02 | Master password | Should | 5 | SRC-01 | Backlog |
 | EXP-01 | Export/import settings | Should | 3 | SRC-08, FAV-03 | Backlog |
 | UX-05 | D-pad navigation | Should | 5 | UX-03 | Backlog |
-| MSS-01 | Media Session | Should | 1 | PLY-02 | Backlog |
+| MSS-01 | Media Session | Should | 1 | PLY-02 | In Progress |
 | TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | Done |
 | TEC-03 | Review follow-ups: shared Live routes, one player-open signal, resume rule, flaky tests | Should | 3 | TEC-02, PWA-03, UX-06 | Done |
 | SEC-03 | Parental control PIN | Could | 3 | LIV-01, VOD-01 | Backlog |
@@ -127,4 +127,4 @@ flowchart LR
 | 2026-10-29 | S-00 | Owner's provider redirects live streams to http edges without valid HTTPS → blocked in any HTTPS web app | Needs PRX-01 (proxy) or NAT-01; owner's hosting decision (2026-10-29): proxy on the owner's Windows PC (native Node), HTTPS via Tailscale Serve (not yet installed) | Open |
 | 2026-10-30 | PRX-01 | Code, gates and security review done; manual test on the owner's Windows PC (localhost first, then Tailscale Serve on a phone) deferred by the owner | Owner runs the `proxy/README.md` guide when ready; then Done | Open |
 | 2026-10-30 | PLY-06 | Merged from an interrupted parallel session; code review not recorded | Reviewed 2026-10-30: two probe defects fixed (no-cors+manual is always a network error; unreadable variant reported as ok) | Closed |
-| 2026-10-30 | QA-03 | Lighthouse mobile Performance 0.84 (< 0.90): start-up chain renders the first content at ~3.9 s LCP; A11y/BP 1.00 | Lighthouse job non-gating (owner decision); QA-04 raises it, then the job gates | Open |
+| 2026-10-30 | QA-03 | Lighthouse mobile Performance 0.84 (< 0.90): start-up chain renders the first content at ~3.9 s LCP; A11y/BP 1.00 | Lighthouse job non-gating (owner decision); QA-04 raised it to 0.94 locally and made the job gating again | Closed |
