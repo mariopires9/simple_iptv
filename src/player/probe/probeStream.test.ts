@@ -65,21 +65,16 @@ describe('probeStream — mixed content', () => {
     expectMasked(result);
   });
 
-  it('CORS request blocked, server redirects, redirect cannot be followed → redirect-blocked', async () => {
-    const { impl, calls } = fakeFetch(
-      typeError(),
-      fakeResponse({ type: 'opaqueredirect' }),
-      typeError(),
-    );
+  it('on an https page, blocked even without CORS (e.g. redirect to http://) → redirect-blocked', async () => {
+    const { impl, calls } = fakeFetch(typeError(), typeError());
     const result = await probeStream(M3U8, { fetch: impl, ...HTTPS });
     expect(result).toEqual({
       cause: 'redirect-blocked',
-      redirected: true,
       target: 'https://***/live/***/***/***.m3u8',
     });
+    // `no-cors` only with `redirect: 'follow'`: anything else is a network error (Fetch Standard).
     expect(calls.map((c) => [c.mode ?? 'cors', c.redirect])).toEqual([
       ['cors', 'follow'],
-      ['no-cors', 'manual'],
       ['no-cors', 'follow'],
     ]);
     // No cookies, no referrer.
@@ -113,21 +108,9 @@ describe('probeStream — CORS and reachability', () => {
     expect(await probeStream(TS, { fetch: impl, ...HTTPS })).toMatchObject({ cause: 'no-cors' });
   });
 
-  it('redirect followed in no-cors mode works → no-cors (redirected)', async () => {
-    const { impl } = fakeFetch(
-      typeError(),
-      fakeResponse({ type: 'opaqueredirect' }),
-      fakeResponse({ type: 'opaque' }),
-    );
-    expect(await probeStream(TS, { fetch: impl, ...HTTPS })).toMatchObject({
-      cause: 'no-cors',
-      redirected: true,
-    });
-  });
-
-  it('every request fails → unreachable (no CORS or unreachable: the browser does not say)', async () => {
+  it('on an http page, every request fails → unreachable', async () => {
     const { impl, calls } = fakeFetch(typeError(), typeError());
-    expect(await probeStream(TS, { fetch: impl, ...HTTPS })).toMatchObject({
+    expect(await probeStream(TS, { fetch: impl, pageProtocol: 'http:' })).toMatchObject({
       cause: 'unreachable',
     });
     expect(calls).toHaveLength(2);
@@ -214,16 +197,31 @@ describe('probeStream — content', () => {
     expectMasked(result);
   });
 
-  it('master playlist whose variant cannot be read: judged on the master alone', async () => {
+  it('master playlist whose variant cannot be read: the variant decides, never ok', async () => {
     const master = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttps://other.example.test/v.m3u8\n';
-    const { impl } = fakeFetch(fakeResponse({ url: M3U8, body: master }), typeError());
-    expect(await probeStream(M3U8, { fetch: impl, ...HTTPS })).toMatchObject({ cause: 'ok' });
+    const noCors = fakeFetch(
+      fakeResponse({ url: M3U8, body: master }),
+      typeError(),
+      fakeResponse({ type: 'opaque' }),
+    );
+    expect(await probeStream(M3U8, { fetch: noCors.impl, ...HTTPS })).toMatchObject({
+      cause: 'no-cors',
+      content: 'playlist',
+    });
+    const blocked = fakeFetch(fakeResponse({ url: M3U8, body: master }), typeError(), typeError());
+    expect(await probeStream(M3U8, { fetch: blocked.impl, ...HTTPS })).toMatchObject({
+      cause: 'redirect-blocked',
+    });
   });
 
   it('playlist with HEVC CODECS → HEVC hint', async () => {
     const playlist =
       '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,CODECS="hvc1.1.6.L120.90,mp4a.40.2"\nv.m3u8\n';
-    const { impl } = fakeFetch(fakeResponse({ url: M3U8, body: playlist }));
+    const variant = '#EXTM3U\n#EXTINF:10,\nseg.ts\n';
+    const { impl } = fakeFetch(
+      fakeResponse({ url: M3U8, body: playlist }),
+      fakeResponse({ url: `https://${HOST}/live/jdoe/s3cretpw/v.m3u8`, body: variant }),
+    );
     expect(await probeStream(M3U8, { fetch: impl, ...HTTPS })).toMatchObject({
       cause: 'ok',
       content: 'playlist',

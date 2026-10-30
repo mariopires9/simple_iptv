@@ -165,7 +165,7 @@ export const player = {
       'insecure-segments':
         'The playlist points to insecure http:// addresses, which the browser blocks inside an https app. Browsers on https cannot play http streams: route this list through your personal proxy (Settings › Personal proxy) or use a player app on your device.',
       'redirect-blocked':
-        'The server redirects the stream to another address that the browser could not open — usually an insecure http:// address, which browsers block inside an https app. If so, route this list through your personal proxy (Settings › Personal proxy) or use a player app on your device.',
+        'The browser could not open the stream address, even without reading it. Inside an https app this usually means the server redirects to an insecure http:// address, which browsers block (otherwise the server is unreachable). If so, route this list through your personal proxy (Settings › Personal proxy) or use a player app on your device.',
       'no-cors':
         'The server does not allow web apps to read the stream (no CORS headers), so this format cannot play in the browser. Try the other live format for this list (HLS plays natively in Safari).',
       'no-cors-native':

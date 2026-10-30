@@ -69,7 +69,7 @@ Allowed statuses (exactly one per story):
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
 | LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Done |
 | PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | In Review |
-| PLY-06 | Diagnosable live playback failures | E3 | Must | 3 | PLY-04, SRC-09 | 8 | M3 | In Review |
+| PLY-06 | Diagnosable live playback failures | E3 | Must | 3 | PLY-04, SRC-09 | 8 | M3 | Done |
 | UX-07 | Mark protected content | E11 | Should | 3 | SRC-04, VOD-04, UX-04 | 8 | M3 | Done |
 
 ## Post-MVP
@@ -125,4 +125,4 @@ flowchart LR
 | 2026-10-29 | QA-02 | WebKit E2E not green in CI (mobile: sync snackbar blocks bottom nav; desktop: slow first sync, one stuck live load) | WebKit row `continue-on-error` until fixed; confirm on a real iPhone in DEP-02 | Open |
 | 2026-10-29 | S-00 | Owner's provider redirects live streams to http edges without valid HTTPS → blocked in any HTTPS web app | Needs PRX-01 (proxy) or NAT-01; owner's hosting decision (2026-10-29): proxy on the owner's Windows PC (native Node), HTTPS via Tailscale Serve (not yet installed) | Open |
 | 2026-10-30 | PRX-01 | Code, gates and security review done; manual test on the owner's Windows PC (localhost first, then Tailscale Serve on a phone) deferred by the owner | Owner runs the `proxy/README.md` guide when ready; then Done | Open |
-| 2026-10-30 | PLY-06 | Merged from an interrupted parallel session; code review not recorded | Review before Done | Open |
+| 2026-10-30 | PLY-06 | Merged from an interrupted parallel session; code review not recorded | Reviewed 2026-10-30: two probe defects fixed (no-cors+manual is always a network error; unreadable variant reported as ok) | Closed |

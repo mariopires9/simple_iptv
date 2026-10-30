@@ -6,12 +6,14 @@
 // 2. A normal (CORS) `fetch` that follows redirects reads the first bytes only, then cancels:
 //    the final address (`response.url`), the HTTP status and the start of the content (HLS
 //    playlist with `http://` URIs or HEVC `CODECS`; MPEG-TS with an HEVC program map).
-// 3. When that fetch fails with a TypeError (the browser does not say why), two `no-cors`
-//    requests tell the usual causes apart without reading anything: `redirect: 'manual'` shows
-//    whether the server redirects (an opaque redirect, its target is not exposed) and a followed
-//    `no-cors` request whether the end of the chain is reachable at all. Their responses are
-//    opaque — no body, header or status is readable — and are aborted at once. If even those
-//    fail, the address is unreachable or blocked and the browser does not say which.
+// 3. When that fetch fails with a TypeError (the browser does not say why), one `no-cors`
+//    request that follows redirects tells the usual causes apart without reading anything: if it
+//    succeeds, the address is reachable but sends no CORS headers; if it fails too, on an https
+//    page the usual cause is a redirect to an http:// address (blocked), otherwise the address is
+//    unreachable. (`no-cors` with `redirect: 'manual'` is always a network error per the Fetch
+//    Standard, so whether the server redirects cannot be observed.) The opaque response — no
+//    body, header or status is readable — is aborted at once. The same applies to the first
+//    variant of a master playlist.
 //
 // The URL is never logged nor returned: results carry the masked form (`shortenUrl`) only.
 import { log } from '@/core/log';
@@ -29,18 +31,21 @@ export type ProbeCause =
   | 'ok'
   /** The stream address itself is `http:` on an `https:` page (not requested). */
   | 'insecure-url'
-  /** The server redirected to an `http:` address (blocked on an `https:` page). */
+  /**
+   * A readable response ended on an `http:` address. Browsers fail such a CORS fetch from an
+   * `https:` page before it is readable (then `redirect-blocked`); kept for pages served on http.
+   */
   | 'insecure-redirect'
   /** The playlist lists `http:` segments/variants (blocked on an `https:` page). */
   | 'insecure-segments'
   /**
-   * The server redirects and the browser could not follow the redirect (typically to an `http:`
-   * address on an `https:` page; the target of an opaque redirect is not exposed).
+   * On an `https:` page, even a `no-cors` request failed: usually a redirect to an `http:`
+   * address (blocked), otherwise an unreachable server — the browser does not say which.
    */
   | 'redirect-blocked'
   /** Reachable, but the server sends no CORS headers: web engines (fetch) cannot read it. */
   | 'no-cors'
-  /** Every request failed: no CORS, unreachable or blocked — the browser does not say which. */
+  /** Every request failed on a non-https page: unreachable or blocked. */
   | 'unreachable'
   /** HTTP 401/403. */
   | 'auth'
@@ -151,7 +156,7 @@ export async function probeStream(
     } catch (e) {
       if (controller.signal.aborted) return { ...base, cause: 'timeout' };
       log.info('probe: readable request failed', { error: errorName(e), target });
-      return { ...base, ...(await opaqueProbe(url, doFetch, common, controller)) };
+      return { ...base, ...(await opaqueProbe(url, { pageProtocol, doFetch, common })) };
     }
     return {
       ...base,
@@ -226,54 +231,42 @@ async function readable(
   // variant) shows whether those point at http:// or redirect there.
   if (content.type === 'playlist' && content.variant !== undefined && followVariant) {
     const variant = await variantFinding(content.variant, ctx);
-    if (variant !== undefined) {
-      const merged = variant.hevc === true || hevc ? { hevc: true } : {};
-      if (variant.cause === 'insecure-segments' || variant.cause === 'insecure-redirect') {
-        return { ...out, ...merged, cause: variant.cause };
-      }
-      return { cause: 'ok', ...out, ...merged };
-    }
+    const merged = variant.hevc === true || hevc ? { hevc: true } : {};
+    // Whatever stops the variant stops the stream; a readable variant only adds HEVC.
+    return variant.cause === 'ok'
+      ? { cause: 'ok', ...out, ...merged }
+      : { ...out, ...merged, cause: variant.cause };
   }
   return { cause: 'ok', ...out, ...withHevc };
 }
 
-/** The first variant of a master playlist, read like the master (undefined when unreadable). */
+/** The first variant of a master playlist, read like the master. */
 async function variantFinding(
   variantUrl: string,
   ctx: ReadContext,
-): Promise<Omit<StreamProbeResult, 'target'> | undefined> {
+): Promise<Omit<StreamProbeResult, 'target'>> {
   if (isMixedContent(variantUrl, ctx.pageProtocol)) return { cause: 'insecure-segments' };
   try {
     const response = await ctx.doFetch(variantUrl, { ...ctx.common, redirect: 'follow' });
     return await readable(response, variantUrl, ctx, false);
   } catch (e) {
     if (ctx.common.signal?.aborted === true) throw e;
-    // A variant the browser cannot read (e.g. on another host without CORS): no conclusion.
-    return undefined;
+    // A variant the browser cannot read: no CORS on its host, or a redirect to http://.
+    return opaqueProbe(variantUrl, ctx);
   }
 }
 
-/** Both `no-cors` requests; their opaque responses are never read. */
+/** The `no-cors` request; its opaque response is never read. */
 async function opaqueProbe(
   url: string,
-  doFetch: ProbeFetch,
-  common: RequestInit,
-  controller: AbortController,
+  ctx: Pick<ReadContext, 'pageProtocol' | 'doFetch' | 'common'>,
 ): Promise<Omit<StreamProbeResult, 'target'>> {
-  let redirects: boolean;
   try {
-    const manual = await doFetch(url, { ...common, mode: 'no-cors', redirect: 'manual' });
-    redirects = manual.type === 'opaqueredirect';
+    await ctx.doFetch(url, { ...ctx.common, mode: 'no-cors', redirect: 'follow' });
   } catch (e) {
-    if (controller.signal.aborted) throw e;
-    return { cause: 'unreachable' };
+    if (ctx.common.signal?.aborted === true) throw e;
+    // Blocked even without CORS: on an https page, usually a redirect to http:// (mixed content).
+    return { cause: ctx.pageProtocol === 'https:' ? 'redirect-blocked' : 'unreachable' };
   }
-  if (!redirects) return { cause: 'no-cors' };
-  try {
-    await doFetch(url, { ...common, mode: 'no-cors', redirect: 'follow' });
-  } catch (e) {
-    if (controller.signal.aborted) throw e;
-    return { cause: 'redirect-blocked', redirected: true };
-  }
-  return { cause: 'no-cors', redirected: true };
+  return { cause: 'no-cors' };
 }
