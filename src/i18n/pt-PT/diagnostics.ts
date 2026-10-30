@@ -5,7 +5,7 @@ export const diagnostics = {
   title: 'Diagnóstico',
   back: 'As minhas listas',
   intro:
-    'Verifica se esta lista pode funcionar neste browser e o que pode fazer se não funcionar. O único pedido feito é um ao seu fornecedor.',
+    'Verifica se esta lista pode funcionar neste browser e o que pode fazer se não funcionar. Faz um pedido à API do seu fornecedor e abre brevemente o primeiro canal em direto (apenas os primeiros bytes).',
   running: 'A verificar…',
   runAgain: 'Verificar novamente',
   copy: 'Copiar relatório',
@@ -89,6 +89,39 @@ export const diagnostics = {
       formats: { auto: 'Automático', ts: 'MPEG-TS', m3u8: 'HLS' },
       engines: { native: 'leitor nativo', hls: 'hls.js', mpegts: 'mpegts.js' },
     },
+    liveStream: {
+      title: 'Teste de stream em direto',
+      reasons: {
+        partial: 'Os canais em direto podem reproduzir num formato, mas não no outro.',
+        'no-channels': 'Não verificado: esta lista não tem canais em direto (atualize-a primeiro).',
+        offline: 'Não verificado: não há ligação à rede.',
+        'no-secret':
+          'Não verificado: não foi possível ler o login guardado. Edite a lista e introduza-o novamente.',
+        unavailable:
+          'Não verificado: o primeiro canal em direto não tem um endereço que esta app consiga abrir.',
+      },
+      fact: (format: string, engine: string, result: string, address: string) =>
+        `${format} (${engine}): ${result} — ${address}`,
+      notPlayable: 'não reproduzível aqui',
+      results: {
+        ok: 'responde, parece um stream',
+        'insecure-url': 'endereço http:// (bloqueado numa app https)',
+        'insecure-redirect': 'redireciona para http:// (bloqueado numa app https)',
+        'insecure-segments': 'a playlist indica endereços http:// (bloqueados numa app https)',
+        'redirect-blocked': 'redireciona para um endereço que o browser não conseguiu abrir',
+        'no-cors': 'sem cabeçalhos CORS (os motores web não o conseguem ler)',
+        'no-cors-native': 'sem cabeçalhos CORS (o leitor nativo não precisa deles)',
+        unreachable: 'sem CORS ou inacessível (o browser não indica qual)',
+        auth: 'acesso rejeitado',
+        'http-error': 'erro HTTP',
+        'not-media': 'não é um stream',
+        timeout: 'sem resposta a tempo',
+        'invalid-url': 'endereço inválido',
+      },
+      status: (status: string) => `HTTP ${status}`,
+      redirected: 'redirecionado',
+      hevc: 'vídeo HEVC',
+    },
     browser: {
       title: 'Suporte do browser',
       reasons: {
@@ -136,6 +169,8 @@ export const diagnostics = {
       'Verifique o nome de utilizador, a palavra-passe e o endereço do servidor da lista.',
     'contact-provider': 'Pergunte ao seu fornecedor se o serviço funciona em browsers.',
     'switch-live-format': 'Mude o formato em direto preferido desta lista.',
+    'device-app':
+      'Este fornecedor envia os streams por http://, que os browsers bloqueiam dentro de uma app segura (https): use uma app de leitor no seu dispositivo para esta lista, ou peça ao fornecedor streams https.',
     retry: 'Tente novamente daqui a pouco.',
   },
   links: {

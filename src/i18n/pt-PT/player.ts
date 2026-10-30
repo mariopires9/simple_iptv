@@ -114,4 +114,49 @@ export const player = {
   nativeFullscreenNote:
     'Neste dispositivo, o ecrã inteiro usa o leitor do sistema e os respetivos controlos.',
   resumeUnsupported: 'A começar do início',
+  attempts: {
+    heading: 'Tentativas:',
+    line: (position: number, format: string, engine: string, error: string) =>
+      `${position}. ${format} via ${engine}: ${error}`,
+    skipped: 'não reproduzível neste browser (ignorado)',
+    engines: { native: 'leitor nativo', hls: 'hls.js', mpegts: 'mpegts.js' },
+    mediaSources: { mse: 'Media Source Extensions', mms: 'ManagedMediaSource' },
+    withMediaSource: (engine: string, api: string) => `${engine} (${api})`,
+    probe: (finding: string, facts: string) =>
+      `   Verificação: ${finding}${facts !== '' ? ` (${facts})` : ''}`,
+    redirected: 'redirecionado',
+    hevc: 'HEVC',
+    status: (status: number) => `HTTP ${status}`,
+    copy: 'Copiar detalhes',
+    copied: 'Detalhes copiados',
+    copyFailed: 'Não foi possível copiar os detalhes. Abra "Detalhes" e copie o texto.',
+  },
+  probe: {
+    checking: 'A verificar a causa…',
+    title: 'Causa provável',
+    causes: {
+      ok: 'O endereço responde e parece um stream válido: o problema é o formato ou o codec deste stream neste browser, não a ligação.',
+      'insecure-url':
+        'O endereço do stream usa http://, que o browser bloqueia dentro de uma app segura (https). Este fornecedor precisa de uma app de leitor no seu dispositivo: os browsers em https não reproduzem streams http.',
+      'insecure-redirect':
+        'O servidor redireciona o stream para um endereço http:// inseguro, que o browser bloqueia dentro de uma app https. Este fornecedor precisa de uma app de leitor no seu dispositivo: os browsers em https não reproduzem streams http.',
+      'insecure-segments':
+        'A playlist aponta para endereços http:// inseguros, que o browser bloqueia dentro de uma app https. Este fornecedor precisa de uma app de leitor no seu dispositivo: os browsers em https não reproduzem streams http.',
+      'redirect-blocked':
+        'O servidor redireciona o stream para outro endereço que o browser não conseguiu abrir — normalmente um endereço http:// inseguro, que os browsers bloqueiam dentro de uma app https. Se for o caso, este fornecedor precisa de uma app de leitor no seu dispositivo.',
+      'no-cors':
+        'O servidor não permite que apps web leiam o stream (sem cabeçalhos CORS), por isso este formato não reproduz no browser. Experimente o outro formato de direto nesta lista (o HLS reproduz de forma nativa no Safari).',
+      'no-cors-native':
+        'O servidor não permite que apps web leiam a playlist (sem cabeçalhos CORS). O leitor nativo não precisa disso, por isso não é essa a causa, e o browser não indica porque recusou o stream.',
+      unreachable:
+        'O browser não conseguiu abrir o endereço do stream: o servidor não envia cabeçalhos CORS, está inacessível ou o pedido foi bloqueado — o browser não indica qual.',
+      auth: 'O fornecedor rejeitou o pedido (HTTP 401/403): a conta pode ter expirado ou atingido o limite de ligações simultâneas.',
+      'http-error': 'O servidor respondeu ao pedido do stream com um erro.',
+      'not-media':
+        'O servidor respondeu com algo que não é um stream (por exemplo, uma página de erro).',
+      timeout: 'A verificação demorou demasiado: não foi possível determinar a causa.',
+      'invalid-url': 'O endereço do stream não é válido.',
+    },
+    hevc: 'O stream usa vídeo HEVC (H.265), que este browser pode não conseguir reproduzir neste formato.',
+  },
 } satisfies MessageShape<typeof base>;

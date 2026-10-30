@@ -5,7 +5,7 @@
 import { MASK, redact } from '@/core/log';
 import type { Messages } from '@/i18n';
 import { overallStatus } from './checks';
-import { describeCheck } from './describe';
+import { describeCheck, type ProbeText } from './describe';
 import type { DiagnosticsResult } from './runDiagnostics';
 
 export interface ReportContext {
@@ -15,6 +15,8 @@ export interface ReportContext {
   kindLabel: string;
   /** Protocol of the app page (`https:`). */
   pageProtocol: string | undefined;
+  /** `player.probe` strings of the same locale (live stream test). Default: the active locale. */
+  probeText?: ProbeText;
   /** Values that must never appear in the report (host, username, password, list URL…). */
   sensitive?: readonly (string | undefined)[];
 }
@@ -57,7 +59,7 @@ export function buildReport(result: DiagnosticsResult, context: ReportContext): 
   lines.push('', text.summary[overallStatus(result.checks)], '');
 
   for (const check of result.checks) {
-    const d = describeCheck(check, text);
+    const d = describeCheck(check, text, context.probeText);
     lines.push(`[${d.statusLabel}] ${d.title}`, `  ${d.explanation}`);
     for (const fact of d.facts) lines.push(`  ${fact}`);
     if (d.actions.length > 0) {

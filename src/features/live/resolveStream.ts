@@ -18,6 +18,7 @@ import {
   type StreamContainer,
   type StreamDescriptor,
 } from '@/player';
+import { xtreamLiveStreamUrl, xtreamStreamId } from '@/providers/xtream';
 
 /**
  * Fields an M3U entry may carry (SRC-04, written by the M3U provider). Read defensively: older
@@ -119,9 +120,9 @@ export function xtreamLiveDescriptor(
   format: LiveFormat,
   caps: Pick<Capabilities, 'mse' | 'mms'>,
 ): StreamDescriptor {
-  const prefix = `${base.replace(/\/+$/, '')}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${encodeURIComponent(streamId)}`;
-  const ts: StreamDescriptor = { url: `${prefix}.ts`, kind: 'live', container: 'ts' };
-  const hls: StreamDescriptor = { url: `${prefix}.m3u8`, kind: 'live', container: 'hls' };
+  const url = (ext: 'ts' | 'm3u8') => xtreamLiveStreamUrl(base, username, password, streamId, ext);
+  const ts: StreamDescriptor = { url: url('ts'), kind: 'live', container: 'ts' };
+  const hls: StreamDescriptor = { url: url('m3u8'), kind: 'live', container: 'hls' };
   if (format === 'm3u8') return hls;
   if (format === 'ts' || caps.mse || caps.mms) return { ...ts, fallbacks: [hls] };
   return hls;
@@ -134,7 +135,7 @@ async function resolveXtream(
 ): Promise<ResolvedStream> {
   const { serverUrl, username, secretRef } = source;
   // Stored as the bare id; tolerate an extension left by an older catalogue.
-  const streamId = channel.streamPath.replace(/\.[a-z0-9]{2,5}$/i, '');
+  const streamId = xtreamStreamId(channel.streamPath);
   if (!serverUrl || !username || streamId === '') {
     return secretRef ? { status: 'unavailable' } : { status: 'credentials' };
   }

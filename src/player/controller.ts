@@ -11,10 +11,11 @@ import { createNativeEngine } from './engines/native';
 import { currentPageProtocol, errorName, toPlaybackError } from './errors';
 import { planPlayback } from './select';
 import type { PlaybackCandidate } from './select';
-import { PlaybackError } from './types';
+import { PlaybackError, withAttempts } from './types';
 import type {
   EngineFactory,
   EngineId,
+  PlaybackAttempt,
   PlaybackNotice,
   PlayerEngine,
   StreamDescriptor,
@@ -29,7 +30,10 @@ export interface PlayerEvents {
   fallback: { error: PlaybackError; next: StreamDescriptor };
   /** Non-fatal information about the current attempt (e.g. `resume-unsupported`). */
   notice: PlaybackNotice;
-  /** Final failure: nothing left to try. Always emitted once when a play() ends in failure. */
+  /**
+   * Final failure: nothing left to try. Always emitted once when a play() ends in failure. Its
+   * `attempts` list every candidate tried or skipped, in order (PLY-06).
+   */
   error: PlaybackError;
 }
 
@@ -130,25 +134,35 @@ export function createPlayerController(
     });
   }
 
-  function reportFinal(error: PlaybackError): void {
+  function reportFinal(error: PlaybackError, attempts: readonly PlaybackAttempt[]): void {
     log.warn('player: playback failed', {
       kind: error.kind,
       detail: error.detail,
       target: error.target,
+      attempts: attempts.length,
     });
-    emit('error', error);
+    emit('error', attempts.length > 0 ? withAttempts(error, [...attempts]) : error);
   }
+
+  /** hls.js / mpegts.js use MSE when available, else ManagedMediaSource (iOS 17.1+). */
+  const mediaSource: 'mse' | 'mms' | undefined = capabilities.mse
+    ? 'mse'
+    : capabilities.mms
+      ? 'mms'
+      : undefined;
 
   /**
    * Tries `plan[index]` (skipping unsupported candidates). `failure` is the error of the attempt
    * that failed before this one (undefined for the requested descriptor); `unsupportedError`
    * remembers a skipped candidate so a plan with nothing playable still reports something.
+   * `attempts` collects every failed or skipped candidate of this play() (PLY-06).
    */
   async function attempt(
     token: number,
     plan: PlaybackCandidate[],
     index: number,
     startAt: number | undefined,
+    attempts: PlaybackAttempt[],
     failure?: PlaybackError,
     unsupportedError?: PlaybackError,
   ): Promise<void> {
@@ -157,7 +171,13 @@ export function createPlayerController(
     for (; i < plan.length; i++) {
       const candidate = plan[i];
       if (!candidate || candidate.engine !== 'unsupported') break;
-      skippedError ??= unsupported(candidate);
+      const skipped = unsupported(candidate);
+      skippedError ??= skipped;
+      attempts.push({
+        engine: 'unsupported',
+        container: candidate.descriptor.container,
+        error: skipped,
+      });
       log.info('player: skipping unsupported descriptor', {
         container: candidate.descriptor.container,
         url: shortenUrl(candidate.descriptor.url),
@@ -168,7 +188,7 @@ export function createPlayerController(
 
     const candidate = plan[i];
     if (!candidate || candidate.engine === 'unsupported') {
-      reportFinal(failure ?? skippedError ?? new PlaybackError({ kind: 'unknown' }));
+      reportFinal(failure ?? skippedError ?? new PlaybackError({ kind: 'unknown' }), attempts);
       return;
     }
     if (failure) emit('fallback', { error: failure, next: candidate.descriptor });
@@ -180,6 +200,12 @@ export function createPlayerController(
     const fail = async (error: PlaybackError): Promise<void> => {
       if (failed || token !== generation) return;
       failed = true;
+      attempts.push({
+        engine: id,
+        container: descriptor.container,
+        ...(id !== 'native' && mediaSource !== undefined ? { mediaSource } : {}),
+        error,
+      });
       log.warn('player: attempt failed', {
         engine: id,
         kind: error.kind,
@@ -188,12 +214,12 @@ export function createPlayerController(
       });
       await teardown();
       if (token !== generation) return;
-      await attempt(token, plan, i + 1, startAt, error, skippedError);
+      await attempt(token, plan, i + 1, startAt, attempts, error, skippedError);
     };
     const failSafely = (error: PlaybackError) => {
       fail(error).catch((e: unknown) => {
         log.error('player: fallback failed', { error: errorName(e) });
-        if (token === generation) reportFinal(error);
+        if (token === generation) reportFinal(error, attempts);
       });
     };
     const asPlaybackError = (e: unknown) =>
@@ -230,13 +256,14 @@ export function createPlayerController(
         await teardown();
         // Rapid zapping: only the newest play() gets past this point.
         if (token !== generation) return;
-        await attempt(token, planPlayback(descriptor, capabilities), 0, playOptions.startAt);
+        await attempt(token, planPlayback(descriptor, capabilities), 0, playOptions.startAt, []);
       } catch (e) {
         // Defensive: attempt() handles engine failures itself, so this is a controller bug.
         log.error('player: unexpected failure', { error: errorName(e) });
         if (token === generation) {
           reportFinal(
             new PlaybackError({ kind: 'unknown', detail: errorName(e), url: descriptor.url }),
+            [],
           );
         }
       }

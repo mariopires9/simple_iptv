@@ -45,6 +45,27 @@ export interface PlaybackErrorInit {
   codec?: string;
   /** Stream URL. Never stored: only the shortened, redacted form (`target`). */
   url?: string;
+  /**
+   * An already shortened, redacted URL (copying another PlaybackError). Ignored when `url` is
+   * given.
+   */
+  target?: string;
+  /** PLY-06: every candidate the play() tried or skipped, in order (final errors only). */
+  attempts?: readonly PlaybackAttempt[];
+}
+
+/**
+ * One candidate of a play() that failed or was skipped (PLY-06), so the error overlay can show
+ * why each one failed, not only the last one.
+ */
+export interface PlaybackAttempt {
+  /** `unsupported`: skipped without loading it (nothing can play that container here). */
+  engine: EngineId | 'unsupported';
+  container: StreamContainer;
+  /** hls.js / mpegts.js only: the Media Source API they used. */
+  mediaSource?: 'mse' | 'mms';
+  /** The failure; its URL is only kept masked (`target`). */
+  error: PlaybackError;
 }
 
 const DESCRIPTIONS: Record<PlaybackErrorKind, string> = {
@@ -68,9 +89,12 @@ export class PlaybackError extends Error {
   readonly codec?: string;
   /** Shortened, redacted URL (see `shortenUrl`). */
   readonly target?: string;
+  /** PLY-06: every candidate tried or skipped, in order (set on the final error of a play()). */
+  readonly attempts?: readonly PlaybackAttempt[];
 
-  constructor({ kind, engine, detail, status, hint, codec, url }: PlaybackErrorInit) {
-    const target = url !== undefined ? shortenUrl(url) : undefined;
+  constructor(init: PlaybackErrorInit) {
+    const { kind, engine, detail, status, hint, codec, url, attempts } = init;
+    const target = url !== undefined ? shortenUrl(url) : init.target;
     const extra = [
       engine,
       detail,
@@ -90,7 +114,25 @@ export class PlaybackError extends Error {
     if (hint !== undefined) this.hint = hint;
     if (codec !== undefined) this.codec = codec;
     if (target !== undefined) this.target = target;
+    if (attempts !== undefined) this.attempts = attempts;
   }
+}
+
+/** A copy of `error` carrying the attempts of its play() (PLY-06). */
+export function withAttempts(
+  error: PlaybackError,
+  attempts: readonly PlaybackAttempt[],
+): PlaybackError {
+  return new PlaybackError({
+    kind: error.kind,
+    engine: error.engine,
+    detail: error.detail,
+    status: error.status,
+    hint: error.hint,
+    codec: error.codec,
+    target: error.target,
+    attempts,
+  });
 }
 
 export function isPlaybackError(e: unknown): e is PlaybackError {
