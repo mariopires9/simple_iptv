@@ -339,6 +339,21 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Tests:** controller attempts list; probe with a fake fetch (redirect to http, opaque redirect, http segments, HEVC CODECS, HEVC in the PMT, timeout, cancellation); overlay component (details, copy, cause, layout styles); live stream check, run and screen (report masked).
 - **Not claimed:** it does not fix playback; probe behaviour on real devices (Safari `no-cors`/opaque redirects) is not measured yet.
 
+### PLY-08 — Open in an external player (VLC)
+- **Priority:** Should · **Effort:** 2 · **Value:** High
+- **Origin:** owner request (2026-10-30): on an iPhone, some channels of an Xtream list (through the personal proxy) show green frames in TS (mpegts.js/ManagedMediaSource) and audio without video in native HLS — most likely a codec WebKit cannot decode (HEVC in TS, H.264 10-bit/4:2:2 or MPEG-2). The same channels play in VLC. A web app cannot embed VLC, so it hands the stream off.
+- **Story:** As a user whose channel, movie or episode does not play in the browser, I want one tap to open it in VLC, so that I can still watch it.
+- **AC:**
+  1. Given a live channel, movie or episode playing (or failed), Then "Open in VLC" is offered in the player controls and in the playback error overlay. Strings en + pt-PT.
+  2. Given the hand-off, Then VLC receives the **direct** stream URL (never the personal-proxy one): for Xtream live the `.ts` URL (whatever format plays in the app); for VOD the container URL.
+  3. Given iOS/iPadOS, Then the app opens `vlc-x-callback://x-callback-url/stream?url=<encoded URL>`; given Android, Then `intent://<URL without scheme>#Intent;scheme=<http|https>;package=org.videolan.vlc;type=video/*;S.title=<name>;end` (Android opens the Play Store when VLC is missing); given desktop, Then a one-entry `.m3u` (`#EXTM3U`, `#EXTINF:-1,<name>`, URL) named after the item (sanitized) is downloaded through a Blob object URL (revoked) with a hint to open it with VLC. On iOS, if the page is still visible ~2 s later, Then "VLC didn't open — install VLC from the App Store" is shown.
+  4. Given the hand-off, Then the in-app player is stopped first (the provider may allow one connection), with "Play here" to resume in the app.
+  5. Given the URL carries the provider credentials, Then it is never logged, the hand-off happens only on an explicit tap, and the desktop hint says the file contains the list password and must not be shared (SECURITY.md §1).
+  6. Given Settings › Playback, Then a "Show 'Open in VLC'" toggle (one settings key), default on for iOS/Android and off on desktop.
+- **Dependencies:** PLY-02, PLY-04.
+- **Tests:** link builders per platform (encoding), `.m3u` content and file name, direct-not-proxy URL (Xtream live `.ts`), player stopped before the hand-off, iOS "didn't open" notice, toggle default and stored value.
+- **Not claimed:** the VLC hand-off has not been verified on a real iPhone, Android device or desktop VLC yet (DEP-02); the iOS "didn't open" check is a heuristic (page still visible after 2 s).
+
 ---
 
 ## E4 — Live TV

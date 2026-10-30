@@ -102,6 +102,7 @@ describe('resolveStream — Xtream', () => {
         kind: 'live',
         container: 'ts',
         fallbacks: [{ url: `${ENC}.m3u8`, kind: 'live', container: 'hls' }],
+        externalUrl: `${ENC}.ts`,
       },
     });
     // Even if something logged the URL, the vault registered the password for redaction; and

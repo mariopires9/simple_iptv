@@ -1,5 +1,6 @@
 // Settings › Playback (UX-04 AC1): reads and writes the playback preferences. Consumers:
 // - `fullscreenOnLandscape` → PlayerView's rotation prompt (src/player/ui, PLY-03 AC3);
+// - `showOpenInVlc` → PlayerView's "Open in VLC" action (PLY-08);
 // - `playLastChannelOnOpen` → the Live screen (features/live/liveState.ts, LIV-03);
 // - the active list's `prefs.liveFormat` → `resolveStream` (Xtream only; M3U entries carry their
 //   own URL), applied from the next channel started;
@@ -13,6 +14,7 @@ import {
   type SourceKind,
 } from '@/core/db';
 import { loadActiveSource } from '@/core/session';
+import { defaultShowOpenInVlc } from '@/player/external';
 
 export const LIVE_FORMATS: readonly LiveFormat[] = ['auto', 'ts', 'm3u8'];
 
@@ -26,6 +28,8 @@ export interface ActiveListFormat {
 export interface PlaybackSettings {
   /** Default on (the player only offers it on phones and tablets). */
   fullscreenOnLandscape: boolean;
+  /** PLY-08: default on for phones and tablets, off on desktop. */
+  showOpenInVlc: boolean;
   /** Default off (LIV-03). */
   playLastChannelOnOpen: boolean;
   /** Hide protected content (DRM/DASH, UX-07). Default off. */
@@ -45,8 +49,9 @@ function toActiveList(source: Source | undefined): ActiveListFormat | undefined 
 }
 
 export async function loadPlaybackSettings(): Promise<PlaybackSettings> {
-  const [fullscreen, playLast, hideProtected, activeId] = await Promise.all([
+  const [fullscreen, showVlc, playLast, hideProtected, activeId] = await Promise.all([
     settingsRepo.get('fullscreenOnLandscape'),
+    settingsRepo.get('showOpenInVlc'),
     settingsRepo.get('playLastChannelOnOpen'),
     settingsRepo.get('hideProtectedContent'),
     loadActiveSource(),
@@ -54,6 +59,7 @@ export async function loadPlaybackSettings(): Promise<PlaybackSettings> {
   const source = activeId === undefined ? undefined : await sourcesRepo.get(activeId);
   return {
     fullscreenOnLandscape: fullscreen !== false,
+    showOpenInVlc: typeof showVlc === 'boolean' ? showVlc : defaultShowOpenInVlc(),
     playLastChannelOnOpen: playLast === true,
     hideProtectedContent: hideProtected === true,
     activeList: toActiveList(source),
@@ -62,6 +68,10 @@ export async function loadPlaybackSettings(): Promise<PlaybackSettings> {
 
 export function saveFullscreenOnLandscape(enabled: boolean): Promise<void> {
   return settingsRepo.set('fullscreenOnLandscape', enabled);
+}
+
+export function saveShowOpenInVlc(enabled: boolean): Promise<void> {
+  return settingsRepo.set('showOpenInVlc', enabled);
 }
 
 export function savePlayLastChannelOnOpen(enabled: boolean): Promise<void> {

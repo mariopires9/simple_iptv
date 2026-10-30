@@ -18,6 +18,7 @@ import {
   saveHideProtectedContent,
   saveLiveFormat,
   savePlayLastChannelOnOpen,
+  saveShowOpenInVlc,
   type PlaybackSettings,
 } from '../playbackSettings';
 import { SettingsSection } from '../SettingsSection';
@@ -67,6 +68,10 @@ interface SettingField<V> {
 const FULLSCREEN: SettingField<boolean> = {
   get: (s) => s.fullscreenOnLandscape,
   set: (s, fullscreenOnLandscape) => ({ ...s, fullscreenOnLandscape }),
+};
+const SHOW_VLC: SettingField<boolean> = {
+  get: (s) => s.showOpenInVlc,
+  set: (s, showOpenInVlc) => ({ ...s, showOpenInVlc }),
 };
 const PLAY_LAST: SettingField<boolean> = {
   get: (s) => s.playLastChannelOnOpen,
@@ -137,6 +142,12 @@ export function PlaybackSection() {
           onChange={(checked) =>
             change(FULLSCREEN, checked, () => saveFullscreenOnLandscape(checked))
           }
+        />
+        <SwitchRow
+          label={text.showOpenInVlc}
+          hint={text.showOpenInVlcHint}
+          checked={settings.showOpenInVlc}
+          onChange={(checked) => change(SHOW_VLC, checked, () => saveShowOpenInVlc(checked))}
         />
         <SwitchRow
           label={text.playLastChannel}
