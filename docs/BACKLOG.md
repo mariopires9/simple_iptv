@@ -66,7 +66,7 @@ Allowed statuses (exactly one per story):
 | SER-03 | Episode, resume, next | E6 | Must | 3 | SER-02, VOD-03 | 7 | M2 | Done |
 | FAV-03 | Home and Favorites | E9 | Must | 3 | FAV-01, FAV-02, LIV-02, VOD-01, SER-01 | 7 | M2 | Done |
 | UX-03 | Keyboard and a11y audit | E11 | Must | 3 | LIV-02, VOD-02, SCH-02, SRC-03 | 7 | M3 | In Review |
-| DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Backlog |
+| DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Ready |
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
 | LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Done |
 | PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | In Review |
