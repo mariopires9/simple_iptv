@@ -137,4 +137,18 @@ describe('startImportedSyncs (EXP-01)', () => {
     expect(ids).toEqual([]);
     expect(takePending).not.toHaveBeenCalled();
   });
+
+  it('the lists cannot be read: the ids go back in the queue', async () => {
+    const requeue = vi.fn();
+    await expect(
+      startImportedSyncs({
+        takePending: () => ['m'],
+        requeue,
+        loadSources: () => Promise.reject(new Error('db')),
+        start: vi.fn(),
+        isOnline: () => true,
+      }),
+    ).rejects.toThrow('db');
+    expect(requeue).toHaveBeenCalledWith(['m']);
+  });
 });

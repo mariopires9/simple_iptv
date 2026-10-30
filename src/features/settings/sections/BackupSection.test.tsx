@@ -20,14 +20,15 @@ import { BackupSection } from './BackupSection';
 const text = t.settings.backup;
 const PASSWORD = 'synthetic-xtream-pass-42';
 const EXPORT_PASSWORD = 'correct horse battery';
+const X = '00000000-0000-4000-8000-000000000004';
 
 const list: Source = {
-  id: 'X',
+  id: X,
   kind: 'xtream',
   name: 'List X',
   serverUrl: 'http://panel.example.test:8080',
   username: 'demo',
-  secretRef: 'source:X:password',
+  secretRef: `source:${X}:password`,
   prefs: { liveFormat: 'auto' },
   createdAt: 1,
   lastSyncStatus: 'ok',
@@ -35,9 +36,9 @@ const list: Source = {
 };
 
 async function seed() {
-  await credentialVault.put('source:X:password', PASSWORD);
+  await credentialVault.put(`source:${X}:password`, PASSWORD);
   await sourcesRepo.put(list);
-  await favoritesRepo.add(itemKey('X', 'live', '1'), 1);
+  await favoritesRepo.add(itemKey(X, 'live', '1'), 1);
 }
 
 let media: ReturnType<typeof installMatchMedia>;
@@ -173,5 +174,22 @@ describe('BackupSection — import (EXP-01)', () => {
     );
     expect(await screen.findByText(text.readErrors['not-backup'])).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('an import that stops part-way says so and only offers to restart', async () => {
+    await seed();
+    const file = await backupFile();
+    vi.spyOn(favoritesRepo, 'putMany').mockRejectedValue(new Error('disk'));
+    const restart = vi.spyOn(backupRestart, 'restartOnLists').mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    renderSettings(<BackupSection />);
+    await user.upload(screen.getByTestId('backup-file-input'), file);
+    const dialog = await screen.findByRole('dialog', { name: text.preview.title });
+    await user.click(within(dialog).getByRole('radio', { name: text.preview.replace }));
+    await user.click(within(dialog).getByRole('button', { name: text.preview.confirm }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(text.importPartial);
+    expect(within(dialog).getByRole('button', { name: t.state.cancel })).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: text.restart }));
+    expect(restart).toHaveBeenCalledTimes(1);
   });
 });

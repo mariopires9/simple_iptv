@@ -217,6 +217,7 @@ export const settings = {
         lists === 1
           ? 'Encrypted secrets: the password or address of 1 list'
           : `Encrypted secrets: the passwords or addresses of ${formatted} lists`,
+      proxyAddressIgnored: 'Personal proxy address ignored (no token in the file)',
       proxyTokenIncluded: 'Encrypted secrets: the personal proxy token',
       noSecrets:
         'No passwords or list addresses in this file: Xtream lists will ask for their password, and M3U lists from an address are left out.',
@@ -233,7 +234,10 @@ export const settings = {
       confirm: 'Import',
       importing: 'Importing…',
     },
-    importError: 'The backup could not be imported',
+    importError: 'The backup could not be imported. Nothing on this device was changed.',
+    importPartial:
+      'The import stopped part-way: some data on this device may already have been replaced. The app will restart; check your lists and import again if needed.',
+    restart: 'Restart the app',
   },
   about: {
     version: 'Version',

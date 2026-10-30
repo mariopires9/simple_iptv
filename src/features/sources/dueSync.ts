@@ -7,7 +7,7 @@
 import type { Source } from '@/core/db';
 import { log } from '@/core/log';
 import { isNetworkBlocked } from '@/core/net';
-import { takeSourcesPendingSync } from '@/core/session';
+import { markSourcesForSync, takeSourcesPendingSync } from '@/core/session';
 import { startBackgroundSyncIfDue, type BackgroundSyncResult } from '@/worker';
 import { startSourceSync, type SyncRun } from './sourceSync';
 
@@ -52,6 +52,8 @@ export function startDueSyncs(deps: Partial<DueSyncDeps> = {}): Promise<Backgrou
 export interface ImportedSyncDeps {
   /** Default: the ids queued by a backup import (EXP-01, `@/core/session`). */
   takePending: () => string[];
+  /** Puts ids back in the queue (the lists could not be read). Default `markSourcesForSync`. */
+  requeue: (ids: readonly string[]) => void;
   /** Default: the stored lists. */
   loadSources: () => Promise<readonly Source[]>;
   start: (source: Pick<Source, 'id' | 'kind'>) => Promise<SyncRun>;
@@ -67,6 +69,7 @@ export interface ImportedSyncDeps {
 export async function startImportedSyncs(deps: Partial<ImportedSyncDeps> = {}): Promise<string[]> {
   const {
     takePending = takeSourcesPendingSync,
+    requeue = markSourcesForSync,
     loadSources = async () => (await import('@/core/db')).sourcesRepo.list(),
     start = (source) => startSourceSync(source),
     isOnline = defaultDeps.isOnline,
@@ -74,7 +77,15 @@ export async function startImportedSyncs(deps: Partial<ImportedSyncDeps> = {}): 
   if (!isOnline()) return [];
   const pending = new Set(takePending());
   if (pending.size === 0) return [];
-  const lists = (await loadSources()).filter((s) => pending.has(s.id) && s.kind === 'm3u-url');
+  let all: readonly Source[];
+  try {
+    all = await loadSources();
+  } catch (error) {
+    // Nothing was started: keep the queue for the next start-up or reconnection.
+    requeue([...pending]);
+    throw error;
+  }
+  const lists = all.filter((s) => pending.has(s.id) && s.kind === 'm3u-url');
   const started: string[] = [];
   for (const source of lists) {
     const run = await start({ id: source.id, kind: source.kind });

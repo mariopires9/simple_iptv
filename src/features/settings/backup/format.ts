@@ -44,7 +44,7 @@ export const MAX_SOURCES = 200;
 export const MAX_FAVORITES = 50_000;
 export const MAX_HISTORY = 50_000;
 const MAX_URL = 2_048;
-const MAX_SECRET = 8_192;
+export const MAX_SECRET = 8_192;
 
 export interface BackupSource {
   id: string;
@@ -128,7 +128,14 @@ export interface BackupFile {
 // ---------------------------------------------------------------------------------------------
 
 const finiteNumber = v.pipe(v.number(), v.finite());
-const sourceId = v.pipe(v.string(), v.regex(/^[^\s:]{1,128}$/));
+/**
+ * List ids as the app generates them (`crypto.randomUUID()`, features/sources). Anything else
+ * (`__proto__`, `constructor`, ids with `:`) is rejected item by item.
+ */
+export const SOURCE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const isBackupSourceId = (id: unknown): id is string =>
+  typeof id === 'string' && SOURCE_ID_PATTERN.test(id);
+const sourceId = v.pipe(v.string(), v.regex(SOURCE_ID_PATTERN));
 
 const httpUrl = v.pipe(
   v.string(),
@@ -224,7 +231,8 @@ const TopSchema = v.object({
 });
 
 export const SecretsSchema = v.object({
-  sources: v.record(sourceId, v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_SECRET))),
+  // Validated entry by entry by the importer (an odd key must not void the other secrets).
+  sources: v.record(v.string(), v.unknown()),
   proxyToken: v.optional(v.pipe(v.string(), v.maxLength(MAX_SECRET))),
 });
 

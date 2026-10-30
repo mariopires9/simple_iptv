@@ -218,6 +218,7 @@ export const settings = {
         lists === 1
           ? 'Segredos cifrados: a palavra-passe ou o endereço de 1 lista'
           : `Segredos cifrados: as palavras-passe ou os endereços de ${formatted} listas`,
+      proxyAddressIgnored: 'Endereço do proxy pessoal ignorado (o ficheiro não tem o token)',
       proxyTokenIncluded: 'Segredos cifrados: o token do proxy pessoal',
       noSecrets:
         'Este ficheiro não tem palavras-passe nem endereços de listas: as listas Xtream vão pedir a palavra-passe e as listas M3U por endereço ficam de fora.',
@@ -234,7 +235,11 @@ export const settings = {
       confirm: 'Importar',
       importing: 'A importar…',
     },
-    importError: 'Não foi possível importar a cópia de segurança',
+    importError:
+      'Não foi possível importar a cópia de segurança. Nada foi alterado neste dispositivo.',
+    importPartial:
+      'A importação parou a meio: alguns dados deste dispositivo podem já ter sido substituídos. A aplicação vai reiniciar; verifique as suas listas e importe de novo se necessário.',
+    restart: 'Reiniciar a aplicação',
   },
   about: {
     version: 'Versão',

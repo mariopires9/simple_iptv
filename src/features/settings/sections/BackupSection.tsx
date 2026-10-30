@@ -23,6 +23,7 @@ import { backupFileName, buildBackup, downloadText, serializeBackup } from '../b
 import { BackupFileError, type ParsedBackup } from '../backup/format';
 import {
   applyBackup,
+  BackupImportError,
   backupRestart,
   previewBackup,
   readBackupFile,
@@ -139,6 +140,8 @@ function ImportDialog({ backup, onClose }: { backup: ParsedBackup; onClose: () =
   const [mode, setMode] = useState<ImportMode>('merge');
   const [wrongPassword, setWrongPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** The import stopped part-way: only restarting is offered (the stores would be stale). */
+  const [partial, setPartial] = useState(false);
   const preview = previewBackup(backup);
   const exportedAt = Date.parse(backup.exportedAt);
   const count = (fn: (n: number, f: string) => string, n: number) => fn(n, formatInteger(n));
@@ -152,6 +155,11 @@ function ImportDialog({ backup, onClose }: { backup: ParsedBackup; onClose: () =
       await applyBackup(backup, { mode, password });
       backupRestart.restartOnLists();
     } catch (error) {
+      if (error instanceof BackupImportError && error.changed) {
+        log.warn('backup: the import stopped part-way', { error });
+        setPartial(true);
+        return;
+      }
       setBusy(false);
       if (error instanceof WrongBackupPasswordError) {
         setWrongPassword(true);
@@ -197,6 +205,7 @@ function ImportDialog({ backup, onClose }: { backup: ParsedBackup; onClose: () =
             ) : (
               <Typography>{text.noSecrets}</Typography>
             )}
+            {preview.proxyAddressIgnored && <Typography>{text.proxyAddressIgnored}</Typography>}
           </div>
           <Typography variant="body2" color="text.secondary">
             {text.catalogue}
@@ -230,7 +239,17 @@ function ImportDialog({ backup, onClose }: { backup: ParsedBackup; onClose: () =
           </FormControl>
         </Stack>
       </DialogContent>
+      {partial && (
+        <Alert severity="error" role="alert" sx={{ mx: 3 }}>
+          {t.settings.backup.importPartial}
+        </Alert>
+      )}
       <DialogActions>
+        {partial && (
+          <Button variant="contained" onClick={() => backupRestart.restartOnLists()}>
+            {t.settings.backup.restart}
+          </Button>
+        )}
         <Button onClick={onClose} disabled={busy}>
           {t.state.cancel}
         </Button>
