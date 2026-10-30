@@ -79,7 +79,7 @@ Dependency rule: `features â†’ (worker, player, providers, core, ui)`; `worker â
 
 | Module | Responsibility | Does not |
 |---|---|---|
-| `core/net` | `fetchJson/fetchText/fetchStream` with timeout, `AbortSignal`, error classification, applying the `UrlRewriter` | Domain logic |
+| `core/net` | `fetchJson/fetchText/fetchStream` with timeout, `AbortSignal`, error classification, applying the `UrlRewriter`; stream container recognition from a declared name or the URL path (`isDashStream`, shared by the player and the UX-07 "Protected" mark) | Domain logic |
 | `core/crypto` | Generate/get the device key; `encrypt/decrypt`; `wipe()` | Store domain data |
 | `core/db` | Dexie schema, migrations, typed repositories, `wipeAll()` | Network requests |
 | `core/log` | `log.debug/info/warn/error` with automatic redaction; 500-entry ring buffer | Remote sending |

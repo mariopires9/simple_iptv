@@ -8,10 +8,12 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { t } from '@/i18n';
 import { isLoadableImage } from '@/ui/images';
 import { visuallyHidden } from '@/ui/state';
 import { formatRating } from './format';
 import { Poster } from './Poster';
+import { ProtectedBadge } from './ProtectedBadge';
 
 /** Plots longer than this always get "More" (layout measurement is not available everywhere). */
 export const LONG_PLOT = 240;
@@ -41,6 +43,11 @@ export interface DetailsHeroProps {
   cast?: string | undefined;
   /** Below everything (e.g. "Couldn't load more details"). */
   footer?: ReactNode;
+  /**
+   * Protected content (DRM/DASH, UX-07): the "Protected" badge and, under it, why it can't be
+   * played, with this id (the feature disables Play and points `aria-describedby` at it).
+   */
+  protectedNoteId?: string | undefined;
   texts: DetailsHeroTexts;
   /** Prefix of the test ids (`movie` → `movie-meta`, `movie-plot`, `movie-backdrop`). */
   testIdPrefix: string;
@@ -58,6 +65,7 @@ export function DetailsHero({
   director,
   cast,
   footer,
+  protectedNoteId,
   texts,
   testIdPrefix,
 }: DetailsHeroProps) {
@@ -168,6 +176,17 @@ export function DetailsHero({
                   </Box>
                 </Box>
               )}
+            </Box>
+          )}
+          {protectedNoteId !== undefined && (
+            <Box
+              data-testid={`${testIdPrefix}-protected`}
+              sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}
+            >
+              <ProtectedBadge />
+              <Typography id={protectedNoteId} variant="body2" sx={{ color: 'text.secondary' }}>
+                {t.state.protectedContent.unplayable}
+              </Typography>
             </Box>
           )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1 }}>{actions}</Box>

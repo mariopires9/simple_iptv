@@ -21,6 +21,8 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
   catalogRepo,
   favoritesRepo,
+  isProtectedStream,
+  isProtectedItem,
   itemKey,
   parseCategoryKey,
   type Episode,
@@ -53,6 +55,7 @@ import {
   nextEpisode,
   orderSeasons,
   playOrder,
+  playableSeasons,
   type EpisodeProgress,
 } from './episodes';
 import { loadSeriesDetails } from './seriesDetails';
@@ -241,6 +244,18 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
   // Regular seasons ascending, specials (season 0) last: tabs, default tab and playing order.
   const seasons = useMemo(() => orderSeasons(details?.seasons ?? []), [details]);
   const extra = details?.info;
+  // UX-07: the whole series is protected when it was flagged at import (every episode DRM/DASH)
+  // or every episode known now is; a mixed series marks its episode rows only. "Continue", the
+  // next episode and auto-advance only ever pick from the playable episodes.
+  const order = useMemo(() => playOrder(seasons), [seasons]);
+  const seriesProtected = useMemo(
+    () => isProtectedItem(series) || (order.length > 0 && order.every(isProtectedStream)),
+    [series, order],
+  );
+  const playable = useMemo(
+    () => (seriesProtected ? [] : playableSeasons(seasons)),
+    [seasons, seriesProtected],
+  );
 
   // --- progress -----------------------------------------------------------------------------------
   const [seriesEntry, setSeriesEntry] = useState(history.entry);
@@ -249,7 +264,7 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
     (episode: Episode, snapshot: ProgressSnapshot) => {
       setProgress((previous) => new Map(previous).set(episode.key, snapshot));
       // Same rule as seriesHistory.ts: a finished episode points the series at the next one.
-      const next = snapshot.completed ? nextEpisode(seasons, episode.key) : undefined;
+      const next = snapshot.completed ? nextEpisode(playable, episode.key) : undefined;
       setSeriesEntry({
         itemKey: series.key,
         sourceId: series.sourceId,
@@ -259,9 +274,12 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
         episodeKey: next?.key ?? episode.key,
       });
     },
-    [series.key, series.sourceId, seasons],
+    [series.key, series.sourceId, playable],
   );
-  const target = continueTarget(seasons, seriesEntry, progress);
+  const target = useMemo(
+    () => continueTarget(playable, seriesEntry, progress),
+    [playable, seriesEntry, progress],
+  );
 
   // --- season selection ---------------------------------------------------------------------------
   const [chosenSeason, setChosenSeason] = useState<number>();
@@ -272,6 +290,8 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
   const mainButton = useRef<HTMLButtonElement>(null);
   const play = useCallback(
     (episode: Episode, startAt: number | undefined) => {
+      // UX-07: a protected (DRM/DASH) episode is never opened in the player.
+      if (isProtectedStream(episode)) return;
       setPlaying({ episode, startAt });
       setChosenSeason(episode.season);
     },
@@ -301,11 +321,29 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
   if (genre !== undefined) meta.push(genre);
   const poster = series.cover ?? extra?.cover;
   const titleId = useId();
+  const protectedNoteId = useId();
 
   const code = (episode: Episode) =>
     [formatInteger(episode.season), formatInteger(episode.number)] as const;
   let actions = null;
-  if (target) {
+  const firstEpisode = order[0];
+  if (!target && seriesProtected && firstEpisode) {
+    // No playable episode left: Play stays, disabled, pointing at the hero's explanation.
+    const [s, e] = code(firstEpisode);
+    actions = (
+      <Button
+        ref={mainButton}
+        variant="contained"
+        size="large"
+        startIcon={<PlayArrowRounded aria-hidden />}
+        disabled
+        aria-describedby={protectedNoteId}
+        sx={{ minHeight: 44 }}
+      >
+        {texts.playEpisode(s, e)}
+      </Button>
+    );
+  } else if (target) {
     const [s, e] = code(target.episode);
     const resumeAt = target.kind === 'continue' ? target.resumeAt : undefined;
     actions = (
@@ -340,7 +378,8 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
       : undefined;
 
   const playingEpisode = playing?.episode;
-  const next = playingEpisode ? nextEpisode(seasons, playingEpisode.key) : undefined;
+  // The next playable episode (protected ones are skipped by auto-advance).
+  const next = playingEpisode ? nextEpisode(playable, playingEpisode.key) : undefined;
 
   let episodesView;
   if (infoState.status === 'loading') {
@@ -413,6 +452,7 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
         cast={extra?.cast}
         texts={texts}
         testIdPrefix="series"
+        protectedNoteId={seriesProtected ? protectedNoteId : undefined}
         actions={
           <>
             {actions}

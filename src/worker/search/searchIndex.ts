@@ -6,13 +6,16 @@
 // - `id` = `<type code>:<externalId>` (`l`/`m`/`s`); the item key is rebuilt with the source id,
 //   so the source id is not repeated 100k times;
 // - indexed fields: the name (normalized: lowercase, no diacritics) and, for channels, the number;
-// - stored field `c`: the category's external id (the category key is rebuilt the same way).
+// - stored field `c`: the category's external id (the category key is rebuilt the same way);
+// - stored field `p` (only on protected items — DRM/DASH, UX-07): `1`, so "Hide protected content"
+//   filters before counting and limiting, and totals stay right.
 // Nothing else is stored: stream URLs, logos and other fields never enter the index (they may
 // carry credentials in M3U lists), and the UI reads names from the catalogue when it shows hits.
 import MiniSearch, { type Options, type SearchOptions } from 'minisearch';
 import {
   CONTENT_TYPES,
   categoryKey,
+  isProtectedItem,
   isSearchableQuery,
   itemKey,
   parseCategoryKey,
@@ -22,7 +25,7 @@ import {
 } from '@/core/db';
 
 /** Format of the serialized index; bump it when the options or the document shape change. */
-export const SEARCH_INDEX_VERSION = 1;
+export const SEARCH_INDEX_VERSION = 2;
 
 /** Terms of at least this length also match with typos (fuzzy 0.2 ⇒ 1 edit for 5–7 letters). */
 export const FUZZY_MIN_TERM_LENGTH = 5;
@@ -38,6 +41,8 @@ export interface SearchDoc {
   num?: string;
   /** Category external id. */
   c?: string;
+  /** `1` when the item is protected content (DRM/DASH, UX-07); absent otherwise. */
+  p?: 1;
 }
 
 /** One match, before the catalogue rows are read. */
@@ -70,7 +75,7 @@ function indexOptions(): Options<SearchDoc> {
   return {
     idField: 'id',
     fields: ['name', 'num'],
-    storeFields: ['c'],
+    storeFields: ['c', 'p'],
     tokenize: tokenizeSearchText,
     // Terms are already normalized by the tokenizer.
     processTerm: (term) => term,
@@ -95,6 +100,7 @@ export function toSearchDoc(item: CatalogItem): SearchDoc | undefined {
     const category = parseCategoryKey(item.categoryKey);
     if (category) doc.c = category.externalId;
   }
+  if (isProtectedItem(item)) doc.p = 1;
   return doc;
 }
 
@@ -137,6 +143,8 @@ export interface QueryOptions {
   types?: readonly ContentType[];
   /** Hits kept per type (default 20). Totals count every match. */
   limit?: number;
+  /** Leave protected items (DRM/DASH, UX-07) out of hits and totals. */
+  hideProtected?: boolean;
 }
 
 /**
@@ -147,7 +155,7 @@ export function querySearchIndex(
   index: SearchIndex,
   sourceId: string,
   query: string,
-  { types = CONTENT_TYPES, limit = 20 }: QueryOptions = {},
+  { types = CONTENT_TYPES, limit = 20, hideProtected = false }: QueryOptions = {},
 ): RawResults {
   const results = emptyResults();
   if (!isSearchableQuery(query)) return results;
@@ -158,6 +166,7 @@ export function querySearchIndex(
     const separator = id.indexOf(':');
     const type = TYPE_BY_CODE[id.slice(0, separator)];
     if (type === undefined || !wanted.has(type)) continue;
+    if (hideProtected && (match as { p?: unknown }).p === 1) continue;
     const group = results[type];
     group.total++;
     if (group.hits.length >= max) continue;

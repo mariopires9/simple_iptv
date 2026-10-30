@@ -30,16 +30,28 @@ export async function locate(cache: PageCache, from: Positioned): Promise<number
  * The channel `delta` rows away (wrapping around the ends). A channel that is not in this
  * category (picked elsewhere, or restored from the URL) zaps to the first/last row. Pages
  * are crossed through the pager when the neighbour is not cached.
+ *
+ * Channels `skip` accepts (UX-07: protected content) and rows that are gone are stepped over in
+ * the same direction, wrapping as well; `undefined` when no other channel qualifies (the caller
+ * stays where it is).
  */
 export async function neighbour(
   cache: PageCache,
   from: Positioned,
   delta: 1 | -1,
+  skip?: (channel: Channel) => boolean,
 ): Promise<{ channel: Channel; index: number } | undefined> {
   const total = cache.total;
   if (total === 0) return undefined;
   const index = await locate(cache, from);
-  const target = index < 0 ? (delta > 0 ? 0 : total - 1) : (index + delta + total) % total;
-  const channel = cache.get(target) ?? (await cache.pager.load(target, 1))[0];
-  return channel ? { channel, index: target } : undefined;
+  let target = index < 0 ? (delta > 0 ? 0 : total - 1) : (index + delta + total) % total;
+  // Every other row at most once (and the start row too, when `from` is not in this category).
+  const tries = index < 0 ? total : total - 1;
+  for (let step = 0; step < Math.max(1, tries); step++) {
+    const channel = cache.get(target) ?? (await cache.pager.load(target, 1))[0];
+    if (channel && !skip?.(channel)) return { channel, index: target };
+    if (!skip) return undefined;
+    target = (target + delta + total) % total;
+  }
+  return undefined;
 }

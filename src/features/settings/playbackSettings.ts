@@ -2,7 +2,9 @@
 // - `fullscreenOnLandscape` → PlayerView's rotation prompt (src/player/ui, PLY-03 AC3);
 // - `playLastChannelOnOpen` → the Live screen (features/live/liveState.ts, LIV-03);
 // - the active list's `prefs.liveFormat` → `resolveStream` (Xtream only; M3U entries carry their
-//   own URL), applied from the next channel started.
+//   own URL), applied from the next channel started;
+// - `hideProtectedContent` → the Live, Movies and Series grids, search and Home (UX-07), applied
+//   the next time they load.
 import {
   settingsRepo,
   sourcesRepo,
@@ -26,6 +28,8 @@ export interface PlaybackSettings {
   fullscreenOnLandscape: boolean;
   /** Default off (LIV-03). */
   playLastChannelOnOpen: boolean;
+  /** Hide protected content (DRM/DASH, UX-07). Default off. */
+  hideProtectedContent: boolean;
   /** The active list, whose live format the section edits; `undefined` without lists. */
   activeList: ActiveListFormat | undefined;
 }
@@ -41,15 +45,17 @@ function toActiveList(source: Source | undefined): ActiveListFormat | undefined 
 }
 
 export async function loadPlaybackSettings(): Promise<PlaybackSettings> {
-  const [fullscreen, playLast, activeId] = await Promise.all([
+  const [fullscreen, playLast, hideProtected, activeId] = await Promise.all([
     settingsRepo.get('fullscreenOnLandscape'),
     settingsRepo.get('playLastChannelOnOpen'),
+    settingsRepo.get('hideProtectedContent'),
     loadActiveSource(),
   ]);
   const source = activeId === undefined ? undefined : await sourcesRepo.get(activeId);
   return {
     fullscreenOnLandscape: fullscreen !== false,
     playLastChannelOnOpen: playLast === true,
+    hideProtectedContent: hideProtected === true,
     activeList: toActiveList(source),
   };
 }
@@ -60,6 +66,10 @@ export function saveFullscreenOnLandscape(enabled: boolean): Promise<void> {
 
 export function savePlayLastChannelOnOpen(enabled: boolean): Promise<void> {
   return settingsRepo.set('playLastChannelOnOpen', enabled);
+}
+
+export function saveHideProtectedContent(enabled: boolean): Promise<void> {
+  return settingsRepo.set('hideProtectedContent', enabled);
 }
 
 /** Sets the live format of a list (its other preferences kept). Rejects if the list is gone. */

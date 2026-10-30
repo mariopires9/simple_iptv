@@ -8,6 +8,8 @@ export interface SearchRequest {
   /** One type ("see all") or every type. */
   type?: ContentType;
   limit: number;
+  /** Leave protected items (DRM/DASH, UX-07) out of hits and totals. */
+  hideProtected?: boolean;
 }
 
 /** `runTask` throws synchronously when no worker can be created: always a rejected promise. */
@@ -25,6 +27,7 @@ export const searchClient = {
       sourceId: request.sourceId,
       query: request.query,
       limit: request.limit,
+      ...(request.hideProtected === true ? { hideProtected: true } : {}),
       ...(request.type ? { types: [request.type] } : {}),
     };
     return call(() => runTask('searchQuery', input, { signal }));

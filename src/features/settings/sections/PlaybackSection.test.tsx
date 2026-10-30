@@ -67,6 +67,24 @@ describe('PlaybackSection (UX-04 AC1)', () => {
     });
   });
 
+  it('UX-07: "Hide protected content" is off by default and is saved for the screens', async () => {
+    const user = userEvent.setup();
+    renderSettings(<PlaybackSection />);
+    const hide = await screen.findByRole('switch', { name: text.hideProtected });
+    expect(hide).not.toBeChecked();
+    expect(hide).toHaveAccessibleDescription(text.hideProtectedHint);
+    await user.click(hide);
+    expect(hide).toBeChecked();
+    await waitFor(async () => expect(await settingsRepo.get('hideProtectedContent')).toBe(true));
+    cleanup();
+
+    renderSettings(<PlaybackSection />);
+    const again = await screen.findByRole('switch', { name: text.hideProtected });
+    expect(again).toBeChecked();
+    await user.click(again);
+    await waitFor(async () => expect(await settingsRepo.get('hideProtectedContent')).toBe(false));
+  });
+
   it('a failed save puts the switch back and says so', async () => {
     const user = userEvent.setup();
     renderSettings(<PlaybackSection />);

@@ -65,4 +65,21 @@ describe('zapping', () => {
     expect((await neighbour(cache, { channel: outsider }, -1))?.index).toBe(4);
     expect(await neighbour(new PageCache(pager(0).p), { channel: outsider }, 1)).toBeUndefined();
   });
+
+  it('UX-07: skips channels `skip` accepts, both ways, wrapping around', async () => {
+    const cache = new PageCache(pager(6).p, 100, 3);
+    // Channels 0, 1 and 4 are protected.
+    const skip = (c: Channel) => [0, 1, 4].includes(c.order);
+    expect((await neighbour(cache, { channel: channel(3), index: 3 }, 1, skip))?.index).toBe(5);
+    expect((await neighbour(cache, { channel: channel(5), index: 5 }, 1, skip))?.index).toBe(2);
+    expect((await neighbour(cache, { channel: channel(2), index: 2 }, -1, skip))?.index).toBe(5);
+    expect((await neighbour(cache, { channel: channel(5), index: 5 }, -1, skip))?.index).toBe(3);
+  });
+
+  it('UX-07: when every other channel is skipped, there is no neighbour (stay put)', async () => {
+    const cache = new PageCache(pager(4).p, 100, 3);
+    const skip = (c: Channel) => c.order !== 2;
+    expect(await neighbour(cache, { channel: channel(2), index: 2 }, 1, skip)).toBeUndefined();
+    expect(await neighbour(cache, { channel: channel(2), index: 2 }, -1, skip)).toBeUndefined();
+  });
 });

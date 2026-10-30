@@ -428,6 +428,53 @@ describe('recent searches (AC4)', () => {
   });
 });
 
+describe('protected content (UX-07)', () => {
+  const protectedResult = (input: SearchQueryInput) => ({
+    sourceId: input.sourceId,
+    query: input.query,
+    groups: {
+      live: { total: 0, hits: [] },
+      movie: {
+        total: 1,
+        hits: [
+          {
+            key: 'src1:movie:x',
+            type: 'movie',
+            externalId: 'x',
+            name: 'Locked Film',
+            protected: true,
+          },
+        ],
+      },
+      series: { total: 0, hits: [] },
+    },
+  });
+
+  it('a protected result shows the badge and says so to screen readers', async () => {
+    runTask.mockImplementation((name: string, input: SearchQueryInput) =>
+      name === 'searchQuery' ? Promise.resolve(protectedResult(input)) : Promise.resolve(),
+    );
+    renderAt('/search?q=locked');
+    const link = await screen.findByRole('link', {
+      name: (n) => n.startsWith('Locked Film') && n.includes(t.state.protectedContent.label),
+    });
+    expect(within(link).getByTestId('protected-badge')).toBeInTheDocument();
+    expect(searchCalls().at(-1)?.[1]).toMatchObject({ query: 'locked' });
+    expect(searchCalls().at(-1)?.[1]).not.toHaveProperty('hideProtected');
+  });
+
+  it('"Hide protected content" is passed to the worker query', async () => {
+    await settingsRepo.set('hideProtectedContent', true);
+    try {
+      renderAt('/search?q=example');
+      expect(await screen.findByText('Example Drama')).toBeInTheDocument();
+      expect(searchCalls().at(-1)?.[1]).toMatchObject({ query: 'example', hideProtected: true });
+    } finally {
+      await settingsRepo.remove('hideProtectedContent');
+    }
+  });
+});
+
 describe('no list', () => {
   it('asks to add a list', async () => {
     await settingsRepo.remove('activeSourceId');

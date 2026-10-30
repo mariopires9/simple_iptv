@@ -10,9 +10,10 @@ import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import { useId, useState } from 'react';
-import type { Episode, Season } from '@/core/db';
+import { isProtectedStream, type Episode, type Season } from '@/core/db';
 import { t } from '@/i18n';
 import { formatDuration, formatInteger, formatPercent } from '@/ui/catalog/format';
+import { ProtectedBadge, ProtectedNote } from '@/ui/catalog/ProtectedBadge';
 import { isLoadableImage } from '@/ui/images';
 import { visuallyHidden } from '@/ui/state';
 import { episodeName } from './EpisodePlayer';
@@ -133,13 +134,24 @@ function EpisodeRow({ episode, progress, playing, onPlay }: EpisodeRowProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const still = !imageFailed && isLoadableImage(episode.image) ? episode.image : undefined;
   const fraction = state.kind === 'progress' ? state.fraction : undefined;
+  // UX-07: a DRM/DASH episode is marked and its row does not play (kept focusable, so keyboard
+  // and screen reader users still hear why).
+  const isProtected = isProtectedStream(episode);
 
   return (
-    <Box component="li" data-testid="episode-row">
+    <Box component="li" data-testid="episode-row" data-protected={isProtected || undefined}>
       <ListItemButton
-        onClick={() => onPlay(episode)}
+        onClick={isProtected ? undefined : () => onPlay(episode)}
+        aria-disabled={isProtected || undefined}
+        title={isProtected ? t.state.protectedContent.unplayable : undefined}
         aria-current={playing ? 'true' : undefined}
-        sx={{ minHeight: 72, gap: 2, borderRadius: 2, alignItems: 'center' }}
+        sx={{
+          minHeight: 72,
+          gap: 2,
+          borderRadius: 2,
+          alignItems: 'center',
+          ...(isProtected && { cursor: 'not-allowed' }),
+        }}
       >
         {still !== undefined ? (
           <Box
@@ -172,7 +184,13 @@ function EpisodeRow({ episode, progress, playing, onPlay }: EpisodeRowProps) {
             </Box>
             {' · '}
             {episodeName(episode)}
+            {isProtected && <ProtectedNote unplayable />}
           </Box>
+          {isProtected && (
+            <Box component="span">
+              <ProtectedBadge labelled={false} />
+            </Box>
+          )}
           {duration !== undefined && (
             <Box component="span" sx={{ typography: 'body2', color: 'text.secondary' }}>
               {duration}

@@ -3,7 +3,7 @@
 // the Movies and Series grids and details since SER-01.
 import Box from '@mui/material/Box';
 import { useTheme } from '@mui/material/styles';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { colorsForName } from '@/ui/colorHash';
 import { isLoadableImage } from '@/ui/images';
 import { avatarPalette, radii } from '@/ui/theme/tokens';
@@ -17,10 +17,12 @@ export interface PosterProps {
   progress?: number | undefined;
   /** Eager load (details page). Default lazy. */
   eager?: boolean;
+  /** Overlay in a corner, e.g. the "Protected" badge (UX-07). */
+  badge?: ReactNode;
 }
 
 /** Decorative: the title is always rendered next to it, so the image has an empty `alt`. */
-export function Poster({ title, url, width, progress, eager = false }: PosterProps) {
+export function Poster({ title, url, width, progress, eager = false, badge }: PosterProps) {
   const theme = useTheme();
   // The URL that failed: a new `url` (e.g. a recycled cell) gets its own attempt.
   const [failedUrl, setFailedUrl] = useState<string>();
@@ -86,6 +88,7 @@ export function Poster({ title, url, width, progress, eager = false }: PosterPro
           </Box>
         </Box>
       )}
+      {badge}
       {progress !== undefined && (
         <Box
           aria-hidden="true"

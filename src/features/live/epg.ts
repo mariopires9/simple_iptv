@@ -4,9 +4,12 @@
 // - at most MAX_CONCURRENT requests in flight; the rest wait in a queue (the playing channel
 //   jumps to its front), and a queued request whose callers all gave up (rows scrolled away)
 //   is dropped without being sent;
-// - results — including "no EPG" and failures — are cached per channel for CACHE_TTL_MS, so a
-//   channel is asked at most once per 5 minutes (an entry whose current programme has ended
-//   is refreshed earlier);
+// - results — including "no EPG", failures and listings whose programmes have all ended — are
+//   cached per channel: an entry is fresh until it expires, whatever its programmes say, so a
+//   channel is asked at most once per CACHE_TTL_MS. An entry whose last programme ends inside
+//   the TTL expires at that end instead, but never sooner than MIN_REFETCH_MS after the fetch
+//   (a panel serving stale EPG must not be asked again on every render — QA-02 defect);
+// - one request per channel at a time: concurrent callers share the task in flight;
 // - HTTP 429: every request pauses for an exponential backoff (5 s → 5 min) and the throttled
 //   one is retried after it; a rejected login (auth) turns the service off;
 // - `cancel()` (screen unmounted) aborts what is in flight without caching it;
@@ -24,6 +27,8 @@ export type { ShortEpgProgramme } from '@/providers/xtream';
 export const EPG_LIMIT = 2;
 export const MAX_CONCURRENT = 6;
 export const CACHE_TTL_MS = 5 * 60_000;
+/** A channel is never asked again sooner than this after an answer. */
+export const MIN_REFETCH_MS = 60_000;
 /** Visible rows settle for this long before their EPG is requested. */
 export const SCROLL_DEBOUNCE_MS = 300;
 export const BACKOFF_INITIAL_MS = 5_000;
@@ -149,12 +154,19 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
     return client;
   };
 
-  // Fresh while not expired and — when there were programmes — while one of them is on air or
-  // still to come within the TTL (once all have ended, what is on now is not in the entry).
-  const fresh = (entry: Entry | undefined, at: number): boolean => {
-    if (!entry || entry.expires <= at) return false;
-    if (entry.programmes.length === 0) return true;
-    return entry.programmes.some((p) => p.end > at && p.start < at + CACHE_TTL_MS);
+  // Fresh until it expires, whatever its programmes say: freshness is decided once, when the
+  // answer arrives (see `expiryOf`), so stale listings cannot make every caller ask again.
+  const fresh = (entry: Entry | undefined, at: number): boolean =>
+    entry !== undefined && at < entry.expires;
+
+  // TTL from the fetch; earlier when the last programme still on air ends inside it (what is on
+  // next is not in the entry), but never before MIN_REFETCH_MS. Listings that are empty or have
+  // already ended keep the full TTL.
+  const expiryOf = (programmes: readonly ShortEpgProgramme[], at: number): number => {
+    const ttl = at + CACHE_TTL_MS;
+    const lastEnd = programmes.reduce((max, p) => Math.max(max, p.end), -Infinity);
+    if (lastEnd <= at || lastEnd >= ttl) return ttl;
+    return Math.max(lastEnd, at + MIN_REFETCH_MS);
   };
 
   const notify = () => {
@@ -214,7 +226,8 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
       const programmes =
         c && !disabled ? await fetchShortEpg(c, task.streamId, EPG_LIMIT, signal) : [];
       if (task.episode === episode) backoff = 0;
-      cache.set(task.key, { programmes, expires: now() + CACHE_TTL_MS });
+      const at = now();
+      cache.set(task.key, { programmes, expires: expiryOf(programmes, at) });
       settle(task, programmes);
       if (programmes.length > 0) notify();
     } catch (error) {

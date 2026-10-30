@@ -46,6 +46,12 @@ export interface Source {
   /** Outcome of the last sync attempt per content type (SRC-07). Not indexed. */
   lastSyncByType?: Partial<Record<ContentType, TypeSyncStatus>>;
   stats: SourceStats;
+  /**
+   * Protected items (DRM/DASH, UX-07) per type written by the last successful M3U import; absent
+   * = unknown (an older import, or Xtream, whose items are never flagged). Lets "Hide protected
+   * content" skip any filtering work for a list that has none. Not indexed.
+   */
+  protectedCounts?: SourceStats;
 }
 
 /** Outcome of syncing one content type of a source (SRC-07). Never contains sensitive data. */
@@ -188,6 +194,11 @@ export interface Series extends CatalogItemBase {
    * written by `catalogRepo.setSeasonCount`, dropped by the next sync.
    */
   seasonCount?: number;
+  /**
+   * M3U series grouped from episode entries (VOD-04): every episode is DRM-flagged or DASH, so
+   * the whole series is protected content (UX-07). Set at import, absent otherwise. Not indexed.
+   */
+  allEpisodesProtected?: boolean;
   cover?: string;
   plot?: string;
   rating?: number;
@@ -363,6 +374,11 @@ export interface SettingsMap {
    * validated by features/search.
    */
   recentSearches: unknown;
+  /**
+   * Hide protected content (DRM/DASH, UX-07) from the Live, Movies and Series grids, search and
+   * Home. Absent = off.
+   */
+  hideProtectedContent: boolean;
 }
 
 export type SettingsKey = keyof SettingsMap;

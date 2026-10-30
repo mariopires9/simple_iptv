@@ -208,3 +208,27 @@ describe('serialization', () => {
     expect(() => loadSearchIndex('{not json')).toThrow();
   });
 });
+
+describe('protected content (UX-07)', () => {
+  const items = [
+    channel(1, 'Sport One'),
+    channel(2, 'Sport Two', { drm: true }),
+    movie(3, 'Sport Movie', { container: 'dash' }),
+    movie(4, 'Sport Story'),
+  ];
+
+  it('marks protected documents with p = 1, and nothing else about the stream', () => {
+    expect(toSearchDoc(channel(2, 'Sport Two', { drm: true }))).toMatchObject({ p: 1 });
+    expect(toSearchDoc(channel(1, 'Sport One'))?.p).toBeUndefined();
+  });
+
+  it('hideProtected leaves protected items out of hits and totals (also after a reload)', () => {
+    const index = loadSearchIndex(serializeSearchIndex(buildSearchIndex(items)));
+    const all = querySearchIndex(index, SRC, 'sport');
+    expect(all.live.total).toBe(2);
+    expect(all.movie.total).toBe(2);
+    const shown = querySearchIndex(index, SRC, 'sport', { hideProtected: true, limit: 1 });
+    expect(shown.live).toEqual({ total: 1, hits: [expect.objectContaining({ externalId: '1' })] });
+    expect(shown.movie).toEqual({ total: 1, hits: [expect.objectContaining({ externalId: '4' })] });
+  });
+});

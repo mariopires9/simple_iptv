@@ -1,6 +1,6 @@
 // Pure episode logic of the series screens (SER-02 AC3, SER-03 AC2/AC3): the playing order across
 // seasons, the next episode, what "Continue" plays, and per-episode progress from the history.
-import type { Episode, HistoryEntry, Season } from '@/core/db';
+import { isProtectedStream, type Episode, type HistoryEntry, type Season } from '@/core/db';
 import { resumePosition, watchedFraction } from '@/ui/vod/resume';
 
 /** Season 0: the panels' "Specials" (extras, not part of the story order). */
@@ -17,6 +17,17 @@ export function playOrder(seasons: readonly Season[]): Episode[] {
   return orderSeasons(seasons).flatMap((season) =>
     [...season.episodes].sort((a, b) => a.number - b.number),
   );
+}
+
+/**
+ * The seasons with only their playable episodes (UX-07: DRM/DASH episodes left out), seasons left
+ * empty dropped. "Continue" and the next episode are chosen from these.
+ */
+export function playableSeasons(seasons: readonly Season[]): Season[] {
+  return seasons.flatMap((season) => {
+    const episodes = season.episodes.filter((e) => !isProtectedStream(e));
+    return episodes.length > 0 ? [{ ...season, episodes }] : [];
+  });
 }
 
 /**

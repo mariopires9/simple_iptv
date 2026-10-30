@@ -6,6 +6,13 @@ export const state = {
   details: 'Detalhes',
   cancel: 'Cancelar',
   cancelling: 'A cancelar…',
+  protectedContent: {
+    badge: 'Protegido',
+    label: 'Conteúdo protegido (DRM/DASH)',
+    unplayable: 'O conteúdo protegido (DRM/DASH) não pode ser reproduzido nesta aplicação',
+    noOtherPlayable: 'Os outros canais desta categoria são conteúdo protegido (DRM/DASH)',
+    allHidden: 'O conteúdo protegido está oculto. Pode mostrá-lo em Definições › Reprodução.',
+  },
   dismiss: 'Fechar',
   connection: {
     offline:

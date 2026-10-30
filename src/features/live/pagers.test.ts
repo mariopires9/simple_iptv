@@ -12,7 +12,13 @@ import {
 } from '@/core/db';
 import { LIVE_RECENT_LIMIT, LIVE_VIRTUAL_CATEGORY_IDS } from '@/ui/routes/live';
 import { buildCategories } from './categories';
-import { clearCountCache, concatPager, createPager } from './pagers';
+import {
+  MAX_VISIBLE_KEY_SETS,
+  clearCountCache,
+  clearVisibleKeysCache,
+  concatPager,
+  createPager,
+} from './pagers';
 
 const S = 'src';
 const cat = (id: string) => categoryKey(S, 'live', id);
@@ -48,10 +54,11 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.restoreAllMocks();
   clearCountCache();
+  clearVisibleKeysCache();
   await wipeAll();
 });
 
-const names = (list: { name: string }[]) => list.map((c) => c.name);
+const names = (list: readonly ({ name: string } | undefined)[]) => list.map((c) => c?.name ?? '');
 
 describe('buildCategories', () => {
   it('puts the virtual categories first, then source categories by original order', () => {
@@ -122,6 +129,114 @@ describe('createPager', () => {
     return createPager(category, S, keys);
   };
 
+  describe('hide protected content (UX-07)', () => {
+    // c4 is DRM-flagged, a6 is DASH: protected; the rest play.
+    beforeEach(async () => {
+      const layout = ['a', 'c', 'a', 'c', 'c', 'a', 'c'];
+      await catalogRepo.replaceForSource(S, 'live', {
+        categories: [
+          { externalId: 'a', name: 'A' },
+          { externalId: 'b', name: 'B' },
+          { externalId: 'c', name: 'C' },
+        ],
+        items: layout.map((c, i) => ({
+          externalId: String(i + 1),
+          categoryExternalId: c,
+          name: `${c}${i + 1}`,
+          streamPath: '',
+          streamUrl: `https://s.example.test/${i + 1}`,
+          ...(i + 1 === 4 ? { drm: true } : {}),
+          ...(i + 1 === 6 ? { container: 'dash' as const } : {}),
+        })),
+      });
+    });
+    const hidden = async (id: string) => {
+      const list = await categories();
+      const category = list.find((c) => c.id === id);
+      if (!category) throw new Error(id);
+      const keys = list.flatMap((c) => (c.kind === 'source' ? [c.key] : []));
+      return createPager(category, S, keys, 1, { hideProtected: true });
+    };
+
+    it('off by default: every channel is listed', async () => {
+      expect((await pagerFor(LIVE_VIRTUAL_CATEGORY_IDS.all)).total).toBe(7);
+    });
+
+    it('source categories and "All" count and page only the playable channels', async () => {
+      const c = await hidden('c');
+      expect(c.total).toBe(3);
+      expect(names(await c.load(0, 10))).toEqual(['c2', 'c5', 'c7']);
+      expect(await c.locate((await c.load(1, 1))[0]!)).toBe(1);
+      const all = await hidden(LIVE_VIRTUAL_CATEGORY_IDS.all);
+      expect(all.total).toBe(5);
+      expect(names(await all.load(0, 10))).toEqual(['a1', 'a3', 'c2', 'c5', 'c7']);
+      const scanned: string[] = [];
+      await all.scan?.((rows) => scanned.push(...names([...rows])));
+      expect(scanned).toEqual(['a1', 'a3', 'c2', 'c5', 'c7']);
+    });
+
+    it('reports how many channels were left out (empty-state message)', async () => {
+      expect((await hidden('c')).hidden).toBe(1);
+      expect((await hidden(LIVE_VIRTUAL_CATEGORY_IDS.all)).hidden).toBe(2);
+      expect((await pagerFor('c')).hidden).toBeUndefined();
+    });
+
+    it('a row deleted after the keys were read leaves a hole in place: pages are never short', async () => {
+      const c = await hidden('c');
+      // c5 leaves the catalogue (a sync in another tab) while the memoised keys still list it.
+      const original = catalogRepo.getMany.bind(catalogRepo);
+      vi.spyOn(catalogRepo, 'getMany').mockImplementation(async (type, keys) =>
+        (await original(type, keys)).filter((row) => row.key !== key(5)),
+      );
+      const page = await c.load(0, 10);
+      expect(page).toHaveLength(3);
+      expect(names(page)).toEqual(['c2', '', 'c7']);
+      expect(page[1]).toBeUndefined();
+    });
+
+    it('the filter scan walks the categories again, without reading rows by key', async () => {
+      const all = await hidden(LIVE_VIRTUAL_CATEGORY_IDS.all);
+      const byKey = vi.spyOn(catalogRepo, 'getMany');
+      const scanned: string[] = [];
+      await all.scan?.((rows) => scanned.push(...names([...rows])));
+      expect(scanned).toEqual(['a1', 'a3', 'c2', 'c5', 'c7']);
+      expect(byKey).not.toHaveBeenCalled();
+    });
+
+    it('memoises the playable keys per category (bounded), reading each category once', async () => {
+      const walk = vi.spyOn(catalogRepo, 'listByCategory');
+      await hidden('a');
+      await hidden('c');
+      await hidden('a');
+      await hidden('c');
+      expect(walk).toHaveBeenCalledTimes(2);
+      // More categories than kept: the oldest is read again.
+      for (let i = 0; i < MAX_VISIBLE_KEY_SETS; i++) {
+        await createPager(
+          { kind: 'source' as const, id: `x${i}`, key: cat(`x${i}`), name: 'X' },
+          S,
+          [],
+          1,
+          { hideProtected: true },
+        );
+      }
+      walk.mockClear();
+      await hidden('a');
+      expect(walk).toHaveBeenCalledTimes(1);
+    });
+
+    it('favorites and recent leave protected channels out', async () => {
+      await favoritesRepo.add(key(4), 1);
+      await favoritesRepo.add(key(5), 2);
+      const favorites = await hidden(LIVE_VIRTUAL_CATEGORY_IDS.favorites);
+      expect(names(await favorites.load(0, 10))).toEqual(['c5']);
+      await historyRepo.upsert({ itemKey: key(6), lastWatchedAt: 10 });
+      await historyRepo.upsert({ itemKey: key(1), lastWatchedAt: 5 });
+      const recent = await hidden(LIVE_VIRTUAL_CATEGORY_IDS.recent);
+      expect(names(await recent.load(0, 10))).toEqual(['a1']);
+    });
+  });
+
   it('a source category pages through its own channels', async () => {
     const pager = await pagerFor('c');
     expect(pager.total).toBe(4);
@@ -186,7 +301,7 @@ describe('createPager', () => {
     read.mockClear();
     for (const [i, row] of rows.entries()) {
       count.mockClear();
-      expect(await pagerAll.locate(row)).toBe(i);
+      expect(await pagerAll.locate(row!)).toBe(i);
       expect(count).toHaveBeenCalledTimes(1);
     }
     expect(read).toHaveBeenCalledTimes(rows.length);

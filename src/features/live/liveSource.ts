@@ -15,6 +15,12 @@ export type LiveSourceState =
       /** Keys of the source categories in display order (the segments of "All"). */
       sourceCategoryKeys: string[];
       favoriteKeys: string[];
+      /**
+       * Settings › Playback "Hide protected content" (UX-07), applied to this source: `false` when
+       * the source has no protected channels — Xtream ones are never flagged, and an M3U import
+       * records how many it wrote (`protectedCounts`) — so nothing is filtered or walked.
+       */
+      hideProtected: boolean;
     };
 
 export async function resolveActiveSource(): Promise<Source | undefined> {
@@ -26,9 +32,10 @@ export async function resolveActiveSource(): Promise<Source | undefined> {
 export async function loadLiveSource(): Promise<LiveSourceState> {
   const source = await resolveActiveSource();
   if (!source) return { status: 'no-source' };
-  const [sourceCategories, favorites] = await Promise.all([
+  const [sourceCategories, favorites, hide] = await Promise.all([
     catalogRepo.listCategories(source.id, 'live'),
     favoritesRepo.list(source.id, 'live'),
+    settingsRepo.get('hideProtectedContent'),
   ]);
   const categories = buildCategories(sourceCategories);
   return {
@@ -37,5 +44,10 @@ export async function loadLiveSource(): Promise<LiveSourceState> {
     categories,
     sourceCategoryKeys: categories.flatMap((c) => (c.kind === 'source' ? [c.key] : [])),
     favoriteKeys: favorites.map((f) => f.itemKey),
+    hideProtected:
+      hide === true &&
+      source.kind !== 'xtream' &&
+      // Unknown (imported before UX-07): filter, to be safe.
+      (source.protectedCounts?.live ?? 1) > 0,
   };
 }

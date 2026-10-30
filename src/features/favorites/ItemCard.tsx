@@ -10,6 +10,7 @@ import { Link } from 'react-router';
 import { t } from '@/i18n';
 import { colorsForName } from '@/ui/colorHash';
 import { formatPercent } from '@/ui/format';
+import { ProtectedBadge, ProtectedNote } from '@/ui/catalog/ProtectedBadge';
 import { isLoadableImage } from '@/ui/images';
 import { visuallyHidden } from '@/ui/state';
 import { avatarPalette, radii } from '@/ui/theme/tokens';
@@ -22,7 +23,7 @@ export const CARD_WIDTH = { xs: 112, sm: 144, md: 168 } as const;
 export function Artwork({
   item,
 }: {
-  item: Pick<CardItem, 'name' | 'image' | 'type' | 'progress'>;
+  item: Pick<CardItem, 'name' | 'image' | 'type' | 'progress' | 'protected'>;
 }) {
   const theme = useTheme();
   const [failedUrl, setFailedUrl] = useState<string>();
@@ -80,6 +81,7 @@ export function Artwork({
           {item.name}
         </Box>
       )}
+      {item.protected === true && <ProtectedBadge overlay labelled={false} />}
       {item.progress !== undefined && (
         <Box
           aria-hidden="true"
@@ -170,6 +172,7 @@ export const ItemCard = forwardRef<HTMLAnchorElement, ItemCardProps>(function It
     >
       <Artwork item={item} />
       <CardText name={item.name} secondary={episode} />
+      {item.protected === true && <ProtectedNote />}
       {item.progress !== undefined && (
         <Box component="span" sx={visuallyHidden}>
           {text.watched(formatPercent(item.progress))}
