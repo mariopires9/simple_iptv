@@ -51,6 +51,6 @@ export {
 } from './repos/history';
 export { epgRepo, MAX_PROGRAMME_MS } from './repos/epg';
 export { settingsRepo } from './repos/settings';
-export { vaultStore } from './repos/vault';
+export { vaultStore, VaultSwapConflictError, type SecretSwap } from './repos/vault';
 export * from './types';
 export { isProtectedStream, isProtectedItem, type StreamFlags } from './protection';

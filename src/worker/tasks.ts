@@ -4,6 +4,7 @@
 // How to add a task: see the header of src/core/worker/tasks.ts.
 import type { Source } from '@/core/db';
 import type { UrlRewriter } from '@/core/net';
+import { resetVaultLock, setMasterKey, type MasterKey } from '@/core/crypto';
 import { rewritersForSource } from '@/core/session';
 import { WorkerTaskError, type TaskContext, type TaskRegistry } from '@/core/worker';
 import {
@@ -132,7 +133,22 @@ export async function waitSyncIdle(input: { sourceId: string }, _ctx: TaskContex
   await Promise.all([waitForSourceIdle(input.sourceId), waitForM3uSourceIdle(input.sourceId)]);
 }
 
+/**
+ * SEC-02: the master key (non-extractable CryptoKey, structured clone) the main thread unlocked,
+ * or `null` when it locked. Held in this worker's memory only; sent by src/worker/client.ts
+ * before the tasks that read secrets.
+ */
+export function setVaultKey(input: MasterKey | null, _ctx: TaskContext): Promise<void> {
+  if (input && typeof input.kid === 'string' && input.key instanceof CryptoKey) {
+    setMasterKey({ kid: input.kid, key: input.key });
+  } else {
+    resetVaultLock();
+  }
+  return Promise.resolve();
+}
+
 export const tasks = {
+  setVaultKey,
   selfTest,
   syncXtream,
   syncM3u,

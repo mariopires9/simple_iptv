@@ -68,6 +68,7 @@ export type LazyNamespace =
   | 'favorites'
   | 'install'
   | 'live'
+  | 'lock'
   | 'movies'
   | 'onboarding'
   | 'player'
@@ -98,6 +99,10 @@ const lazy: NamespaceLoaders<LazyMessages, Locale> = {
   live: {
     en: () => import('./en/live').then((m) => m.live),
     'pt-PT': () => import('./pt-PT/live').then((m) => m.live),
+  },
+  lock: {
+    en: () => import('./en/lock').then((m) => m.lock),
+    'pt-PT': () => import('./pt-PT/lock').then((m) => m.lock),
   },
   movies: {
     en: () => import('./en/movies').then((m) => m.movies),
