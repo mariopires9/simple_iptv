@@ -291,6 +291,29 @@ describe('MoviesScreen — virtualised grid (VOD-01 AC1)', () => {
     await waitFor(() => expect(document.activeElement).toHaveAttribute('data-index', '0'));
   });
 
+  it('UX-05: arrows at the grid edges are left to the D-pad; inside, they do not wrap', async () => {
+    show('/movies/category/20');
+    const g = await grid('Movies in Mega');
+    await within(g).findByRole('link', { name: 'Film 1' });
+    const columns = Number(g.getAttribute('aria-colcount'));
+    const first = g.querySelector<HTMLElement>('[tabindex="0"]');
+    first?.focus();
+    expect(fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowLeft' })).toBe(true);
+    expect(fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowUp' })).toBe(true);
+    expect(document.activeElement).toBe(first);
+    await userEvent.keyboard('{ArrowRight}'.repeat(columns - 1));
+    expect(document.activeElement).toHaveAttribute('data-index', String(columns - 1));
+    // The end of the row: → does not wrap to the next row.
+    expect(fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowRight' })).toBe(true);
+    expect(document.activeElement).toHaveAttribute('data-index', String(columns - 1));
+    await userEvent.keyboard('{End}');
+    await waitFor(() =>
+      expect(document.activeElement).toHaveAttribute('data-index', String(MEGA - 1)),
+    );
+    expect(fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowDown' })).toBe(true);
+    expect(fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowRight' })).toBe(true);
+  });
+
   it('Back from the details returns to the same category, sort and scroll position (review #6)', async () => {
     const { router } = show('/movies/category/20?sort=name');
     const g = await grid('Movies in Mega');

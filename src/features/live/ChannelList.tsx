@@ -29,6 +29,7 @@ import { isProtectedItem, type Channel } from '@/core/db';
 import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { ProtectedBadge, ProtectedNote } from '@/ui/catalog/ProtectedBadge';
+import { channelKeyOf } from '@/ui/dpad';
 import { CHANNEL_ROW_HEIGHT, visuallyHidden } from '@/ui/state';
 import { focusRing } from '@/ui/theme/tokens';
 import { ChannelAvatar } from './ChannelAvatar';
@@ -167,11 +168,16 @@ export function ChannelList({
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (total === 0 || event.altKey || event.ctrlKey || event.metaKey) return;
-    switch (event.key) {
+    // UX-05: ↑ on the first row and ↓ on the last are left to the D-pad's spatial focus (the
+    // filter field above, the controls below); the remote's channel keys page like PageUp/Down.
+    const channelKey = channelKeyOf(event);
+    switch (channelKey === 'up' ? 'PageUp' : channelKey === 'down' ? 'PageDown' : event.key) {
       case 'ArrowDown':
+        if (active === total - 1) return;
         move(active + 1);
         break;
       case 'ArrowUp':
+        if (active === 0) return;
         move(active - 1);
         break;
       case 'PageDown':

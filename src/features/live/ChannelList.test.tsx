@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Channel } from '@/core/db';
 import { ThemeModeProvider } from '@/ui/theme';
@@ -48,5 +48,26 @@ describe('ChannelList', () => {
   it('clamps the selected row to the list size', async () => {
     show(cacheOf(3), 50);
     await waitFor(() => expect(active()).toHaveAttribute('aria-posinset', '3'));
+  });
+
+  it('UX-05: ↑ on the first row and ↓ on the last are left to the D-pad (spatial focus)', async () => {
+    show(cacheOf(3), 0);
+    const list = screen.getByRole('listbox');
+    await waitFor(() => expect(active()).toHaveAttribute('aria-posinset', '1'));
+    expect(fireEvent.keyDown(list, { key: 'ArrowUp' })).toBe(true); // not handled
+    expect(fireEvent.keyDown(list, { key: 'ArrowDown' })).toBe(false);
+    expect(fireEvent.keyDown(list, { key: 'End' })).toBe(false);
+    await waitFor(() => expect(active()).toHaveAttribute('aria-posinset', '3'));
+    expect(fireEvent.keyDown(list, { key: 'ArrowDown' })).toBe(true);
+  });
+
+  it('UX-05 AC4: the remote channel keys page the list like PageUp/PageDown', async () => {
+    show(cacheOf(200), 0);
+    const list = screen.getByRole('listbox');
+    await waitFor(() => expect(active()).toHaveAttribute('aria-posinset', '1'));
+    expect(fireEvent.keyDown(list, { key: 'ChannelDown' })).toBe(false);
+    await waitFor(() => expect(Number(active()?.getAttribute('aria-posinset'))).toBeGreaterThan(1));
+    expect(fireEvent.keyDown(list, { key: 'Unidentified', keyCode: 427 })).toBe(false);
+    await waitFor(() => expect(active()).toHaveAttribute('aria-posinset', '1'));
   });
 });
