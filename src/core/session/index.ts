@@ -38,3 +38,5 @@ export {
   type RewritersDeps,
   type SourceRewriters,
 } from './proxy';
+// Lists imported from a backup, waiting for their first sync after the restart (EXP-01).
+export { markSourcesForSync, PENDING_SYNC_KEY, takeSourcesPendingSync } from './pendingSync';

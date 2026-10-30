@@ -4,6 +4,7 @@
 import type { ComponentType } from 'react';
 import { AboutSection } from './AboutSection';
 import { AppearanceSection } from './AppearanceSection';
+import { BackupSection } from './BackupSection';
 import { InstallSection } from './InstallSection';
 import { LanguageSection } from './LanguageSection';
 import { PlaybackSection } from './PlaybackSection';
@@ -24,6 +25,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionEntry[] = [
   { id: 'language', Component: LanguageSection },
   { id: 'playback', Component: PlaybackSection },
   { id: 'proxy', Component: ProxySection },
+  { id: 'backup', Component: BackupSection },
   { id: 'storage', Component: StorageSection },
   { id: 'install', Component: InstallSection },
   { id: 'privacy', Component: PrivacySection },
