@@ -32,7 +32,7 @@ Allowed statuses (exactly one per story):
 | PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | Done |
 | PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | Done |
 | QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Done |
-| QA-04 | Start-up performance (Lighthouse mobile ≥ 90) | E13 | Must | 3 | QA-03 | 8 | M3 | In Review |
+| QA-04 | Start-up performance (Lighthouse mobile ≥ 90) | E13 | Must | 3 | QA-03 | 8 | M3 | Done |
 | DEP-01 | GitHub Pages deploy (**approval**) | E13 | Must | 2 | FND-02, PWA-01 | 2 | M0 | Done |
 | UX-01 | Onboarding | E11 | Must | 2 | FND-04 | 3 | M1 | Done |
 | UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | Done |
@@ -77,11 +77,11 @@ Allowed statuses (exactly one per story):
 
 | ID | Title | Prio | Pts | Depends on | Status |
 |---|---|---|---|---|---|
-| EPG-02 | Import XMLTV | Should | 5 | FND-07, FND-05 | Backlog |
-| EPG-03 | Channel↔EPG matching | Should | 3 | EPG-02, LIV-01 | Backlog |
+| EPG-02 | Import XMLTV | Should | 5 | FND-07, FND-05 | Done |
+| EPG-03 | Channel↔EPG matching | Should | 3 | EPG-02, LIV-01 | Done |
 | PLY-05 | Audio tracks and subtitles | Should | 3 | PLY-02 | Done |
 | SEC-02 | Master password | Should | 5 | SRC-01 | Backlog |
-| EXP-01 | Export/import settings | Should | 3 | SRC-08, FAV-03 | Backlog |
+| EXP-01 | Export/import settings | Should | 3 | SRC-08, FAV-03 | Done |
 | UX-05 | D-pad navigation | Should | 5 | UX-03 | Backlog |
 | MSS-01 | Media Session | Should | 1 | PLY-02 | Done |
 | TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | Done |
@@ -130,3 +130,4 @@ flowchart LR
 | 2026-10-30 | QA-03 | Lighthouse mobile Performance 0.84 (< 0.90): start-up chain renders the first content at ~3.9 s LCP; A11y/BP 1.00 | Lighthouse job non-gating (owner decision); QA-04 raised it to 0.94 locally and made the job gating again | Closed |
 | 2026-10-30 | UX-03 | AC4 (NVDA/VoiceOver zapping) needs a manual check | Owner runs the checklist in docs/progress/UX-03.md during DEP-02; then Done | Open |
 | 2026-10-30 | PLY-05, MSS-01 | Verified with fakes only (no real hls.js tracks, Safari tracks or lock screen) | Check on iPhone/Android in DEP-02 | Open |
+| 2026-10-30 | EPG-02 | AC3 (100 MB, worker < 200 MB) measured in Node only (heap peak 109 MB); xz decoding (WASM) not verified in a browser; EPG-03 AC5 manual override not done | Measure in a browser during DEP-02 | Open |
