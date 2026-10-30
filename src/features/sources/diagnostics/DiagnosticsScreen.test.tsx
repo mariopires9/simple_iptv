@@ -157,7 +157,8 @@ describe('DiagnosticsScreen', () => {
     const report = writeClipboard.mock.calls[0]![0];
     expect(report).toContain(t.diagnostics.report.heading);
     for (const secret of [HOST, USER, PASS, '8080']) expect(report).not.toContain(secret);
-    expect(await screen.findByText(t.diagnostics.copied)).toBeInTheDocument();
+    // The toast and its live region can both hold the text, depending on timing.
+    expect((await screen.findAllByText(t.diagnostics.copied)).length).toBeGreaterThan(0);
   });
 
   it('without a clipboard, shows the report to copy by hand', async () => {
