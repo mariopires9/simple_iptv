@@ -267,7 +267,13 @@ describe('LIV-02 AC1 — opening the player', () => {
     await userEvent.click(await within(list).findByText('Channel 2'));
     await playerShows(2);
     expect(lastView().kind).toBe('live');
-    expect(lastView().descriptor).toEqual({ url: urlOf(2), kind: 'live', container: 'hls' });
+    // PLY-08: plus the `.ts` address handed to VLC.
+    expect(lastView().descriptor).toEqual({
+      url: urlOf(2),
+      kind: 'live',
+      container: 'hls',
+      externalUrl: urlOf(2).replace(/\.m3u8$/, '.ts'),
+    });
     expect(screen.queryByText('Select a channel to watch it here.')).toBeNull();
     expect(channelParam(router)).toBe(xkey(2));
     // Categories | list | player.

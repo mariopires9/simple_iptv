@@ -73,6 +73,26 @@ describe('PlaybackSection (UX-04 AC1)', () => {
     });
   });
 
+  it('PLY-08: "Show Open in VLC" defaults by platform and is saved for the player', async () => {
+    const user = userEvent.setup();
+    renderSettings(<PlaybackSection />);
+    // jsdom's user agent is a desktop one: off by default.
+    const vlc = await screen.findByRole('switch', { name: text.showOpenInVlc });
+    expect(vlc).not.toBeChecked();
+    expect(vlc).toHaveAccessibleDescription(text.showOpenInVlcHint);
+    await user.click(vlc);
+    await waitFor(async () => expect(await settingsRepo.get('showOpenInVlc')).toBe(true));
+    cleanup();
+
+    // Never set, on an iPhone: on by default.
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    );
+    await settingsRepo.remove('showOpenInVlc');
+    renderSettings(<PlaybackSection />);
+    expect(await screen.findByRole('switch', { name: text.showOpenInVlc })).toBeChecked();
+  });
+
   it('UX-07: "Hide protected content" is off by default and is saved for the screens', async () => {
     const user = userEvent.setup();
     renderSettings(<PlaybackSection />);

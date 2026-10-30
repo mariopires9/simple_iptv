@@ -70,6 +70,8 @@ export interface PlaybackErrorOverlayProps {
   diagnosticsPath: string;
   /** Tests: fake probe. */
   probe?: FailureProbe;
+  /** PLY-08: "Open in VLC" (the stream may play there); omitted when the setting hides it. */
+  onOpenInVlc?: (() => void) | undefined;
   /** Tests: clipboard. Default `navigator.clipboard.writeText`. */
   writeClipboard?: (text: string) => Promise<void>;
 }
@@ -88,6 +90,7 @@ export function PlaybackErrorOverlay({
   onRetry,
   onNext,
   diagnosticsPath,
+  onOpenInVlc,
   probe = defaultFailureProbe,
   writeClipboard = defaultWriteClipboard,
 }: PlaybackErrorOverlayProps) {
@@ -173,6 +176,11 @@ export function PlaybackErrorOverlay({
               {onNext && (
                 <Button variant="outlined" onClick={onNext}>
                   {t.player.controls.nextChannel}
+                </Button>
+              )}
+              {onOpenInVlc && (
+                <Button variant="outlined" onClick={onOpenInVlc}>
+                  {t.player.external.openInVlc}
                 </Button>
               )}
               {showDiagnostics && (

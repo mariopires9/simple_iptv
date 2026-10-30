@@ -245,6 +245,10 @@ async function resolveXtream(
     source.prefs.liveFormat,
     caps(),
   );
+  // PLY-08: VLC is handed the `.ts` stream, whatever is played here.
+  descriptor.externalUrl = xtreamLiveStreamUrl(serverUrl, username, password, streamId, 'ts');
+  // PLY-08: VLC is handed the `.ts` stream, whatever is played here.
+  descriptor.externalUrl = xtreamLiveStreamUrl(serverUrl, username, password, streamId, 'ts');
   return { status: 'ok', descriptor, requiredHeaders: false };
 }
 

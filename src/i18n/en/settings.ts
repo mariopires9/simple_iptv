@@ -30,6 +30,9 @@ export const settings = {
     fullscreenOnLandscape: 'Fullscreen in landscape',
     fullscreenOnLandscapeHint:
       'On phones and tablets, turning the device sideways during playback offers fullscreen',
+    showOpenInVlc: "Show 'Open in VLC'",
+    showOpenInVlcHint:
+      "Adds a player button that opens the channel, movie or episode in the VLC app, for streams this browser can't play",
     playLastChannel: 'Play the last channel on open',
     playLastChannelHint: 'When Live TV opens, the channel you watched last starts playing',
     hideProtected: 'Hide protected content',

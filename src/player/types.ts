@@ -18,6 +18,11 @@ export interface StreamDescriptor {
    * (e.g. the Xtream `.m3u8` variant of a `.ts` live stream). Nested fallbacks are ignored.
    */
   fallbacks?: StreamDescriptor[];
+  /**
+   * PLY-08: the direct address an external player (VLC) is given, when it differs from the ones
+   * above (e.g. the Xtream `.ts` of a live stream played here as HLS). Never played in-app.
+   */
+  externalUrl?: string;
 }
 
 export type EngineId = 'native' | 'hls' | 'mpegts';

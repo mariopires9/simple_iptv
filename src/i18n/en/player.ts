@@ -135,6 +135,18 @@ export const player = {
   nativeFullscreenNote: 'On this device, fullscreen uses the system player and its controls.',
   /** VOD-03 AC4: the saved position cannot be reached (no range requests / not seekable). */
   resumeUnsupported: 'Starting from the beginning',
+  /** PLY-08: hand the stream off to the VLC app. */
+  external: {
+    openInVlc: 'Open in VLC',
+    /** iOS/Android, after the hand-off: the in-app player was stopped. */
+    opened: 'Opening in VLC. The player here is stopped.',
+    playHere: 'Play here',
+    /** iOS: the page is still visible ~2 s after the hand-off. */
+    notOpened: "VLC didn't open — install VLC from the App Store",
+    /** Desktop: a one-entry playlist was downloaded. */
+    downloaded:
+      "A playlist file was downloaded: open it with VLC. It contains your list password; don't share it.",
+  },
   /** PLY-06: every format the player tried, in the error details (technical, copyable). */
   attempts: {
     heading: 'Attempts:',
