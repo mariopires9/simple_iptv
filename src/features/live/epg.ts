@@ -59,6 +59,8 @@ export interface EpgDeps {
   vault?: Pick<CredentialVault, 'get'>;
   fetchImpl?: FetchImpl;
   now?: () => number;
+  /** Programmes asked per channel (default EPG_LIMIT; the guide grid asks for more, EPG-04). */
+  limit?: number;
 }
 
 /** The programme on air at `now`, if any. */
@@ -112,6 +114,7 @@ type Client = Parameters<typeof fetchShortEpg>[0];
 export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService | undefined {
   if (source.kind !== 'xtream') return undefined;
   const now = deps.now ?? Date.now;
+  const limit = deps.limit ?? EPG_LIMIT;
   const cache = new Map<string, Entry>();
   const tasks = new Map<string, Task>();
   const queue: Task[] = [];
@@ -227,8 +230,7 @@ export function createEpgService(source: Source, deps: EpgDeps = {}): EpgService
         settle(task, []);
         return;
       }
-      const programmes =
-        c && !disabled ? await fetchShortEpg(c, task.streamId, EPG_LIMIT, signal) : [];
+      const programmes = c && !disabled ? await fetchShortEpg(c, task.streamId, limit, signal) : [];
       if (task.episode === episode) backoff = 0;
       const at = now();
       cache.set(task.key, { programmes, expires: expiryOf(programmes, at) });

@@ -42,6 +42,43 @@ export const live = {
     /** Visually hidden prefix of the current programme on a channel row. */
     rowNow: 'Now:',
   },
+  guide: {
+    /** Button on the Live screen and page title. */
+    open: 'TV guide',
+    title: 'TV guide',
+    back: 'Back to Live TV',
+    category: 'Category',
+    /** Accessible name of the grid. */
+    gridLabel: (category: string) => `TV guide: ${category}`,
+    keyboardHint:
+      'Arrow keys move between programmes and channels, Enter shows the details, Home goes back to now.',
+    /** Header cell of the channel column. */
+    channels: 'Channels',
+    /** Marker of the current time on the timeline. */
+    nowLine: 'Now',
+    onNow: 'On now',
+    noInfo: 'No guide information',
+    /** Accessible name of an empty stretch of a row (the keyboard can land on it). */
+    gap: (channel: string, start: string, end: string) =>
+      `${channel}, ${start}–${end}, no guide information. Enter plays the channel.`,
+    /** Accessible name of a programme cell. */
+    cell: (title: string, start: string, end: string, onNow: boolean) =>
+      `${title}, ${start}–${end}${onNow ? ', on now' : ''}`,
+    /** Accessible name of the channel header cell (click plays). */
+    channel: (name: string) => `Play ${name}`,
+    details: {
+      channel: (name: string) => `On ${name}`,
+      noDescription: 'No description.',
+      watch: 'Watch channel',
+      close: 'Close',
+    },
+    noEpg: {
+      title: 'No guide for this list',
+      message:
+        'This list has no programme guide. For M3U lists, add a guide address in the list settings.',
+    },
+    empty: 'No channels in this category.',
+  },
   noSource: {
     title: "You don't have any IPTV lists yet",
     message: 'Add a list to see its live channels here.',

@@ -9,6 +9,11 @@ const LIVE_STRINGS: readonly LazyNamespace[] = ['live', 'parental'];
 
 export const liveRoutes: RouteObject[] = [
   { path: 'live', lazy: lazyScreen(() => import('./LiveScreen'), 'LiveScreen', LIVE_STRINGS) },
+  // TV guide grid (EPG-04).
+  {
+    path: 'live/guide',
+    lazy: lazyScreen(() => import('./GuideScreen'), 'GuideScreen', LIVE_STRINGS),
+  },
   // A category path without an id is not an item id: back to the list.
   { path: 'live/category', loader: () => redirect('/live') },
   {

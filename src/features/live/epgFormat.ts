@@ -17,6 +17,21 @@ export function formatTime(epochMs: number, locale: Locale = activeLocale(), tim
   return formatter.format(epochMs);
 }
 
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** Short weekday and day of the month of `epochMs` (guide grid day marks, EPG-04). */
+export function formatDay(epochMs: number, locale: Locale = activeLocale(), timeZone?: string) {
+  const id = `${locale}|${timeZone ?? ''}`;
+  let formatter = dayFormatters.get(id);
+  if (!formatter) {
+    const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric' };
+    if (timeZone !== undefined) options.timeZone = timeZone;
+    formatter = new Intl.DateTimeFormat(locale, options);
+    dayFormatters.set(id, formatter);
+  }
+  return formatter.format(epochMs);
+}
+
 /** Elapsed share of a programme at `now`, 0–100. */
 export function progressPercent(start: number, end: number, now: number): number {
   if (end <= start) return 0;
