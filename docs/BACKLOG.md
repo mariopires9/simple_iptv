@@ -80,13 +80,13 @@ Allowed statuses (exactly one per story):
 | EPG-02 | Import XMLTV | Should | 5 | FND-07, FND-05 | Done |
 | EPG-03 | Channel↔EPG matching | Should | 3 | EPG-02, LIV-01 | Done |
 | PLY-05 | Audio tracks and subtitles | Should | 3 | PLY-02 | Done |
-| SEC-02 | Master password | Should | 5 | SRC-01 | Backlog |
+| SEC-02 | Master password | Should | 5 | SRC-01 | Done |
 | EXP-01 | Export/import settings | Should | 3 | SRC-08, FAV-03 | Done |
 | UX-05 | D-pad navigation | Should | 5 | UX-03 | Backlog |
 | MSS-01 | Media Session | Should | 1 | PLY-02 | Done |
 | TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | Done |
 | TEC-03 | Review follow-ups: shared Live routes, one player-open signal, resume rule, flaky tests | Should | 3 | TEC-02, PWA-03, UX-06 | Done |
-| SEC-03 | Parental control PIN | Could | 3 | LIV-01, VOD-01 | Backlog |
+| SEC-03 | Parental control PIN | Could | 3 | LIV-01, VOD-01 | Done |
 | EPG-04 | EPG grid | Could | 8 | EPG-03 | Backlog |
 | PRF-01 | Multiple profiles | Could | 5 | FAV-03 | Backlog |
 | CST-01 | Remote Playback / Cast | Could | 5 | PLY-02 | Backlog |
