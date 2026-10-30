@@ -56,21 +56,27 @@ export interface RekeyResult {
   unreadable: number;
 }
 
+export interface RekeyOptions {
+  /** Kid of the stored master password config expected before the write (`null`: none). */
+  expectedKid: string | null;
+  masterPassword?: { value: unknown } | null;
+  onCommit?: () => void;
+}
+
 /** Vault operations of the master password (SEC-02); the app's vault implements them. */
 export interface CredentialVaultAdmin extends CredentialVault {
   /**
    * Re-encrypts every secret with `target` and, in the same IndexedDB transaction, sets
-   * (`{ value }`) or removes (`null`) the `masterPassword` setting (`undefined`: unchanged). Each
-   * new ciphertext is decrypted and compared before anything is written; a failure (or a row
-   * changed meanwhile) writes nothing, so the secrets stay readable under the old scheme.
-   * `onCommit` runs right after the commit, before the next queued operation (so a queued `put`
-   * already uses the new scheme).
+   * (`masterPassword: { value }`) or removes (`null`) the `masterPassword` setting (`undefined`:
+   * unchanged). The transaction first checks that the stored master password is still the one
+   * the caller saw (`expectedKid`: its kid, `null` = none) and aborts otherwise
+   * (`VaultSwapConflictError`), so two tabs changing it at once never leave secrets under a key
+   * whose config is gone. Each new ciphertext is decrypted and compared before anything is
+   * written; a failure (or a row changed meanwhile) writes nothing, so the secrets stay readable
+   * under the old scheme. `onCommit` runs right after the commit, before the next queued
+   * operation (so a queued `put` already uses the new scheme).
    */
-  rekey(
-    target: RekeyTarget,
-    masterPassword?: { value: unknown } | null,
-    onCommit?: () => void,
-  ): Promise<RekeyResult>;
+  rekey(target: RekeyTarget, options: RekeyOptions): Promise<RekeyResult>;
 }
 
 export interface CredentialVaultDeps {
@@ -112,6 +118,9 @@ const IV_BYTES = 12;
 const KEY_ALGORITHM: AesKeyGenParams = { name: 'AES-GCM', length: 256 };
 
 const KID_BYTES = 16;
+
+/** Result of a queued operation that found the vault locked when its turn came. */
+const LOCKED = Symbol('locked');
 
 function assertRef(ref: string): void {
   if (typeof ref !== 'string' || ref.length === 0) {
@@ -183,11 +192,14 @@ export function createCredentialVault(deps: CredentialVaultDeps = {}): Credentia
     return { ref, kid: target.kid, iv, ciphertext };
   }
 
-  /** Key secrets are written with now: the master key when unlocked, else the device key. */
+  /**
+   * Key secrets are written with now: the master key when unlocked, the device key only when the
+   * master password is known to be off (fail closed: never while `unknown`).
+   */
   async function writeKey(): Promise<{ kid: string; key: CryptoKey }> {
     const master = getMasterKey();
     if (master) return master;
-    if (getVaultLockStatus() === 'locked') throw new VaultLockedError();
+    if (getVaultLockStatus() !== 'off') throw new VaultLockedError();
     return loadOrCreateKey();
   }
 
@@ -197,8 +209,10 @@ export function createCredentialVault(deps: CredentialVaultDeps = {}): Credentia
     let key: CryptoKey;
     if (isMasterRow(record)) {
       const master = getMasterKey();
-      if (!master) throw new VaultLockedError();
-      if (master.kid !== record.kid) {
+      const status = getVaultLockStatus();
+      // Locked or undecided: the key may come. Off (or another master key loaded): it never will.
+      if (!master && (status === 'locked' || status === 'unknown')) throw new VaultLockedError();
+      if (!master || master.kid !== record.kid) {
         log.warn('credential vault: secret encrypted with another master key', { ref });
         throw new VaultKeyLostError(ref, 'missing-key');
       }
@@ -229,10 +243,18 @@ export function createCredentialVault(deps: CredentialVaultDeps = {}): Credentia
     return decoder.decode(plaintext);
   }
 
-  /** While locked, `op` is queued only once unlocked (so the wait never blocks `delete`/`wipe`). */
+  /**
+   * While locked, `op` is queued only once unlocked, so the wait never blocks `delete`/`wipe`. A
+   * lock that lands after the call but before `op` runs releases the queue and retries after the
+   * unlock, instead of failing.
+   */
   function afterUnlock<T>(op: () => Promise<T>): Promise<T> {
-    if (getVaultLockStatus() === 'locked') return whenVaultUnlocked().then(() => enqueue(op));
-    return enqueue(op);
+    const attempt = (): Promise<T> =>
+      enqueue(async (): Promise<{ value: T } | typeof LOCKED> =>
+        getVaultLockStatus() === 'locked' ? LOCKED : { value: await op() },
+      ).then((result) => (result === LOCKED ? whenVaultUnlocked().then(attempt) : result.value));
+    if (getVaultLockStatus() === 'locked') return whenVaultUnlocked().then(attempt);
+    return attempt();
   }
 
   // Methods are `async` but do their validation, redactor registration and `enqueue` call
@@ -279,7 +301,7 @@ export function createCredentialVault(deps: CredentialVaultDeps = {}): Credentia
       });
     },
 
-    async rekey(target, masterPassword, onCommit) {
+    async rekey(target, { expectedKid, masterPassword, onCommit }) {
       return enqueue(async () => {
         const key = target === 'device' ? await loadOrCreateKey() : target;
         const rows = await vaultStore.listSecrets();
@@ -311,7 +333,7 @@ export function createCredentialVault(deps: CredentialVaultDeps = {}): Credentia
           if (check !== secret) throw new Error('CredentialVault: re-encryption check failed');
           swaps.push({ expected: row, next });
         }
-        await vaultStore.swapSecrets(swaps, masterPassword);
+        await vaultStore.swapSecrets(swaps, { expectedKid, masterPassword });
         onCommit?.();
         log.info('credential vault: secrets re-encrypted', {
           target: target === 'device' ? 'device' : 'master',

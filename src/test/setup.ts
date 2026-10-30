@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, configure } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
+import { setVaultLockOff } from '@/core/crypto/lockState';
 import { loadAllMessages } from '@/i18n';
 
 // App-level tests boot the whole app (DB check, onboarding guard, lazy route chunks); under
@@ -20,4 +21,12 @@ await loadAllMessages();
 // alternative, `test.sequence.hooks: 'list'`, lives in the serialized vite.config.ts.)
 afterEach(() => {
   cleanup();
+});
+
+// SEC-02: the vault writes with the device key only once the master password is known to be off
+// (the app decides at start-up, `initVaultLock`). Tests that do not exercise the lock start there;
+// lock tests set the state themselves. Also at load time, for `beforeAll` hooks.
+setVaultLockOff();
+beforeEach(() => {
+  setVaultLockOff();
 });

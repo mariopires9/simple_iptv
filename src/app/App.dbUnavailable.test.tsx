@@ -11,6 +11,20 @@ vi.mock('@/core/db', async (importOriginal) => ({
   openDatabase,
 }));
 
+// The mocked open hands back a fake database object, which the master password check (SEC-02)
+// cannot read; these tests are about the storage check, so that check reports "off".
+vi.mock('@/core/session', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/core/session')>();
+  const { setVaultLockOff } = await import('@/core/crypto/lockState');
+  return {
+    ...actual,
+    initVaultLock: () => {
+      setVaultLockOff();
+      return Promise.resolve('off' as const);
+    },
+  };
+});
+
 const { DatabaseUnavailableError } = await import('@/core/db');
 
 beforeEach(() => {
