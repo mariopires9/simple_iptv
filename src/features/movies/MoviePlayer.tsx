@@ -73,6 +73,7 @@ export function MoviePlayer({
     <VodPlayer
       source={source}
       title={movie.name}
+      artwork={movie.poster}
       resolve={resolve}
       startAt={startAt}
       onProgress={save}

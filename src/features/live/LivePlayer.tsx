@@ -182,6 +182,7 @@ export function LivePlayer({
         <PlayerView
           descriptor={shown.descriptor}
           title={channel.name}
+          artwork={channel.logo}
           kind="live"
           onPrevious={onPrevious}
           onNext={onNext}

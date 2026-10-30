@@ -40,6 +40,7 @@ import { pickTrack, saveTrackPreference, useTrackPreference } from './trackPrefe
 import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
 import { useFullscreenOnLandscapeSetting } from './useFullscreenOnLandscapeSetting';
+import { useMediaSession } from './useMediaSession';
 import { useMediaState } from './useMediaState';
 import { usePictureInPicture } from './usePictureInPicture';
 import { usePlayerController, type ControllerFactory } from './usePlayerController';
@@ -130,6 +131,10 @@ export interface PlayerViewProps {
   onVideoElement?: (video: HTMLVideoElement | null) => void;
   /** PLY-06: root-cause probe after a final failure (tests inject a fake). */
   failureProbe?: FailureProbe;
+  /** MSS-01: channel logo or poster for the system media controls (lock screen). */
+  artwork?: string | undefined;
+  /** MSS-01, VOD: the system "next track" button (e.g. the next episode). */
+  onNextItem?: (() => void) | undefined;
 }
 
 export function PlayerView({
@@ -151,6 +156,8 @@ export function PlayerView({
   onFinalError,
   onVideoElement,
   failureProbe,
+  artwork,
+  onNextItem,
 }: PlayerViewProps) {
   const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
   // Only read when it can matter: no explicit prop, and a phone or tablet.
@@ -548,6 +555,14 @@ export function PlayerView({
     toggleChannelList: isLive ? onToggleChannelList : undefined,
     // Esc leaves fullscreen first; only then does it close the player.
     close: fullscreen.active && fullscreen.mode === 'element' ? fullscreen.exit : onClose,
+  });
+
+  useMediaSession({
+    video,
+    title,
+    artwork,
+    onPrevious: isLive ? onPrevious : undefined,
+    onNext: isLive ? onNext : onNextItem,
   });
 
   const visible = useAutoHide({
