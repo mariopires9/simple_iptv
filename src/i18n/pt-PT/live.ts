@@ -36,6 +36,36 @@ export const live = {
     progress: (title: string) => `Progresso de ${title}`,
     rowNow: 'Agora:',
   },
+  guide: {
+    open: 'Guia TV',
+    title: 'Guia TV',
+    back: 'Voltar à TV em direto',
+    category: 'Categoria',
+    gridLabel: (category: string) => `Guia TV: ${category}`,
+    keyboardHint:
+      'Setas para mover entre programas e canais, Enter mostra os detalhes, Home volta a agora.',
+    channels: 'Canais',
+    nowLine: 'Agora',
+    onNow: 'A dar agora',
+    noInfo: 'Sem informação do guia',
+    gap: (channel: string, start: string, end: string) =>
+      `${channel}, ${start}–${end}, sem informação do guia. Enter reproduz o canal.`,
+    cell: (title: string, start: string, end: string, onNow: boolean) =>
+      `${title}, ${start}–${end}${onNow ? ', a dar agora' : ''}`,
+    channel: (name: string) => `Reproduzir ${name}`,
+    details: {
+      channel: (name: string) => `Em ${name}`,
+      noDescription: 'Sem descrição.',
+      watch: 'Ver canal',
+      close: 'Fechar',
+    },
+    noEpg: {
+      title: 'Sem guia para esta lista',
+      message:
+        'Esta lista não tem guia de programação. Nas listas M3U, adicione um endereço de guia nas definições da lista.',
+    },
+    empty: 'Não há canais nesta categoria.',
+  },
   noSource: {
     title: 'Ainda não tem listas IPTV',
     message: 'Adicione uma lista para ver aqui os canais em direto.',

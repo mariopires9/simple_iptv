@@ -18,6 +18,11 @@ export interface XmltvEpgDeps {
   upcoming?: (channelKey: string, now: number) => Promise<EpgProgram[]>;
   /** Runs the import; resolves with whether a new guide was stored. Default: worker task. */
   importGuide?: (sourceId: string) => Promise<boolean>;
+  /**
+   * Cache every read for CACHE_TTL_MS, whatever its programmes (the guide grid reads a whole time
+   * window, past programmes included, so "until the one on air ends" does not apply — EPG-04).
+   */
+  fixedTtl?: boolean;
 }
 
 interface Entry {
@@ -76,7 +81,7 @@ export function createXmltvEpgService(
       .then((programmes) => {
         if (gen === generation) {
           const at = now();
-          const firstEnd = programmes[0]?.end ?? Infinity;
+          const firstEnd = deps.fixedTtl ? Infinity : (programmes[0]?.end ?? Infinity);
           cache.set(channel.key, { programmes, expires: Math.min(at + CACHE_TTL_MS, firstEnd) });
         }
         return programmes;
