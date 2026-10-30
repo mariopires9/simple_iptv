@@ -10,6 +10,7 @@ import {
   BACKOFF_INITIAL_MS,
   CACHE_TTL_MS,
   MAX_CONCURRENT,
+  MIN_REFETCH_MS,
   createEpgService,
   currentProgramme,
   nextProgramme,
@@ -190,6 +191,95 @@ describe('createEpgService', () => {
     expect(epg.peek(channel(9))).toHaveLength(1);
     vi.setSystemTime(Date.UTC(2026, 0, 1, 13, 0, 30));
     expect(epg.peek(channel(9))).toBeUndefined();
+  });
+
+  // QA-02 defect: the fixture's programmes (2026-01-01) have all ended on a later clock; the
+  // entry used to be stale at once, so every re-render asked the panel again (request loop).
+  describe('stale or empty EPG (no request loop)', () => {
+    /** A list that re-asks whatever `peek` does not know on every notification (ChannelList). */
+    function renderLoop(epg: EpgService, ch: Channel) {
+      let renders = 0;
+      const render = () => {
+        renders++;
+        if (renders > 500) return;
+        if (epg.peek(ch) === undefined) void epg.load(ch).catch(() => undefined);
+      };
+      const unsubscribe = epg.subscribe(render);
+      render();
+      return { unsubscribe, render };
+    }
+
+    it('asks once per TTL for a channel whose programmes have all ended', async () => {
+      vi.setSystemTime(Date.UTC(2026, 9, 29, 20));
+      const epg = start();
+      const loop = renderLoop(epg, channel(1001));
+      const programmes = await settled(epg.load(channel(1001)));
+      expect(programmes.length).toBeGreaterThan(0);
+      expect(currentProgramme(programmes, Date.now())).toBeUndefined();
+      for (let i = 0; i < 50; i++) loop.render();
+      await vi.advanceTimersByTimeAsync(1_000);
+      for (let i = 0; i < 50; i++) await settled(epg.load(channel(1001)));
+      expect(requested).toEqual(['1001']);
+      expect(epg.peek(channel(1001))).toBe(programmes);
+
+      await vi.advanceTimersByTimeAsync(CACHE_TTL_MS / 2);
+      await settled(epg.load(channel(1001)));
+      expect(requested).toEqual(['1001']);
+      await vi.advanceTimersByTimeAsync(CACHE_TTL_MS / 2);
+      await settled(epg.load(channel(1001)));
+      expect(requested).toEqual(['1001', '1001']);
+      loop.unsubscribe();
+    });
+
+    it('asks once per TTL for a channel with an empty EPG', async () => {
+      server.use(
+        http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, () =>
+          HttpResponse.json({ epg_listings: [] }),
+        ),
+      );
+      const epg = start();
+      const loop = renderLoop(epg, channel(7));
+      await settled(epg.load(channel(7)));
+      for (let i = 0; i < 50; i++) {
+        loop.render();
+        await settled(epg.load(channel(7)));
+      }
+      expect(requested).toEqual(['7']);
+      loop.unsubscribe();
+    });
+
+    it('shares one request among concurrent callers of the same channel', async () => {
+      const epg = start();
+      await settled(Promise.all(Array.from({ length: 30 }, () => epg.load(channel(1001)))));
+      expect(requested).toEqual(['1001']);
+    });
+
+    it('never asks again sooner than the minimum interval, even when the programme ends', async () => {
+      server.use(
+        http.get(`${XTREAM_TEST_BASE_URL}/player_api.php`, () =>
+          HttpResponse.json({
+            epg_listings: [
+              {
+                title: 'Ending',
+                start_timestamp: Date.UTC(2026, 0, 1, 12) / 1000,
+                stop_timestamp: (T12_30 + 5_000) / 1000,
+              },
+            ],
+          }),
+        ),
+      );
+      const epg = start();
+      await settled(epg.load(channel(9)));
+      await vi.advanceTimersByTimeAsync(10_000);
+      // The programme ended 5 s ago; the entry is kept until the minimum interval.
+      expect(epg.peek(channel(9))).toHaveLength(1);
+      await settled(epg.load(channel(9)));
+      expect(requested).toEqual(['9']);
+      await vi.advanceTimersByTimeAsync(MIN_REFETCH_MS);
+      expect(epg.peek(channel(9))).toBeUndefined();
+      await settled(epg.load(channel(9)));
+      expect(requested).toEqual(['9', '9']);
+    });
   });
 
   it('never has more than 6 requests in flight; the rest wait their turn', async () => {

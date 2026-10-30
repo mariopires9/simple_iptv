@@ -71,6 +71,7 @@ export function MoviePlayer({
 
   return (
     <VodPlayer
+      source={source}
       title={movie.name}
       resolve={resolve}
       startAt={startAt}

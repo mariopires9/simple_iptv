@@ -12,8 +12,16 @@ export type SourceKind = 'xtream' | 'm3u-url' | 'm3u-file';
 export type LiveFormat = 'auto' | 'ts' | 'm3u8';
 export type SyncStatus = 'never' | 'syncing' | 'ok' | 'partial' | 'error';
 
+/**
+ * How a list's requests use the personal proxy (PRX-01, ADR-010): `off` (direct), `streams`
+ * (playback: streams and HLS playlists) or `all` (also the API, M3U download and short EPG).
+ */
+export type ProxyRouting = 'off' | 'streams' | 'all';
+
 export interface SourcePrefs {
   liveFormat: LiveFormat;
+  /** Personal proxy routing (PRX-01). Absent = `off`. Untrusted on read: validated by core/session. */
+  proxy?: ProxyRouting;
 }
 
 export interface SourceStats {
@@ -46,6 +54,12 @@ export interface Source {
   /** Outcome of the last sync attempt per content type (SRC-07). Not indexed. */
   lastSyncByType?: Partial<Record<ContentType, TypeSyncStatus>>;
   stats: SourceStats;
+  /**
+   * Protected items (DRM/DASH, UX-07) per type written by the last successful M3U import; absent
+   * = unknown (an older import, or Xtream, whose items are never flagged). Lets "Hide protected
+   * content" skip any filtering work for a list that has none. Not indexed.
+   */
+  protectedCounts?: SourceStats;
 }
 
 /** Outcome of syncing one content type of a source (SRC-07). Never contains sensitive data. */
@@ -188,6 +202,11 @@ export interface Series extends CatalogItemBase {
    * written by `catalogRepo.setSeasonCount`, dropped by the next sync.
    */
   seasonCount?: number;
+  /**
+   * M3U series grouped from episode entries (VOD-04): every episode is DRM-flagged or DASH, so
+   * the whole series is protected content (UX-07). Set at import, absent otherwise. Not indexed.
+   */
+  allEpisodesProtected?: boolean;
   cover?: string;
   plot?: string;
   rating?: number;
@@ -363,6 +382,16 @@ export interface SettingsMap {
    * validated by features/search.
    */
   recentSearches: unknown;
+  /**
+   * Hide protected content (DRM/DASH, UX-07) from the Live, Movies and Series grids, search and
+   * Home. Absent = off.
+   */
+  hideProtectedContent: boolean;
+  /**
+   * Personal proxy (PRX-01, ADR-010): its base URL only; the token is in the vault (`proxy:token`).
+   * Untrusted on read: validated by core/session.
+   */
+  personalProxy: { baseUrl: string };
 }
 
 export type SettingsKey = keyof SettingsMap;

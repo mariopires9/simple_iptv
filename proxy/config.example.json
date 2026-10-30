@@ -1,0 +1,22 @@
+{
+  "listen": { "host": "127.0.0.1", "port": 8787 },
+  "token": "<paste the output of: node server.ts --generate-token>",
+  "allowedOrigins": [
+    "https://mariopires9.github.io",
+    "http://localhost:5173",
+    "http://localhost:4173"
+  ],
+  "upstream": {
+    "allowedHosts": ["panel.example.com", "*.example.net"],
+    "maxRedirects": 5,
+    "headersTimeoutMs": 15000,
+    "idleTimeoutMs": 30000
+  },
+  "limits": {
+    "requestsPerMinute": 1200,
+    "maxConcurrentUpstreams": 8,
+    "badTokenPerMinute": 10,
+    "playlistMaxBytes": 4194304
+  },
+  "grantTtlSeconds": 86400
+}

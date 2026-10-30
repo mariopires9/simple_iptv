@@ -12,6 +12,17 @@ export const state = {
     unreachable: 'The network is not responding. Check your connection.',
     retry: 'Try again',
   },
+  /** Protected content (UX-07): DRM-flagged or DASH streams, which this app never plays. */
+  protectedContent: {
+    badge: 'Protected',
+    /** Accessible name of the badge and of the visually hidden note on a card or row. */
+    label: 'Protected content (DRM/DASH)',
+    unplayable: "Protected content (DRM/DASH) can't be played in this app",
+    /** Zapping found no other channel that can be played in this category. */
+    noOtherPlayable: 'The other channels here are protected content (DRM/DASH)',
+    /** Empty list whose items are all protected and hidden by the user's setting. */
+    allHidden: 'Protected content is hidden. You can show it in Settings › Playback.',
+  },
   progress: {
     /** Count of processed items when the total is unknown. Arguments are already formatted. */
     count: (count: string) => `${count} processed`,

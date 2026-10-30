@@ -8,7 +8,10 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
 import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
+import type { Source } from '@/core/db';
 import { log } from '@/core/log';
+import type { UrlRewriter } from '@/core/net';
+import { rewritersForSource } from '@/core/session';
 import { t } from '@/i18n';
 import { StateView, errorDetails } from '@/ui/state';
 import type { ResolvedVod } from './resolveVod';
@@ -22,6 +25,8 @@ const PlayerView = lazy(async () => {
 });
 
 type Outcome = ResolvedVod | { status: 'error'; error: unknown };
+/** A resolved stream with the list's playback rewriter (personal proxy, PRX-01). */
+type Resolved = { outcome: Outcome; rewriter?: UrlRewriter };
 
 export interface VodPlayerTexts {
   loading: (name: string) => string;
@@ -32,6 +37,8 @@ export interface VodPlayerTexts {
 }
 
 export interface VodPlayerProps {
+  /** The item's list: its proxy routing (PRX-01) is read with each resolution. */
+  source: Pick<Source, 'prefs'>;
   title: string;
   /**
    * Resolves the stream. Called once per mount and per Retry (read through a ref: a new function
@@ -55,6 +62,7 @@ export interface VodPlayerProps {
 }
 
 export function VodPlayer({
+  source,
   title,
   resolve,
   startAt,
@@ -67,19 +75,21 @@ export function VodPlayer({
   logPrefix,
 }: VodPlayerProps) {
   const [attempt, setAttempt] = useState(0);
-  const [result, setResult] = useState<{ attempt: number; outcome: Outcome }>();
+  const [result, setResult] = useState<{ attempt: number } & Resolved>();
   const resolveRef = useRef(resolve);
+  const sourceRef = useRef(source);
   const onVideoRef = useRef(onVideoElement);
   useEffect(() => {
     resolveRef.current = resolve;
+    sourceRef.current = source;
     onVideoRef.current = onVideoElement;
   });
 
   useEffect(() => {
     let current = true;
-    resolveRef.current().then(
-      (outcome) => {
-        if (current) setResult({ attempt, outcome });
+    Promise.all([resolveRef.current(), rewritersForSource(sourceRef.current)]).then(
+      ([outcome, rewriters]) => {
+        if (current) setResult({ attempt, outcome, rewriter: rewriters.playback });
       },
       (error: unknown) => {
         if (!current) return;
@@ -117,6 +127,7 @@ export function VodPlayer({
           onClose={onClose}
           overlay={overlay}
           onVideoElement={handleVideo}
+          {...(result?.rewriter ? { rewriter: result.rewriter } : {})}
         />
       </Suspense>
     );

@@ -40,10 +40,12 @@
 import {
   CONTENT_TYPES,
   catalogRepo,
+  isProtectedStream,
   sourcesRepo,
   type ContentType,
   type Source,
   type SourceStats,
+  type StreamFlags,
   type TypeSyncStatus,
 } from '@/core/db';
 import { credentialVault, VaultKeyLostError, type CredentialVault } from '@/core/crypto';
@@ -54,9 +56,10 @@ import {
   type FetchImpl,
   type NetErrorHint,
   type NetErrorKind,
+  type UrlRewriter,
 } from '@/core/net';
 import { WorkerTaskError, type TaskContext, type TaskProgress } from '@/core/worker';
-import { M3uCatalogBuilder } from './catalog';
+import { M3uCatalogBuilder, type M3uCatalog } from './catalog';
 import { downloadM3u, DOWNLOAD_INACTIVITY_TIMEOUT_MS } from './download';
 import { M3uParser, type M3uSkipReason } from './parser';
 import { FileReadError, readM3uFile } from './readFile';
@@ -139,6 +142,11 @@ export interface SyncM3uResult {
 export interface SyncM3uDeps {
   vault?: CredentialVault;
   fetchImpl?: FetchImpl;
+  /**
+   * The list's data rewriter (personal proxy, PRX-01), asked once the source is read; used for
+   * the list download. Default: direct. The data worker injects `rewritersForSource`.
+   */
+  rewriterFor?: (source: Source) => Promise<UrlRewriter>;
   now?: () => number;
   inactivityTimeoutMs?: number;
   /** How often cancellation is polled while waiting (ms). Default 50. */
@@ -275,6 +283,24 @@ export async function waitForM3uSourceIdle(sourceId: string): Promise<void> {
 // ---------------------------------------------------------------------------------------------
 // Sync
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Protected items (DRM/DASH, UX-07) per type of a built catalogue: a series is protected when its
+ * own entry is or every grouped episode is (`allEpisodesProtected`). Duplicates dropped by the
+ * write may be counted: only "none" versus "some" matters to the readers.
+ */
+export function protectedCounts(catalog: M3uCatalog): SourceStats {
+  const count = (items: readonly StreamFlags[]) =>
+    items.reduce((n, item) => n + (isProtectedStream(item) ? 1 : 0), 0);
+  return {
+    live: count(catalog.live.items),
+    movies: count(catalog.movie.items),
+    series: catalog.series.items.reduce(
+      (n, item) => n + (item.allEpisodesProtected === true || isProtectedStream(item) ? 1 : 0),
+      0,
+    ),
+  };
+}
 
 async function storedStats(sourceId: string): Promise<SourceStats> {
   const [live, movies, series] = await Promise.all([
@@ -430,6 +456,7 @@ async function runSync(
 
   // --- List URL from the vault (never leaves the worker); a file has no URL nor secrets ---
   let location: ListLocation;
+  let rewriter: UrlRewriter | undefined;
   if (origin.kind === 'url') {
     const { secretRef } = source;
     if (!secretRef) throw new WorkerTaskError('failed', 'M3U sync: source has no list URL');
@@ -439,6 +466,7 @@ async function runSync(
       const parsed = parseExternalUrl(raw, 'source');
       if (!parsed.ok) return await fail('invalid-url');
       location = { kind: 'url', url: parsed.url };
+      if (deps.rewriterFor) rewriter = await deps.rewriterFor(source);
     } catch (err) {
       if (err instanceof SourceRemovedError) throw err;
       return await fail(err instanceof VaultKeyLostError ? 'credentials-lost' : 'unknown');
@@ -503,6 +531,7 @@ async function runSync(
             signal: abort.signal,
             inactivityTimeoutMs: deps.inactivityTimeoutMs ?? DOWNLOAD_INACTIVITY_TIMEOUT_MS,
             ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+            ...(rewriter ? { rewriter } : {}),
             onBytes,
             onChunk,
           });
@@ -579,6 +608,7 @@ async function runSync(
   const stats = await storedStats(sourceId);
   const changes: Partial<Omit<Source, 'id'>> = {
     stats,
+    protectedCounts: protectedCounts(catalog),
     lastSyncAt: now(),
     lastSyncStatus: 'ok',
     lastSyncError: undefined,

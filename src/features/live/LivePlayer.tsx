@@ -1,5 +1,6 @@
 // Live player area (LIV-02): resolves the selected channel's stream (latest wins), hands it to
-// the lazily loaded PlayerView and records the channel in "Recent" after 5 s of playback.
+// the lazily loaded PlayerView — with the list's playback rewriter (personal proxy, PRX-01) — and
+// records the channel in "Recent" after 5 s of playback.
 //
 // Zapping (docs/UX_UI.md §6.2): the new channel's name is shown at once; a zapped channel is
 // resolved after ZAP_SETTLE_MS without another change, and a resolution that finishes after a
@@ -24,6 +25,8 @@ import {
 import { Link } from 'react-router';
 import { historyRepo, type Channel, type Source } from '@/core/db';
 import { log } from '@/core/log';
+import type { UrlRewriter } from '@/core/net';
+import { rewritersForSource } from '@/core/session';
 import type { PlaybackError, StreamDescriptor } from '@/player';
 import { t } from '@/i18n';
 import { StateView, errorDetails } from '@/ui/state';
@@ -50,6 +53,8 @@ interface Shown {
   key: string;
   descriptor: StreamDescriptor;
   requiredHeaders: boolean;
+  /** The list's playback rewriter (personal proxy, PRX-01), resolved with the descriptor. */
+  rewriter: UrlRewriter;
 }
 
 export interface LivePlayerProps {
@@ -113,8 +118,8 @@ export function LivePlayer({
   useEffect(() => {
     let current = true;
     const run = () => {
-      resolveStream(selection.channel, source).then(
-        (outcome) => {
+      Promise.all([resolveStream(selection.channel, source), rewritersForSource(source)]).then(
+        ([outcome, rewriters]) => {
           if (!current) return;
           setResult({ selection, attempt, outcome });
           setShown(
@@ -123,6 +128,7 @@ export function LivePlayer({
                   key: selection.channel.key,
                   descriptor: outcome.descriptor,
                   requiredHeaders: outcome.requiredHeaders,
+                  rewriter: rewriters.playback,
                 }
               : undefined,
           );
@@ -182,6 +188,7 @@ export function LivePlayer({
           onToggleChannelList={onToggleChannelList}
           onClose={onClose}
           requiredHeaders={shown.requiredHeaders}
+          rewriter={shown.rewriter}
           onFinalError={onFinalError}
           overlay={overlay}
         />

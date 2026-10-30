@@ -28,6 +28,7 @@ import type { BrowseState } from './browseState';
 import { formatPercent } from './format';
 import type { CatalogPageCache } from './pageCache';
 import { Poster } from './Poster';
+import { ProtectedBadge, ProtectedNote } from './ProtectedBadge';
 
 /** Rows rendered above and below the viewport. */
 export const OVERSCAN = 2;
@@ -93,6 +94,8 @@ export interface PosterGridProps<T extends PosterItem> {
   posterOf: (item: T) => string | undefined;
   /** Line under the title (the year, the number of seasons…), if any. */
   captionOf: (item: T) => string | undefined;
+  /** Protected content (DRM/DASH, UX-07): the card shows the "Protected" badge. */
+  isProtected?: ((item: T) => boolean) | undefined;
   texts: PosterGridTexts;
   testId?: string | undefined;
 }
@@ -126,6 +129,7 @@ export function PosterGrid<T extends PosterItem>({
   itemPath,
   posterOf,
   captionOf,
+  isProtected,
   texts,
   testId,
 }: PosterGridProps<T>) {
@@ -336,6 +340,7 @@ export function PosterGrid<T extends PosterItem>({
                           from={browse.fromGrid}
                           poster={posterOf(item)}
                           caption={captionOf(item)}
+                          protectedContent={isProtected?.(item) === true}
                           width={posterWidth}
                           tabbable={index === active}
                           progress={progress.get(item.key)}
@@ -414,6 +419,7 @@ interface PosterCardProps {
   from: string;
   poster: string | undefined;
   caption: string | undefined;
+  protectedContent: boolean;
   width: number;
   tabbable: boolean;
   progress: number | undefined;
@@ -428,6 +434,7 @@ function PosterCard({
   from,
   poster,
   caption,
+  protectedContent,
   width,
   tabbable,
   progress,
@@ -444,7 +451,13 @@ function PosterCard({
       onFocus={() => onFocus(index)}
       sx={cardSx}
     >
-      <Poster title={name} url={poster} width={width} progress={progress} />
+      <Poster
+        title={name}
+        url={poster}
+        width={width}
+        progress={progress}
+        badge={protectedContent ? <ProtectedBadge overlay labelled={false} /> : undefined}
+      />
       <Box
         component="span"
         className="poster-title"
@@ -472,6 +485,7 @@ function PosterCard({
           {caption}
         </Box>
       )}
+      {protectedContent && <ProtectedNote />}
       {progress !== undefined && (
         <Box component="span" sx={visuallyHidden}>
           {`, ${watched(formatPercent(progress))}`}

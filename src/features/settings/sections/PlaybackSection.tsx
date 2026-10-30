@@ -15,6 +15,7 @@ import {
   LIVE_FORMATS,
   loadPlaybackSettings,
   saveFullscreenOnLandscape,
+  saveHideProtectedContent,
   saveLiveFormat,
   savePlayLastChannelOnOpen,
   type PlaybackSettings,
@@ -53,8 +54,8 @@ function SwitchRow({
 }
 
 /**
- * Settings › Playback (UX-04 AC1): fullscreen in landscape, play the last channel on open, and the
- * active list's preferred live format (Xtream only). Each change is saved at once; a failed save
+ * Settings › Playback (UX-04 AC1): fullscreen in landscape, play the last channel on open, hide
+ * protected content (UX-07) and the active list's preferred live format (Xtream only). Each change is saved at once; a failed save
  * puts the control back and says so.
  */
 /** One field of the section's state: how to read it and how to write it back. */
@@ -70,6 +71,10 @@ const FULLSCREEN: SettingField<boolean> = {
 const PLAY_LAST: SettingField<boolean> = {
   get: (s) => s.playLastChannelOnOpen,
   set: (s, playLastChannelOnOpen) => ({ ...s, playLastChannelOnOpen }),
+};
+const HIDE_PROTECTED: SettingField<boolean> = {
+  get: (s) => s.hideProtectedContent,
+  set: (s, hideProtectedContent) => ({ ...s, hideProtectedContent }),
 };
 /** The active list's live format (`undefined` without a list: nothing to set). */
 const LIVE_FORMAT: SettingField<LiveFormat | undefined> = {
@@ -139,6 +144,14 @@ export function PlaybackSection() {
           checked={settings.playLastChannelOnOpen}
           onChange={(checked) =>
             change(PLAY_LAST, checked, () => savePlayLastChannelOnOpen(checked))
+          }
+        />
+        <SwitchRow
+          label={text.hideProtected}
+          hint={text.hideProtectedHint}
+          checked={settings.hideProtectedContent}
+          onChange={(checked) =>
+            change(HIDE_PROTECTED, checked, () => saveHideProtectedContent(checked))
           }
         />
         <FormControl disabled={!xtream}>

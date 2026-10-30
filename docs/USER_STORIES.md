@@ -326,6 +326,19 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Dependencies:** PLY-02.
 - **Tests:** HLS test stream with multiple tracks.
 
+### PLY-06 — Diagnosable live playback failures
+- **Priority:** Must · **Effort:** 3 · **Value:** High
+- **Origin:** real-world report (2026-10-29): iPhone, installed PWA on HTTPS, Xtream list with an `https` server; every live channel fails and the overlay only shows the last candidate's `MEDIA_ERR_SRC_NOT_SUPPORTED`.
+- **Story:** As a user whose channels do not play, I want to see why each format failed and what is most likely blocking it, so that I know whether anything in the app can help or the provider needs a device app.
+- **AC:**
+  1. (A) Given a play() whose every candidate fails, Then the overlay "Details" list every attempted or skipped candidate in order — format, engine (with MSE/ManagedMediaSource for hls.js/mpegts.js), error kind/detail and masked URL — and "Copy details" copies the same masked text (no credentials, no host).
+  2. (B) Given a final failure (online, not a known codec), Then once per failed load the app probes the tried addresses (readable `fetch` following redirects, first bytes only, then cancelled; `no-cors` requests only to tell "redirects" / "reachable without CORS" apart, never read) and shows the likely cause: http:// address, redirect to http://, playlist with http:// URIs, redirect the browser could not follow, no CORS (or, for the native player, not the cause), no CORS or unreachable (the browser does not say which), HTTP 401/403/other, not a stream, HEVC (CODECS or MPEG-TS program map). Mixed-content findings say the provider needs a device player app. Nothing is bypassed and no proxy is used; URLs are never logged or shown unmasked.
+  3. (C) Given the Diagnostics screen (SRC-09), Then a "Live stream test" check resolves the first live channel of the list in memory, probes it (Xtream: TS and HLS) one after the other, shows each result (masked) with actions (per-list live format switch when one format works, device app for mixed content) and is included in "Copy report".
+  4. (D) Given a phone (390×844) in portrait, Then the error overlay starts below the player's top bar and the whole message is reachable by scrolling (never clipped above the scroll area).
+- **Dependencies:** PLY-04, SRC-09.
+- **Tests:** controller attempts list; probe with a fake fetch (redirect to http, opaque redirect, http segments, HEVC CODECS, HEVC in the PMT, timeout, cancellation); overlay component (details, copy, cause, layout styles); live stream check, run and screen (report masked).
+- **Not claimed:** it does not fix playback; probe behaviour on real devices (Safari `no-cors`/opaque redirects) is not measured yet.
+
 ---
 
 ## E4 — Live TV
@@ -681,6 +694,19 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Story:** As a user on a TV or Android box, I want to navigate with the remote's arrow keys, so that I can use the app from the couch.
 - **AC:** spatial focus in grids and lists; remote "back" key; focus is never lost; channel keys (`ChannelUp/ChannelDown`) supported.
 - **Dependencies:** UX-03.
+
+### UX-07 — Mark protected content
+- **Priority:** Should · **Effort:** 3 · **Value:** Medium
+- **Story:** As a user of an M3U list that mixes DRM/DASH entries with playable ones, I want protected channels, movies and series to be marked (and optionally hidden), so that I don't pick something the app can't play.
+- **Context:** lists such as public M3U lists contain DASH + DRM entries (ClearKey license keys in `#KODIPROP`). The app refuses to play them and never uses DRM keys from lists (SECURITY.md §8); until now they looked playable until Play was pressed.
+- **AC:**
+  1. Given an item whose stream is DRM-flagged or DASH (the import stores `drm`/`container` on channels, movies and grouped episodes), Then it shows a "Protected" badge (poster cards in grids, channel rows, episode rows, details hero, Home cards, search results) with an accessible label, and Play is disabled with a short explanation ("Protected content (DRM/DASH) can't be played in this app"). Playback is never attempted.
+  2. Given a series whose episodes are all protected, Then the badge shows in the grid and on its details; given a mixed series, Then only its protected episode rows are marked. "All protected" is computed at import and stored as a non-indexed flag on the series row (no schema version change; a re-sync applies it).
+  3. Given Settings › Playback "Hide protected content" (default off, persisted via `settingsRepo`), When it is on, Then protected items are left out of the Live, Movies and Series grids, search results and Home rows, with correct counts and empty states.
+  4. Given the strings, Then they exist in en and pt-PT.
+- **Dependencies:** SRC-04, VOD-04, UX-04.
+- **Tests:** unit (protection rule, import flag, sort/search/pager filtering, Home data); component (badges, disabled Play, hidden items, setting).
+- **Risks:** filtering paged Live categories needs one read of the category's keys when the setting is on (M3U lists only; Xtream items are never flagged).
 
 ---
 

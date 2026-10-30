@@ -33,8 +33,15 @@ import {
   type ReactNode,
 } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { CONTENT_TYPES, isContentType, isSearchableQuery, type ContentType } from '@/core/db';
+import {
+  CONTENT_TYPES,
+  isContentType,
+  isSearchableQuery,
+  settingsRepo,
+  type ContentType,
+} from '@/core/db';
 import { t } from '@/i18n';
+import { ProtectedBadge, ProtectedNote } from '@/ui/catalog/ProtectedBadge';
 import { DelayedLoading, StateView, errorDetails, visuallyHidden } from '@/ui/state';
 import type { SearchHit, SearchQueryResult } from '@/worker';
 import { resultPath } from './paths';
@@ -155,12 +162,29 @@ export function SearchScreen() {
   };
 
   // --- results --------------------------------------------------------------------------------
+  // Settings › Playback "Hide protected content" (UX-07): read once per visit, before the first
+  // query (a failed read means "off").
+  const [hideProtected, setHideProtected] = useState<boolean>();
+  useEffect(() => {
+    let active = true;
+    settingsRepo.get('hideProtectedContent').then(
+      (value) => {
+        if (active) setHideProtected(value === true);
+      },
+      () => {
+        if (active) setHideProtected(false);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
   const [attempt, setAttempt] = useState(0);
   const searchable = isSearchableQuery(query);
   const view = type ?? '';
   const requestKey =
-    searchable && sourceId !== undefined
-      ? JSON.stringify([sourceId, query, type ?? '', attempt])
+    searchable && sourceId !== undefined && hideProtected !== undefined
+      ? JSON.stringify([sourceId, query, type ?? '', attempt, hideProtected])
       : '';
   const [result, setResult] = useState<ResultState>();
   useEffect(() => {
@@ -168,7 +192,12 @@ export function SearchScreen() {
     const controller = new AbortController();
     const key = requestKey;
     const forView = view;
-    const request = { sourceId, query, limit: type ? SEE_ALL_LIMIT : GROUP_LIMIT };
+    const request = {
+      sourceId,
+      query,
+      limit: type ? SEE_ALL_LIMIT : GROUP_LIMIT,
+      hideProtected: hideProtected === true,
+    };
     searchClient.query(type ? { ...request, type } : request, controller.signal).then(
       (data) => {
         if (!controller.signal.aborted) setResult({ key, view: forView, status: 'ready', data });
@@ -372,7 +401,20 @@ function ResultGroup({ type, hits, total, seeAll, onOpen }: ResultGroupProps) {
               data-search-result=""
             >
               <ListItemIcon aria-hidden>{TYPE_ICONS[type]}</ListItemIcon>
-              <ListItemText primary={hit.name} secondary={secondaryText(hit) || undefined} />
+              <ListItemText
+                primary={
+                  hit.protected === true ? (
+                    <>
+                      {hit.name}
+                      <ProtectedNote />
+                    </>
+                  ) : (
+                    hit.name
+                  )
+                }
+                secondary={secondaryText(hit) || undefined}
+              />
+              {hit.protected === true && <ProtectedBadge labelled={false} />}
             </ListItemButton>
           </ListItem>
         ))}

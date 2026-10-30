@@ -7,10 +7,24 @@ import type { LiveFormat, SourceKind } from '@/core/db';
 import type { NetError } from '@/core/net';
 import type { Capabilities } from '@/core/platform';
 import { selectEngine, type EngineChoice } from '@/player';
+import {
+  MIXED_CONTENT_FINDINGS,
+  probeImpact,
+  summarizeFindings,
+  type ProbeFinding,
+  type StreamProbeResult,
+} from '@/player/probe';
 import { REQUIRED_CODECS, type CodecId, type CodecSupport } from './codecs';
 
-export type CheckId = 'https' | 'api' | 'liveFormat' | 'browser' | 'codecs';
-export const CHECK_IDS: readonly CheckId[] = ['https', 'api', 'liveFormat', 'browser', 'codecs'];
+export type CheckId = 'https' | 'api' | 'liveFormat' | 'liveStream' | 'browser' | 'codecs';
+export const CHECK_IDS: readonly CheckId[] = [
+  'https',
+  'api',
+  'liveFormat',
+  'liveStream',
+  'browser',
+  'codecs',
+];
 
 /** `skipped`: not applicable (local file) or not possible right now (offline). */
 export type CheckStatus = 'ok' | 'warning' | 'error' | 'skipped';
@@ -28,6 +42,7 @@ export type DiagnosticAction =
   | 'check-credentials'
   | 'contact-provider'
   | 'switch-live-format'
+  | 'device-app'
   | 'retry';
 
 export type HttpsReason = 'https' | 'http-blocked' | 'http-local' | 'not-applicable';
@@ -51,6 +66,12 @@ export type LiveFormatReason =
   | 'none-playable'
   | 'per-channel'
   | 'per-channel-partial';
+/**
+ * Live stream test (PLY-06): the most telling finding of the probed formats, or why nothing was
+ * probed. `partial`: one format works, another does not.
+ */
+export type LiveStreamReason =
+  ProbeFinding | 'partial' | 'no-channels' | 'offline' | 'no-secret' | 'unavailable';
 export type BrowserReason = 'mse' | 'mms' | 'native-hls-only' | 'none';
 export type CodecsReason = 'all' | 'optional-missing' | 'required-missing';
 
@@ -80,6 +101,21 @@ export type LiveFormatCheck = CheckBase<'liveFormat', LiveFormatReason> & {
   suggested?: LiveFormat;
   support: LiveFormatSupport;
 };
+/** One probed live format (masked address only). */
+export interface LiveStreamProbe {
+  format: 'ts' | 'm3u8';
+  /** Engine that would play it here. */
+  engine: EngineChoice;
+  result: StreamProbeResult;
+  finding: ProbeFinding;
+}
+export type LiveStreamCheck = CheckBase<'liveStream', LiveStreamReason> & {
+  probes: LiveStreamProbe[];
+  /** Some probed format declares HEVC. */
+  hevc: boolean;
+  /** Xtream, with `switch-live-format`: the format that worked. */
+  suggested?: LiveFormat;
+};
 export type BrowserCheck = CheckBase<'browser', BrowserReason> & {
   mse: boolean;
   mms: boolean;
@@ -90,7 +126,8 @@ export type CodecsCheck = CheckBase<'codecs', CodecsReason> & {
   missing: CodecId[];
 };
 
-export type CheckResult = HttpsCheck | ApiCheck | LiveFormatCheck | BrowserCheck | CodecsCheck;
+export type CheckResult =
+  HttpsCheck | ApiCheck | LiveFormatCheck | LiveStreamCheck | BrowserCheck | CodecsCheck;
 
 export type PlaybackCaps = Pick<Capabilities, 'mse' | 'mms' | 'nativeHls' | 'isSafari'>;
 
@@ -270,6 +307,108 @@ export function checkLiveFormat(input: {
     return { ...xtream, ...switchTo, reason: 'format-unplayable' };
   }
   return { ...xtream, status: 'ok', reason: 'ok', actions: [] };
+}
+
+/** Outcome of the live stream test (PLY-06), or why it did not run. */
+export type LiveStreamOutcome =
+  | { outcome: 'probed'; probes: LiveStreamProbe[] }
+  | { outcome: 'no-channels' | 'offline' | 'no-secret' | 'unavailable' };
+
+/** Whether a finding stops that format from playing with its engine here. */
+function blocks(probe: LiveStreamProbe): boolean {
+  return probe.engine === 'unsupported' || probeImpact(probe.finding) === 'blocking';
+}
+
+function actionsFor(finding: ProbeFinding, caps: PlaybackCaps): DiagnosticAction[] {
+  if (MIXED_CONTENT_FINDINGS.has(finding)) return ['device-app', 'contact-provider'];
+  switch (finding) {
+    case 'no-cors':
+      return [...safariIf(caps), 'contact-provider', 'proxy-future'];
+    case 'unreachable':
+      return ['check-network', 'contact-provider'];
+    case 'auth':
+      return ['check-credentials'];
+    case 'http-error':
+    case 'not-media':
+    case 'timeout':
+      return ['retry', 'contact-provider'];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Live stream test (PLY-06): the first live channel of the list, its address(es) probed once
+ * (Xtream: TS and HLS). Explains why live channels fail — mixed content after a redirect, http://
+ * segments, no CORS, HEVC — and, for Xtream, suggests the live format that works when only one
+ * does.
+ */
+export function checkLiveStream(input: {
+  kind: SourceKind;
+  outcome: LiveStreamOutcome;
+  configured?: LiveFormat;
+  caps: PlaybackCaps;
+}): LiveStreamCheck {
+  const { outcome } = input;
+  if (outcome.outcome !== 'probed') {
+    const actions: DiagnosticAction[] =
+      outcome.outcome === 'offline'
+        ? ['check-network']
+        : outcome.outcome === 'no-secret'
+          ? ['check-credentials']
+          : [];
+    return {
+      id: 'liveStream',
+      status: 'skipped',
+      reason: outcome.outcome,
+      actions,
+      probes: [],
+      hevc: false,
+    };
+  }
+  const { probes } = outcome;
+  const summary = summarizeFindings(
+    probes.map((p) => ({ finding: p.finding, hevc: p.result.hevc })),
+  );
+  const hevc = summary?.hevc ?? false;
+  const base = { id: 'liveStream' as const, probes, hevc };
+  if (!summary) return { ...base, status: 'skipped', reason: 'unavailable', actions: [] };
+  const worst = summary.finding;
+  const blocked = probes.filter(blocks);
+  // Only a format that answered like a stream "works"; inconclusive ones (native player without
+  // CORS, timeout) are neither.
+  const working = probes.filter((p) => !blocks(p) && probeImpact(p.finding) === 'fine');
+
+  if (blocked.length === 0) {
+    const inconclusive = probes.some((p) => p.finding !== 'ok');
+    return {
+      ...base,
+      status: hevc || inconclusive ? 'warning' : 'ok',
+      reason: worst,
+      actions: hevc ? safariIf(input.caps) : [],
+    };
+  }
+  if (working.length > 0) {
+    const out: LiveStreamCheck = {
+      ...base,
+      status: 'warning',
+      reason: 'partial',
+      actions: actionsFor(blocked[0]!.finding, input.caps).filter((a) => a !== 'device-app'),
+    };
+    const suggested = working[0]!.format;
+    if (input.kind === 'xtream' && (input.configured ?? 'auto') !== suggested) {
+      out.actions = ['switch-live-format', ...out.actions];
+      out.suggested = suggested;
+    }
+    return out;
+  }
+  return {
+    ...base,
+    // Another format could not be checked: it may still play.
+    status: blocked.length < probes.length ? 'warning' : 'error',
+    reason: worst,
+    actions: actionsFor(worst, input.caps),
+  };
 }
 
 /** Browser support (RESEARCH.md §5.2): MSE, ManagedMediaSource, native HLS. */

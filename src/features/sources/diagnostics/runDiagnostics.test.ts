@@ -1,10 +1,11 @@
 // SRC-09: the diagnostics run — one request through the existing clients, none for a file or
 // while offline, and no secret ever in the result.
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { Source } from '@/core/db';
+import type { Channel, Source } from '@/core/db';
 import { clearLogBuffer, clearSecrets, getLogEntries } from '@/core/log';
-import { NetError } from '@/core/net';
+import { NetError, shortenUrl } from '@/core/net';
 import type { Capabilities } from '@/core/platform';
+import type { StreamProbeResult } from '@/player/probe';
 import { testConnection, type XtreamConnectionReport } from '@/providers/xtream';
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
@@ -57,6 +58,8 @@ function deps(overrides: Partial<DiagnosticsDeps> = {}): Partial<DiagnosticsDeps
     readListUrl: () => Promise.resolve(LIST_URL),
     testXtream: vi.fn(),
     probeList: vi.fn(() => Promise.resolve()),
+    firstLiveChannel: () => Promise.resolve(undefined),
+    probeStream: vi.fn(() => Promise.reject(new Error('no stream probe expected'))),
     capabilities: () => caps,
     codecs: () => CODECS.map((codec) => ({ codec, mediaSource: true, native: false })),
     pageProtocol: () => 'https:',
@@ -92,6 +95,7 @@ describe('runDiagnostics — Xtream', () => {
       'https',
       'api',
       'liveFormat',
+      'liveStream',
       'browser',
       'codecs',
     ]);
@@ -258,5 +262,113 @@ describe('no secret leaves the run', () => {
     for (const secret of [HOST, 'lists.example.test', USER, PASS, LIST_URL]) {
       expect(text).not.toContain(secret);
     }
+  });
+});
+
+describe('runDiagnostics — live stream test (PLY-06 C)', () => {
+  const channel = (fields: Record<string, unknown> = {}) =>
+    ({
+      key: 'tv:live:1',
+      sourceId: 'tv',
+      type: 'live',
+      externalId: '1',
+      categoryKey: 'tv:live:cat:1',
+      order: 0,
+      name: 'News',
+      nameNorm: 'news',
+      streamPath: '42',
+      ...fields,
+    }) as unknown as Channel;
+
+  it('Xtream: probes TS then HLS of the first live channel, in memory, masked', async () => {
+    const urls: string[] = [];
+    const probeStream = vi.fn((url: string): Promise<StreamProbeResult> => {
+      urls.push(url);
+      return Promise.resolve(
+        url.endsWith('.ts')
+          ? { cause: 'no-cors', target: shortenUrl(url) }
+          : { cause: 'redirect-blocked', redirected: true, target: shortenUrl(url) },
+      );
+    });
+    const result = await runDiagnostics(source({ serverUrl: `https://${HOST}` }), {
+      deps: deps({
+        testXtream: vi.fn(() => Promise.resolve(okReport())),
+        firstLiveChannel: () => Promise.resolve(channel()),
+        probeStream,
+      }),
+    });
+    expect(urls).toEqual([
+      `https://${HOST}/live/${USER}/${PASS}/42.ts`,
+      `https://${HOST}/live/${USER}/${PASS}/42.m3u8`,
+    ]);
+    expect(byId(result).liveStream).toMatchObject({
+      status: 'error',
+      reason: 'redirect-blocked',
+      actions: ['device-app', 'contact-provider'],
+    });
+    const text = JSON.stringify([result, getLogEntries()]);
+    for (const secret of [HOST, USER, PASS]) expect(text).not.toContain(secret);
+  });
+
+  it('M3U: probes the channel address once', async () => {
+    const probeStream = vi.fn((): Promise<StreamProbeResult> =>
+      Promise.resolve({ cause: 'ok', content: 'ts' }),
+    );
+    const result = await runDiagnostics(
+      source({ kind: 'm3u-url', serverUrl: undefined, username: undefined }),
+      {
+        deps: deps({
+          firstLiveChannel: () =>
+            Promise.resolve(
+              channel({ streamPath: '', streamUrl: 'https://cdn.example.test/1.ts' }),
+            ),
+          probeStream,
+        }),
+      },
+    );
+    expect(probeStream).toHaveBeenCalledTimes(1);
+    expect(probeStream).toHaveBeenCalledWith('https://cdn.example.test/1.ts', undefined);
+    expect(byId(result).liveStream).toMatchObject({ status: 'ok', reason: 'ok' });
+  });
+
+  it('no live channel, offline, or a DRM entry: nothing is requested', async () => {
+    const probeStream = vi.fn();
+    const none = await runDiagnostics(source(), {
+      deps: deps({ testXtream: vi.fn(() => Promise.resolve(okReport())), probeStream }),
+    });
+    expect(byId(none).liveStream).toMatchObject({ status: 'skipped', reason: 'no-channels' });
+    const offline = await runDiagnostics(source(), {
+      deps: deps({
+        offline: () => true,
+        firstLiveChannel: () => Promise.resolve(channel()),
+        probeStream,
+      }),
+    });
+    expect(byId(offline).liveStream).toMatchObject({ status: 'skipped', reason: 'offline' });
+    const drm = await runDiagnostics(
+      source({ kind: 'm3u-url', serverUrl: undefined, username: undefined }),
+      {
+        deps: deps({
+          firstLiveChannel: () =>
+            Promise.resolve(
+              channel({ streamUrl: 'https://cdn.example.test/1.mpd', drm: { type: 'widevine' } }),
+            ),
+          probeStream,
+        }),
+      },
+    );
+    expect(byId(drm).liveStream).toMatchObject({ status: 'skipped', reason: 'unavailable' });
+    expect(probeStream).not.toHaveBeenCalled();
+  });
+
+  it('a catalogue that cannot be read does not fail the other checks', async () => {
+    const result = await runDiagnostics(source(), {
+      deps: deps({
+        testXtream: vi.fn(() => Promise.resolve(okReport())),
+        firstLiveChannel: () => Promise.reject(new Error('db closed')),
+      }),
+    });
+    expect(byId(result).liveStream).toMatchObject({ status: 'skipped', reason: 'unavailable' });
+    expect(byId(result).api).toMatchObject({ status: 'ok' });
   });
 });

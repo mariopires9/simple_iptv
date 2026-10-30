@@ -7,6 +7,7 @@ export const settings = {
     appearance: 'Aspeto',
     language: 'Idioma',
     playback: 'Reprodução',
+    proxy: 'Proxy pessoal',
     storage: 'Armazenamento',
     privacy: 'Privacidade',
     about: 'Acerca',
@@ -29,6 +30,9 @@ export const settings = {
       'Em telemóveis e tablets, rodar o dispositivo durante a reprodução sugere o ecrã inteiro',
     playLastChannel: 'Reproduzir o último canal ao abrir',
     playLastChannelHint: 'Quando a TV em direto abre, começa o último canal que viu',
+    hideProtected: 'Ocultar conteúdo protegido',
+    hideProtectedHint:
+      'Retira os canais, filmes e séries com DRM ou DASH, que esta aplicação não reproduz, de Direto, Filmes, Séries, da pesquisa e do Início',
     liveFormat: 'Formato preferido em direto',
     liveFormatHint: (list: string) =>
       `Para a lista ativa (${list}). Automático escolhe o que este navegador reproduz melhor.`,
@@ -36,6 +40,61 @@ export const settings = {
     liveFormatNoList: 'Adicione uma lista Xtream Codes para escolher o formato em direto.',
     liveFormats: { auto: 'Automático', ts: 'MPEG-TS', m3u8: 'HLS' },
     saveError: 'Não foi possível guardar a definição. Tente novamente.',
+  },
+  proxy: {
+    intro:
+      'Para fornecedores que só funcionam por HTTP: encaminhe uma lista por um proxy que executa no seu próprio computador, por exemplo acessível com o Tailscale Serve. As listas ligam-se diretamente, a menos que escolha outra opção abaixo.',
+    url: 'Endereço do proxy',
+    urlHint: 'O endereço HTTPS do seu proxy, por exemplo https://o-meu-pc.example.ts.net',
+    token: 'Token de acesso',
+    tokenHint: 'O token configurado no seu proxy',
+    tokenKeep: 'Há um token guardado. Deixe este campo vazio para o manter.',
+    showToken: 'Mostrar token',
+    save: 'Guardar',
+    test: 'Testar ligação',
+    testing: 'A testar…',
+    remove: 'Remover proxy',
+    saved: 'Proxy guardado',
+    removed: 'Proxy removido. Todas as listas voltam a ligar-se diretamente.',
+    saveError: 'Não foi possível guardar o proxy. Tente novamente.',
+    removeError: 'Não foi possível remover o proxy. Tente novamente.',
+    testError: 'Não foi possível fazer o teste. Tente novamente.',
+    errors: {
+      baseUrl: {
+        empty: 'Introduza o endereço do seu proxy.',
+        invalid: 'Introduza um endereço válido, começado por https://.',
+        'too-long': 'Este endereço é demasiado longo.',
+        insecure:
+          'O endereço tem de usar HTTPS (http:// só funciona para este próprio dispositivo).',
+        credentials: 'Retire o nome de utilizador e a palavra-passe do endereço.',
+        query: 'Retire do endereço a parte a seguir a ? ou #.',
+      },
+      token: {
+        required: 'Introduza o token configurado no seu proxy.',
+        invalid: 'O token tem entre 32 e 128 carateres: letras, algarismos, - ou _.',
+      },
+    },
+    outcomes: {
+      ok: (streams: string) =>
+        `O seu proxy respondeu. Emissões que está a retransmitir agora: ${streams}.`,
+      okList: (list: string, streams: string) =>
+        `O seu proxy respondeu e permite o servidor de ${list}. Emissões que está a retransmitir agora: ${streams}.`,
+      auth: 'O proxy rejeitou o token. Confirme que é o que está configurado no proxy.',
+      unreachable:
+        'Não foi possível contactar o proxy. Confirme que o Tailscale está ligado neste dispositivo, que o endereço usa HTTPS e que o computador onde o proxy corre está ligado, com o proxy iniciado.',
+      notProxy: 'Este endereço não responde como um proxy do Simple IPTV. Confirme o endereço.',
+      notAllowed: (list: string) =>
+        `O proxy funciona, mas o servidor de ${list} não está na lista de anfitriões permitidos. Acrescente-o à lista de permissões do proxy.`,
+    },
+    routing: {
+      title: 'Listas',
+      hint: 'Só emissões: o leitor passa pelo proxy. Emissões e API: também as transferências e o guia de programação da lista.',
+      disabledHint: 'Guarde um proxy para encaminhar listas por ele.',
+      noLists: 'Ainda não tem listas.',
+      label: (list: string) => `Proxy para ${list}`,
+      options: { off: 'Desligado (direto)', streams: 'Só emissões', all: 'Emissões e API' },
+      saveError: 'Não foi possível guardar a definição da lista. Tente novamente.',
+    },
   },
   storage: {
     persisted: 'Armazenamento persistente',

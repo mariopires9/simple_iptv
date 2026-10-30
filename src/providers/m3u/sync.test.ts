@@ -23,17 +23,43 @@ import { clearLogBuffer, clearSecrets, getLogEntries } from '@/core/log';
 import { WorkerTaskError, type TaskContext, type TaskProgress } from '@/core/worker';
 import { XTREAM_TEST_BASE_URL, XTREAM_TEST_CREDENTIALS, xtreamHandlers } from '@/test/msw';
 import { createMswServer } from '@/test/msw/server';
-import { UNCATEGORIZED_CATEGORY_ID, entryBaseId } from './catalog';
-import { M3uParser } from './parser';
+import { M3uCatalogBuilder, UNCATEGORIZED_CATEGORY_ID, entryBaseId } from './catalog';
+import { M3uParser, parseM3uText } from './parser';
 import {
   isM3uSourceSyncing,
   listUrlSecrets,
+  protectedCounts,
   storableUrlCheck,
   syncM3uSource,
   waitForM3uSourceIdle,
   type M3uSyncProgress,
   type SyncM3uDeps,
 } from './sync';
+
+describe('protectedCounts (UX-07)', () => {
+  it('counts the DRM/DASH items per type; a show counts when every episode is protected', () => {
+    const DRM = '#KODIPROP:inputstream.adaptive.license_type=clearkey';
+    const builder = new M3uCatalogBuilder();
+    const text = [
+      '#EXTM3U',
+      '#EXTINF:-1 group-title="News",Locked',
+      DRM,
+      'https://s.example.test/live/1.m3u8',
+      '#EXTINF:-1 group-title="News",Dash',
+      'https://s.example.test/live/2.mpd',
+      '#EXTINF:-1 group-title="News",Open',
+      'https://s.example.test/live/3.ts',
+      '#EXTINF:-1 group-title="Films",Film',
+      'https://s.example.test/movie/4.mp4',
+      '#EXTINF:-1 group-title="Séries",Show S01E01',
+      'https://s.example.test/v/5.mpd',
+      '#EXTINF:-1 group-title="Séries",Other S01E01',
+      'https://s.example.test/v/6.mp4',
+    ].join('\n');
+    for (const entry of parseM3uText(text).entries) builder.add(entry);
+    expect(protectedCounts(builder.build())).toEqual({ live: 2, movies: 0, series: 1 });
+  });
+});
 
 const server = createMswServer(...xtreamHandlers());
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -177,6 +203,8 @@ describe('syncM3uSource — success', () => {
       lastSyncStatus: 'ok',
       lastSyncAt: NOW,
       stats: { live: 3, movies: 1, series: 1 },
+      // UX-07: nothing protected, so "Hide protected content" has nothing to filter.
+      protectedCounts: { live: 0, movies: 0, series: 0 },
     });
     expect(source?.lastSyncByType?.live).toMatchObject({ status: 'ok', items: 3 });
     // The header's xmltv.php URL embeds the credentials: not stored.

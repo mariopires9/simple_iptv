@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { VaultKeyLostError, credentialVault } from '@/core/crypto';
 import {
   catalogRepo,
+  favoritesRepo,
   historyRepo,
   itemKey,
   settingsRepo,
@@ -18,6 +19,7 @@ import {
   type Source,
 } from '@/core/db';
 import { clearLogBuffer, getLogEntries, toLogJson } from '@/core/log';
+import { PROXY_TOKEN_REF } from '@/core/session';
 import { PlaybackError, type StreamDescriptor } from '@/player';
 import type { PlayerViewProps } from '@/player/ui';
 import { clearLiveState } from './liveState';
@@ -223,6 +225,39 @@ async function openFrom(path: string, name: string, width?: number) {
 }
 
 // --- tests ---------------------------------------------------------------------------------
+
+describe('PRX-01 — the player gets the list’s playback rewriter', () => {
+  const TOKEN = 'tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789';
+
+  it('direct by default (no proxy routing)', async () => {
+    await openFrom('/live/category/1', 'Channel 2', 1400);
+    await playerShows(2);
+    const { rewriter } = lastView();
+    expect(rewriter?.rewrite(urlOf(2), 'playlist') ?? urlOf(2)).toBe(urlOf(2));
+  });
+
+  it('`streams`: streams and playlists go through the saved proxy', async () => {
+    await sourcesRepo.put({ ...xtream, prefs: { ...xtream.prefs, proxy: 'streams' } });
+    await settingsRepo.set('personalProxy', { baseUrl: 'https://pc.example.test' });
+    vi.mocked(credentialVault.get).mockImplementation((ref) =>
+      Promise.resolve(ref === PROXY_TOKEN_REF ? TOKEN : PASS),
+    );
+    try {
+      await openFrom('/live/category/1', 'Channel 2', 1400);
+      await playerShows(2);
+      const { rewriter } = lastView();
+      for (const purpose of ['playlist', 'stream'] as const) {
+        expect(rewriter?.rewrite(urlOf(2), purpose)).toMatch(
+          new RegExp(`^https://pc\\.example\\.test/v1/${TOKEN}/u/[A-Za-z0-9_-]+/2\\.m3u8$`),
+        );
+      }
+      expect(rewriter?.rewrite(urlOf(2), 'image')).toBe(urlOf(2));
+    } finally {
+      await sourcesRepo.put(xtream);
+      await settingsRepo.remove('personalProxy');
+    }
+  });
+});
 
 describe('LIV-02 AC1 — opening the player', () => {
   it('desktop: clicking a channel replaces the placeholder panel and starts playback', async () => {
@@ -515,15 +550,99 @@ describe('LIV-02 — stream resolution in the player area', () => {
   it.each([
     ['Protected', mkey('drm')],
     ['Dash channel', mkey('dash')],
-  ])('%s (DRM/DASH) is not attempted and says why', async (name) => {
+  ])('UX-07: %s opened by a link never mounts the player and says why', async (_name, key) => {
     await settingsRepo.set('activeSourceId', M3U);
-    await openFrom('/live', name, 1400);
-    expect(
-      await screen.findByRole('heading', {
-        name: 'This channel uses DRM / DASH, which this app does not support',
-      }),
-    ).toBeInTheDocument();
+    // Home, search and "play last channel" all open `?channel=`.
+    const { router } = show(`/live/category/g?channel=${encodeURIComponent(key)}`, 1400);
+    expect(await screen.findByTestId('live-protected-notice')).toHaveTextContent(
+      "Protected content (DRM/DASH) can't be played in this app",
+    );
+    await waitFor(() => expect(router.state.location.search).toBe(''));
+    expect(screen.queryByRole('region', { name: /^Player/ })).toBeNull();
     expect(views).toHaveLength(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+    // Not remembered as the last channel.
+    expect(await settingsRepo.get('lastChannelKey')).not.toBe(key);
+  });
+
+  it('UX-07: zapping skips protected channels both ways, wrapping around', async () => {
+    await settingsRepo.set('activeSourceId', M3U);
+    // General: Protected (DRM), Dash channel (.mpd), Referer channel, Plain channel.
+    show(`/live/category/g?channel=${encodeURIComponent(mkey('hdr'))}`, 1400);
+    const list = await listbox('Channels in General');
+    await within(list).findByText('Plain channel');
+    await waitFor(() => expect(lastView().descriptor.url).toContain('cdn.example'));
+    expect(lastView().title).toBe('Referer channel');
+    /** The player shows `name` and has settled on its stream. */
+    const settledOn = (name: string, file: string) =>
+      waitFor(() => {
+        expect(lastView().title).toBe(name);
+        expect(lastView().descriptor.url).toContain(file);
+      });
+    act(() => lastView().onNext?.());
+    await settledOn('Plain channel', 'ok.m3u8');
+    // Wraps past the two protected ones at the top.
+    act(() => lastView().onNext?.());
+    await settledOn('Referer channel', 'hdr.ts');
+    act(() => lastView().onPrevious?.());
+    await settledOn('Plain channel', 'ok.m3u8');
+    expect(views.some((v) => v.title === 'Protected' || v.title === 'Dash channel')).toBe(false);
+  });
+
+  it.each([
+    ['Protected', mkey('drm')],
+    ['Dash channel', mkey('dash')],
+  ])('UX-07: %s is marked in the list and a click does not open the player', async (name) => {
+    await settingsRepo.set('activeSourceId', M3U);
+    const { router } = show('/live', 1400);
+    const list = await listbox();
+    // (The channel named "Protected" also matches the badge's word: find the row by its name.)
+    const row = await within(list).findByRole('option', {
+      name: (n) => n.startsWith(name) && n.includes('Protected content (DRM/DASH)'),
+    });
+    await userEvent.click(row);
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(within(row).getByTestId('protected-badge')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Protected content (DRM/DASH) can't be played in this app",
+    );
+    expect(screen.queryByRole('region', { name: /^Player/ })).toBeNull();
+    expect(router.state.location.search).toBe('');
+    expect(views).toHaveLength(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  it('UX-07: "Hide protected content" leaves DRM/DASH channels out of the list and its count', async () => {
+    await settingsRepo.set('activeSourceId', M3U);
+    await settingsRepo.set('hideProtectedContent', true);
+    try {
+      show('/live/category/g', 1400);
+      const list = await listbox('Channels in General');
+      await within(list).findByText('Plain channel');
+      const options = within(list).getAllByRole('option');
+      expect(options).toHaveLength(2);
+      expect(options[0]).toHaveAttribute('aria-setsize', '2');
+      expect(within(list).queryByText('Dash channel')).toBeNull();
+    } finally {
+      await settingsRepo.set('hideProtectedContent', false);
+    }
+  });
+
+  it('UX-07: a category emptied by "Hide protected content" says so', async () => {
+    await settingsRepo.set('activeSourceId', M3U);
+    await settingsRepo.set('hideProtectedContent', true);
+    await favoritesRepo.add(mkey('drm'));
+    try {
+      show('/live/category/~favorites', 1400);
+      expect(
+        await screen.findByText(
+          'Protected content is hidden. You can show it in Settings › Playback.',
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      await favoritesRepo.remove(mkey('drm'));
+      await settingsRepo.set('hideProtectedContent', false);
+    }
   });
 
   it('an entry with required headers tells the player, whose overlay explains a 401/403 (LIV-05 AC1)', async () => {

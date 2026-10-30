@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { credentialVault } from '@/core/crypto';
 import { wipeAll, type Movie, type Source } from '@/core/db';
+import { removePersonalProxy, savePersonalProxy } from '@/core/session';
 import type { PlayerViewProps } from '@/player/ui';
 import { ThemeModeProvider } from '@/ui/theme';
 import { MoviePlayer } from './MoviePlayer';
@@ -59,12 +60,17 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function show(m: Movie, getInfoExt: () => Promise<string | undefined>, infoWaitMs?: number) {
+function show(
+  m: Movie,
+  getInfoExt: () => Promise<string | undefined>,
+  infoWaitMs?: number,
+  list: Source = source,
+) {
   return render(
     <ThemeModeProvider>
       <MemoryRouter>
         <MoviePlayer
-          source={source}
+          source={list}
           movie={m}
           startAt={undefined}
           getInfoExt={getInfoExt}
@@ -130,5 +136,31 @@ describe('MoviePlayer', () => {
     await waitFor(() => expect(views.length).toBeGreaterThan(before));
     await new Promise((r) => setTimeout(r, 20));
     expect(urls()).toEqual([`http://panel.example.test:8080/movie/demo/${PASS}/7.avi`]);
+  });
+
+  it('PRX-01: the player gets the list’s playback rewriter (proxy for `streams`, direct when off)', async () => {
+    const token = 'tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789';
+    await savePersonalProxy({ baseUrl: 'https://pc.example.test', token });
+    try {
+      const routed: Source = { ...source, prefs: { liveFormat: 'auto', proxy: 'streams' } };
+      const view = show(movie('7.mkv'), () => Promise.resolve(undefined), undefined, routed);
+      await screen.findByRole('region', { name: 'Player: Seven' });
+      const props = views.at(-1);
+      const url = props?.descriptor.url ?? '';
+      expect(props?.rewriter?.rewrite(url, 'stream')).toMatch(
+        new RegExp(`^https://pc\\.example\\.test/v1/${token}/u/[A-Za-z0-9_-]+/7\\.mkv$`),
+      );
+      // Never images, nor the API (that is `all`, and the data rewriter's job).
+      expect(props?.rewriter?.rewrite(url, 'api')).toBe(url);
+      view.unmount();
+
+      views.length = 0;
+      show(movie('7.mkv'), () => Promise.resolve(undefined));
+      await screen.findByRole('region', { name: 'Player: Seven' });
+      const direct = views.at(-1);
+      expect(direct?.rewriter?.rewrite(url, 'stream') ?? url).toBe(url);
+    } finally {
+      await removePersonalProxy();
+    }
   });
 });

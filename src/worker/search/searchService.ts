@@ -18,6 +18,7 @@
 import {
   CONTENT_TYPES,
   catalogRepo,
+  isProtectedItem,
   isSearchableQuery,
   onCatalogWrite,
   sourcesRepo,
@@ -47,6 +48,8 @@ export interface SearchQueryInput {
   types?: readonly ContentType[];
   /** Hits per type (default 20, max. 200). */
   limit?: number;
+  /** Settings › Playback "Hide protected content" (UX-07): leave DRM/DASH items out. */
+  hideProtected?: boolean;
 }
 
 /** A search result, ready to display. Never contains stream URLs or images. */
@@ -62,6 +65,8 @@ export interface SearchHit {
   number?: number;
   /** Movie/series year. */
   year?: number;
+  /** Protected content (DRM/DASH, UX-07): shown with the "Protected" badge. */
+  protected?: boolean;
 }
 
 export interface SearchGroup {
@@ -285,6 +290,7 @@ async function hydrate(type: ContentType, hits: readonly RawHit[]): Promise<Sear
     }
     if (row.type === 'live' && row.number !== undefined) result.number = row.number;
     if (row.type !== 'live' && row.year !== undefined) result.year = row.year;
+    if (isProtectedItem(row)) result.protected = true;
     out.push(result);
   }
   return out;
@@ -304,6 +310,7 @@ export async function searchCatalog(input: SearchQueryInput): Promise<SearchQuer
   const raw = querySearchIndex(found.loaded.index, sourceId, query, {
     types,
     limit: clampLimit(input.limit),
+    hideProtected: input.hideProtected === true,
   });
   await Promise.all(
     CONTENT_TYPES.map(async (type) => {

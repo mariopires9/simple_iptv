@@ -21,6 +21,7 @@ import {
   catalogRepo,
   favoritesRepo,
   historyRepo,
+  isProtectedItem,
   itemKey,
   parseCategoryKey,
   type HistoryEntry,
@@ -290,10 +291,13 @@ function MovieDetails({
     [movie.key, movie.sourceId],
   );
   const titleId = useId();
+  // UX-07: DRM/DASH movies are marked and Play is disabled — the player is never opened.
+  const protectedNoteId = useId();
+  const isProtected = isProtectedItem(movie);
 
   return (
     <Box component="article" aria-labelledby={titleId} sx={{ position: 'relative' }}>
-      {playing && (
+      {playing && !isProtected && (
         <Box sx={{ mb: 2 }}>
           <MoviePlayer
             source={source}
@@ -317,6 +321,7 @@ function MovieDetails({
         cast={extra?.cast}
         texts={texts}
         testIdPrefix="movie"
+        protectedNoteId={isProtected ? protectedNoteId : undefined}
         actions={
           <>
             <Button
@@ -325,11 +330,13 @@ function MovieDetails({
               size="large"
               startIcon={<PlayArrowRounded aria-hidden />}
               onClick={() => setPlaying({ startAt: resumeAt })}
+              disabled={isProtected}
+              aria-describedby={isProtected ? protectedNoteId : undefined}
               sx={{ minHeight: 44 }}
             >
               {resumeAt !== undefined ? texts.resumeAt(formatClock(resumeAt)) : texts.play}
             </Button>
-            {resumeAt !== undefined && (
+            {resumeAt !== undefined && !isProtected && (
               <Button
                 variant="outlined"
                 size="large"

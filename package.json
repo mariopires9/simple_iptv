@@ -11,7 +11,7 @@
     "build": "tsc --noEmit && vite build && node scripts/check-dist-sw.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p proxy",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
@@ -19,7 +19,9 @@
     "test:coverage": "vitest run --coverage",
     "licenses": "node scripts/check-licenses.mjs",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "proxy": "node proxy/server.ts",
+    "proxy:token": "node proxy/server.ts --generate-token"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

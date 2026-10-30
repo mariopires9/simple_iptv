@@ -10,12 +10,19 @@
 //   The per-episode entries (SER-02/03, `isEpisodeItemKey`) are the series' own bookkeeping.
 // - Favorites (FAV-01 AC2/AC3): those of the active list only; a favorite whose item is no longer
 //   in the catalogue (removed by a re-sync) is kept and reported as unavailable.
+// - Protected content (UX-07): cards of DRM/DASH items carry `protected` (badge); with Settings ›
+//   Playback "Hide protected content" on, Home leaves them out of its rows. The recent and
+//   "Continue watching" rows are read with their usual limit first and filtered after, so a row
+//   may show fewer cards than its limit (those items can't be played anyway). The Favorites
+//   screen keeps showing them, marked: they are the user's own choices.
 import {
   catalogRepo,
   favoritesRepo,
   historyRepo,
   isEpisodeItemKey,
+  isProtectedItem,
   parseCategoryKey,
+  settingsRepo,
   type CatalogItemByType,
   type ContentType,
   type Favorite,
@@ -45,6 +52,8 @@ export interface CardItem {
   progress?: number | undefined;
   /** Season/episode to resume (series in "Continue watching"). */
   episode?: { season: number; number: number } | undefined;
+  /** Protected content (DRM/DASH, UX-07): shown with the "Protected" badge. */
+  protected?: boolean | undefined;
 }
 
 /** Route of a channel: its own category with the channel selected (LIV-03 `?channel=`). */
@@ -67,7 +76,20 @@ export function itemHref(item: CatalogItemByType[ContentType]): string {
 
 export function toCard(item: CatalogItemByType[ContentType]): CardItem {
   const image = item.type === 'live' ? item.logo : item.type === 'movie' ? item.poster : item.cover;
-  return { key: item.key, type: item.type, name: item.name, image, href: itemHref(item) };
+  const card: CardItem = {
+    key: item.key,
+    type: item.type,
+    name: item.name,
+    image,
+    href: itemHref(item),
+  };
+  if (isProtectedItem(item)) card.protected = true;
+  return card;
+}
+
+/** Cards without the protected ones when `hide` is on (UX-07). */
+function visible(cards: CardItem[], hide: boolean): CardItem[] {
+  return hide ? cards.filter((card) => card.protected !== true) : cards;
 }
 
 /**
@@ -176,8 +198,19 @@ export async function loadFavorites(sourceId: string, type: ContentType): Promis
   });
 }
 
-/** Available favorites of every type, most recently added first (Home row). */
-export async function loadHomeFavorites(sourceId: string): Promise<CardItem[]> {
+/**
+ * Available favorites of every type, most recently added first (Home row); without protected ones
+ * when `hideProtected` (UX-07).
+ */
+export async function loadHomeFavorites(
+  sourceId: string,
+  hideProtected = false,
+): Promise<CardItem[]> {
+  return homeFavoritesRow(await availableFavorites(sourceId), hideProtected);
+}
+
+/** Available favorites of every type, most recently added first (all of them). */
+async function availableFavorites(sourceId: string): Promise<CardItem[]> {
   const lists = await Promise.all(
     (['live', 'movie', 'series'] as const).map((type) => loadFavorites(sourceId, type)),
   );
@@ -185,8 +218,11 @@ export async function loadHomeFavorites(sourceId: string): Promise<CardItem[]> {
     .flat()
     .filter((entry): entry is FavoriteEntry & { card: CardItem } => entry.card !== undefined)
     .sort((a, b) => b.favorite.addedAt - a.favorite.addedAt)
-    .slice(0, HOME_FAVORITES_LIMIT)
     .map((entry) => entry.card);
+}
+
+function homeFavoritesRow(cards: CardItem[], hideProtected: boolean): CardItem[] {
+  return visible(cards, hideProtected).slice(0, HOME_FAVORITES_LIMIT);
 }
 
 export interface HomeData {
@@ -198,15 +234,18 @@ export interface HomeData {
 }
 
 export async function loadHome(sourceId: string): Promise<HomeData> {
-  const [continueWatching, recentChannels, favorites] = await Promise.all([
+  // The setting is read with the rows (one round of reads); the rows are filtered after.
+  const [continueWatching, recentChannels, favorites, hideSetting] = await Promise.all([
     continueWatchingRow(sourceId),
     recentChannelsRow(sourceId),
-    loadHomeFavorites(sourceId),
+    availableFavorites(sourceId),
+    settingsRepo.get('hideProtectedContent'),
   ]);
+  const hide = hideSetting === true;
   return {
-    continueWatching: continueWatching.cards,
-    recentChannels: recentChannels.cards,
-    favorites,
+    continueWatching: visible(continueWatching.cards, hide),
+    recentChannels: visible(recentChannels.cards, hide),
+    favorites: homeFavoritesRow(favorites, hide),
     hasHistory: continueWatching.hasHistory || recentChannels.hasHistory,
   };
 }

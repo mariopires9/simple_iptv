@@ -3,9 +3,10 @@
 import 'fake-indexeddb/auto';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sourcesRepo, wipeAll } from '@/core/db';
-import { NetError } from '@/core/net';
+import { sourcesRepo, wipeAll, type Channel } from '@/core/db';
+import { NetError, shortenUrl } from '@/core/net';
 import type { Capabilities } from '@/core/platform';
+import type { StreamProbeResult } from '@/player/probe';
 import { t } from '@/i18n';
 import type { XtreamConnectionReport } from '@/providers/xtream';
 import { forgetActiveSource } from '../activeSource';
@@ -156,7 +157,8 @@ describe('DiagnosticsScreen', () => {
     const report = writeClipboard.mock.calls[0]![0];
     expect(report).toContain(t.diagnostics.report.heading);
     for (const secret of [HOST, USER, PASS, '8080']) expect(report).not.toContain(secret);
-    expect(await screen.findByText(t.diagnostics.copied)).toBeInTheDocument();
+    // The toast and its live region can both hold the text, depending on timing.
+    expect((await screen.findAllByText(t.diagnostics.copied)).length).toBeGreaterThan(0);
   });
 
   it('without a clipboard, shows the report to copy by hand', async () => {
@@ -194,6 +196,63 @@ describe('DiagnosticsScreen', () => {
     );
     // A local file: network checks are skipped.
     expect(await screen.findByTestId('check-api')).toHaveAttribute('data-status', 'skipped');
+  });
+
+  it('live stream test (PLY-06 C): shows each format masked, offers the working format, and is in the report', async () => {
+    await seedSource({ ...xtream, serverUrl: `https://${HOST}` }, PASS);
+    const probeStream = vi.fn((url: string): Promise<StreamProbeResult> =>
+      Promise.resolve(
+        url.endsWith('.ts')
+          ? { cause: 'redirect-blocked', redirected: true, target: shortenUrl(url) }
+          : { cause: 'ok', content: 'playlist', status: 200, target: shortenUrl(url) },
+      ),
+    );
+    const writeClipboard = vi.fn((_text: string) => Promise.resolve());
+    const { user } = await show({
+      deps: {
+        ...deps({ ok: true, corsApi: 'ok', error: undefined }),
+        firstLiveChannel: () =>
+          Promise.resolve({ streamPath: '42', key: 'tv:live:42' } as unknown as Channel),
+        probeStream,
+      },
+      writeClipboard,
+    });
+    const check = await screen.findByTestId('check-liveStream');
+    const ls = t.diagnostics.checks.liveStream;
+    expect(check).toHaveAttribute('data-status', 'warning');
+    expect(within(check).getByText(ls.title, { exact: false })).toBeInTheDocument();
+    expect(within(check).getByText(ls.reasons.partial)).toBeInTheDocument();
+    expect(
+      within(check).getByText(
+        ls.fact(
+          'MPEG-TS',
+          'mpegts.js',
+          `${ls.results['redirect-blocked']} (${ls.redirected})`,
+          'https://***/live/***/***/***.ts',
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(check).getByText(
+        ls.fact(
+          'HLS',
+          'hls.js',
+          `${ls.results.ok} (${ls.status('200')})`,
+          'https://***/live/***/***/***.m3u8',
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(check).getByRole('button', {
+        name: t.diagnostics.links.useFormat(t.diagnostics.checks.liveFormat.formats.m3u8),
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: t.diagnostics.copy }));
+    const report = writeClipboard.mock.calls[0]![0];
+    expect(report).toContain(ls.title);
+    expect(report).toContain('https://***/live/***/***/***.ts');
+    for (const secret of [HOST, USER, PASS]) expect(report).not.toContain(secret);
   });
 
   it('is registered in the feature routes', () => {

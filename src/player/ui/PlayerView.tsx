@@ -13,11 +13,10 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router';
 import { log } from '@/core/log';
-import { connectivity, isNetworkBlocked } from '@/core/net';
+import { connectivity, identityRewriter, isNetworkBlocked, type UrlRewriter } from '@/core/net';
 import { t } from '@/i18n';
-import { StateView, useDelayedFlag, visuallyHidden } from '@/ui/state';
+import { useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
 import type { PlaybackError, StreamDescriptor } from '../types';
 import { AUDIO_CHECK_DELAY_MS, audioMissing } from './audioCheck';
@@ -33,6 +32,7 @@ import {
   startPlayback,
 } from './media';
 import { detectPlayerPlatform, type PlayerPlatform } from './platform';
+import { PlaybackErrorOverlay, type FailureProbe } from './PlaybackErrorOverlay';
 import { PlayerControls, type SeekWindow } from './PlayerControls';
 import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
@@ -105,6 +105,12 @@ export interface PlayerViewProps {
   /** Controller factory (tests inject a fake). Default: `createPlayerController`. */
   createController?: ControllerFactory;
   /**
+   * Routes the stream and playlist requests (the list's personal proxy, PRX-01). Read at each
+   * request: a new one applies from the next request without recreating the controller.
+   * Default: direct.
+   */
+  rewriter?: UrlRewriter;
+  /**
    * Rendered inside the player region, above everything else — so it is part of the fullscreen
    * element (e.g. the live "Channels" panel, LIV-05).
    */
@@ -119,6 +125,8 @@ export interface PlayerViewProps {
    * next-episode card (SER-03) read its time and listen to its media events.
    */
   onVideoElement?: (video: HTMLVideoElement | null) => void;
+  /** PLY-06: root-cause probe after a final failure (tests inject a fake). */
+  failureProbe?: FailureProbe;
 }
 
 export function PlayerView({
@@ -135,16 +143,27 @@ export function PlayerView({
   platform: platformProp,
   autoFocus = true,
   createController,
+  rewriter,
   overlay,
   onFinalError,
   onVideoElement,
+  failureProbe,
 }: PlayerViewProps) {
   const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
   // Only read when it can matter: no explicit prop, and a phone or tablet.
   const storedFullscreenOnLandscape = useFullscreenOnLandscapeSetting(
     fullscreenOnLandscape === undefined && platform.mobile,
   );
-  const { videoRef, bound } = usePlayerController(createController);
+  // One stable rewriter per view that delegates to the latest prop; updated before the play
+  // effect below runs, so a descriptor and its rewriter given together are used together.
+  const rewriterRef = useRef<UrlRewriter>(rewriter ?? identityRewriter);
+  useEffect(() => {
+    rewriterRef.current = rewriter ?? identityRewriter;
+  }, [rewriter]);
+  const [delegatingRewriter] = useState<UrlRewriter>(() => ({
+    rewrite: (url, purpose) => rewriterRef.current.rewrite(url, purpose),
+  }));
+  const { videoRef, bound } = usePlayerController(createController, delegatingRewriter);
   const video = bound?.video ?? null;
   const controller = bound?.controller;
   const onVideoElementRef = useRef(onVideoElement);
@@ -699,45 +718,17 @@ export function PlayerView({
         </Box>
       )}
 
-      {error && errorText && (
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            top: 64,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'auto',
-            // Opaque theme surface: the StateView texts use the theme's text colors.
-            bgcolor: 'background.default',
-            color: 'text.primary',
-          }}
-        >
-          <StateView
-            variant="error"
-            title={errorText.title}
-            message={errorText.message}
-            details={error.message}
-            actions={
-              <>
-                <Button variant="contained" onClick={retry}>
-                  {t.state.actions.retry}
-                </Button>
-                {isLive && onNext && (
-                  <Button variant="outlined" onClick={onNext}>
-                    {t.player.controls.nextChannel}
-                  </Button>
-                )}
-                {errorText.action === 'diagnostics' && (
-                  <Button variant="text" component={Link} to={DIAGNOSTICS_PATH}>
-                    {t.player.errors.actions.diagnostics}
-                  </Button>
-                )}
-              </>
-            }
-          />
-        </Box>
+      {error && errorText && failure && (
+        <PlaybackErrorOverlay
+          error={error}
+          text={errorText}
+          descriptor={stream}
+          offline={failure.offline}
+          onRetry={retry}
+          onNext={isLive ? onNext : undefined}
+          diagnosticsPath={DIAGNOSTICS_PATH}
+          {...(failureProbe ? { probe: failureProbe } : {})}
+        />
       )}
 
       <Box role="status" aria-live="polite" sx={visuallyHidden}>

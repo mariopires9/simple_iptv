@@ -12,28 +12,40 @@ export type NavId = 'home' | 'live' | 'movies' | 'series' | 'favorites' | 'setti
 
 export interface NavItem {
   id: NavId;
-  label: string;
+  /**
+   * The label in the active locale, read from `t.nav[id]` on every access (a getter): the items
+   * are module constants, so a value captured at module load would keep the language the app
+   * started in (QA-02 defect, UX-06).
+   */
+  readonly label: string;
   icon: ReactNode;
   /** Route path (hash router, src/app/router.tsx). */
   to: string;
 }
 
+function navItem(id: NavId, icon: ReactNode, to: string): NavItem {
+  return {
+    id,
+
+    get label() {
+      return t.nav[id];
+    },
+    icon,
+    to,
+  };
+}
+
 /** Shown in every navigation variant (bottom bar, rail, expanded rail). */
 export const PRIMARY_NAV_ITEMS: readonly NavItem[] = [
-  { id: 'home', label: t.nav.home, icon: <HomeRounded />, to: '/' },
-  { id: 'live', label: t.nav.live, icon: <LiveTvRounded />, to: '/live' },
-  { id: 'movies', label: t.nav.movies, icon: <MovieRounded />, to: '/movies' },
-  { id: 'series', label: t.nav.series, icon: <TvRounded />, to: '/series' },
-  { id: 'favorites', label: t.nav.favorites, icon: <FavoriteRounded />, to: '/favorites' },
+  navItem('home', <HomeRounded />, '/'),
+  navItem('live', <LiveTvRounded />, '/live'),
+  navItem('movies', <MovieRounded />, '/movies'),
+  navItem('series', <TvRounded />, '/series'),
+  navItem('favorites', <FavoriteRounded />, '/favorites'),
 ];
 
 /** In the rail on tablet/desktop; in the top bar menu on mobile. */
-export const SETTINGS_NAV_ITEM: NavItem = {
-  id: 'settings',
-  label: t.nav.settings,
-  icon: <SettingsRounded />,
-  to: '/settings',
-};
+export const SETTINGS_NAV_ITEM: NavItem = navItem('settings', <SettingsRounded />, '/settings');
 
 const SECTION_IDS: readonly NavId[] = ['live', 'movies', 'series', 'favorites', 'settings'];
 

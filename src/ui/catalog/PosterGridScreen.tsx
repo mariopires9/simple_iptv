@@ -63,6 +63,8 @@ export interface PosterGridScreenProps<T extends PosterItem> {
   externalIdOf: (item: T) => string;
   posterOf: (item: T) => string | undefined;
   captionOf: (item: T) => string | undefined;
+  /** Protected content (DRM/DASH, UX-07): badge on the card. */
+  isProtected?: ((item: T) => boolean) | undefined;
   /** Read "Continue watching" progress bars from the history. */
   progress: boolean;
   gridTestId: string;
@@ -81,6 +83,7 @@ export function PosterGridScreen<T extends PosterItem>({
   externalIdOf,
   posterOf,
   captionOf,
+  isProtected,
   progress: withProgress,
   gridTestId,
 }: PosterGridScreenProps<T>) {
@@ -172,17 +175,23 @@ export function PosterGridScreen<T extends PosterItem>({
   const effectiveSort: SortMode =
     sort === 'rating' && loaded && !loaded.hasRatings ? DEFAULT_SORT : sort;
 
+  const hideProtected = ready?.hideProtected === true;
   const cache = useMemo(
     () =>
       loaded
         ? new CatalogPageCache<T>(
-            keyedPageSource(sortedKeys(loaded.rows, effectiveSort, activeLocale()), loadItems),
+            keyedPageSource(
+              sortedKeys(loaded.rows, effectiveSort, activeLocale(), hideProtected),
+              loadItems,
+            ),
             PAGE_SIZE,
             MAX_PAGES,
           )
         : undefined,
-    [loaded, effectiveSort, loadItems],
+    [loaded, effectiveSort, loadItems, hideProtected],
   );
+  // Everything in the category is protected and hidden: say so in the empty state (UX-07).
+  const allHidden = hideProtected && loaded !== undefined && loaded.rows.length > 0;
   const [pageError, setPageError] = useState<{ cache: CatalogPageCache<T>; error: unknown }>();
   const onPageError = useCallback(
     (error: unknown) => {
@@ -299,6 +308,7 @@ export function PosterGridScreen<T extends PosterItem>({
         <StateView
           variant="empty"
           title={texts.emptyCategory.title}
+          message={allHidden ? t.state.protectedContent.allHidden : undefined}
           actions={category.kind === 'all' ? undefined : showAll}
         />
       );
@@ -318,6 +328,7 @@ export function PosterGridScreen<T extends PosterItem>({
           itemPath={pathOf}
           posterOf={posterOf}
           captionOf={captionOf}
+          isProtected={isProtected}
           texts={texts}
           testId={gridTestId}
         />

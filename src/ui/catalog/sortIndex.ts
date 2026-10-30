@@ -19,7 +19,7 @@
 // but offsets over `[categoryKey+order]` are cursor walks (measured on fake-indexeddb: 10 000
 // rows read with limit took ~25 s vs 36 ms for one unbounded read). A dedicated core/db read of
 // the sort fields (or sort indexes per category) is the follow-up if large catalogues need it.
-import type { Movie, Series } from '@/core/db';
+import type { CatalogItem, Movie, Series } from '@/core/db';
 
 /** Content types with a poster grid. */
 export type PosterType = 'movie' | 'series';
@@ -39,6 +39,8 @@ export interface SortRow {
   rating: number | undefined;
   /** Position in the source's order (category order, then `order`): the tie-breaker. */
   pos: number;
+  /** Protected content (DRM/DASH, UX-07): left out when the user hides it. */
+  protected: boolean;
 }
 
 export interface SortProjection {
@@ -47,9 +49,20 @@ export interface SortProjection {
   hasRatings: boolean;
 }
 
-function project(item: Movie | Series, pos: number): SortRow {
+function project(
+  item: Movie | Series,
+  pos: number,
+  isProtected: (item: CatalogItem) => boolean,
+): SortRow {
   const addedAt = item.type === 'movie' ? item.addedAt : undefined;
-  return { key: item.key, name: item.name, addedAt, rating: item.rating, pos };
+  return {
+    key: item.key,
+    name: item.name,
+    addedAt,
+    rating: item.rating,
+    pos,
+    protected: isProtected(item),
+  };
 }
 
 /** Reads the projection of the given categories (in this order), one category at a time. */
@@ -58,13 +71,13 @@ export async function readProjection(
   categoryKeys: readonly string[],
 ): Promise<SortProjection> {
   // Dynamic: `src/ui` is checked as part of the initial bundle (ADR-003); only lazy screens use this.
-  const { catalogRepo } = await import('@/core/db');
+  const { catalogRepo, isProtectedItem } = await import('@/core/db');
   const rows: SortRow[] = [];
   let hasRatings = false;
   for (const key of categoryKeys) {
     const movies: readonly (Movie | Series)[] = await catalogRepo.listByCategory(type, key);
     for (const movie of movies) {
-      const row = project(movie, rows.length);
+      const row = project(movie, rows.length, isProtectedItem);
       if (row.rating !== undefined) hasRatings = true;
       rows.push(row);
     }
@@ -123,26 +136,28 @@ function compareOptional(a: number | undefined, b: number | undefined): number {
 const sorted = new WeakMap<readonly SortRow[], Map<string, readonly string[]>>();
 
 /**
- * Keys of `rows` in `mode` order (memoised per rows array, mode and locale):
+ * Keys of `rows` in `mode` order (memoised per rows array, mode, locale and `hideProtected`):
  * - `added`: newest first; movies without a date keep the source order, after the dated ones.
  * - `name`: locale-aware, case/accent-insensitive, numeric ("Movie 2" before "Movie 10").
  * - `rating`: highest first; unrated last.
- * Ties keep the source order.
+ * Ties keep the source order. `hideProtected` (UX-07, Settings › Playback) leaves protected rows
+ * out, so the grid's total and empty state count only what is shown.
  */
 export function sortedKeys(
   rows: readonly SortRow[],
   mode: SortMode,
   locale: string,
+  hideProtected = false,
 ): readonly string[] {
   let byMode = sorted.get(rows);
   if (!byMode) {
     byMode = new Map();
     sorted.set(rows, byMode);
   }
-  const id = `${mode}\n${locale}`;
+  const id = `${mode}\n${locale}\n${hideProtected}`;
   const cached = byMode.get(id);
   if (cached) return cached;
-  const list = [...rows];
+  const list = hideProtected ? rows.filter((r) => !r.protected) : [...rows];
   switch (mode) {
     case 'added':
       list.sort((a, b) => compareOptional(a.addedAt, b.addedAt) || a.pos - b.pos);

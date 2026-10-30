@@ -12,6 +12,12 @@ const CATALOGS_PATTERN = {
   group: ['@/i18n/catalogs', '**/i18n/catalogs', './catalogs', '../catalogs'],
   message: 'The full string catalogs are for tests and tooling only (TEC-01); use `t` from @/i18n.',
 };
+// PRX-01: proxy/ is a standalone Node program copied to the owner's PC; the app never imports it
+// (tests may, for the URL contract test).
+const PROXY_PATTERN = {
+  group: ['**/proxy/*.ts', '**/proxy/*.json'],
+  message: 'proxy/ is a standalone program (PRX-01); src may import it only from tests.',
+};
 const TEST_FILES = ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/**/test-utils/**'];
 
 /** `no-restricted-imports` for the boundary groups, plus the catalogs outside tests. */
@@ -20,7 +26,7 @@ const restrict = (groups, { catalogs }) => {
     group: [`@/${g}`, `@/${g}/**`],
     message: `Import forbidden by module boundaries (see docs/ARCHITECTURE.md §2): ${g}`,
   }));
-  if (catalogs) patterns.push(CATALOGS_PATTERN);
+  if (catalogs) patterns.push(CATALOGS_PATTERN, PROXY_PATTERN);
   return { 'no-restricted-imports': patterns.length ? ['error', { patterns }] : 'off' };
 };
 
@@ -127,4 +133,24 @@ export default tseslint.config(
     files: ['*.config.{js,ts}', 'e2e/**', 'scripts/**'],
     languageOptions: { globals: { ...globals.node } },
   },
+  // Personal proxy (PRX-01, ADR-010): standalone, Node only, nothing from the app.
+  {
+    files: ['proxy/**'],
+    languageOptions: { globals: { ...globals.node } },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/*', '**/src/**'],
+              message: "proxy/ is standalone: it is copied to the owner's PC on its own (PRX-01).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // The proxy logger is the only proxy file allowed to write to the console (no URLs, ever).
+  { files: ['proxy/log.ts'], rules: { 'no-console': 'off' } },
 );

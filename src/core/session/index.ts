@@ -24,3 +24,17 @@ export {
   dataDeletionChannelName,
   watchDataDeletion,
 } from './dataDeletion';
+// Personal proxy configuration and per-list rewriters (PRX-01, ADR-010).
+export {
+  InvalidProxyConfigError,
+  loadPersonalProxy,
+  PROXY_ROUTINGS,
+  PROXY_TOKEN_REF,
+  proxyRoutingOf,
+  removePersonalProxy,
+  rewritersForSource,
+  savePersonalProxy,
+  type PersonalProxyConfig,
+  type RewritersDeps,
+  type SourceRewriters,
+} from './proxy';

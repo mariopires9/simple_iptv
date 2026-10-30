@@ -25,7 +25,7 @@ afterEach(async () => {
 });
 
 describe('SettingsScreen (UX-04 AC1)', () => {
-  it('shows the sections in order: Lists, Appearance, Language, Playback, Storage, Privacy, About', async () => {
+  it('shows the sections in order: Lists, Appearance, Language, Playback, Personal proxy, Storage, Privacy, About', async () => {
     renderSettings(<SettingsScreen />);
     const s = t.settings.sections;
     expect(
@@ -37,6 +37,7 @@ describe('SettingsScreen (UX-04 AC1)', () => {
       s.appearance,
       s.language,
       s.playback,
+      s.proxy,
       s.storage,
       s.privacy,
       s.about,
@@ -47,6 +48,7 @@ describe('SettingsScreen (UX-04 AC1)', () => {
     }
     // Async sections settle without errors.
     await screen.findByRole('switch', { name: t.settings.playback.playLastChannel });
+    await screen.findByLabelText(t.settings.proxy.url);
   });
 
   it('links to My lists and to the Privacy and data page', async () => {
