@@ -187,10 +187,8 @@ test.describe('smoke', () => {
   });
 
   test('UX-06 AC2: navigation labels switch language without a reload', async ({ page }) => {
-    // Known defect (reported by QA-02): the rail/bottom-bar labels are computed once at module
-    // load (src/app/shell/navItems.tsx), so they stay in the previous language until a reload.
-    // `test.fail()` keeps CI green and turns red once the defect is fixed: then remove it.
-    test.fail();
+    // QA-02 defect, fixed: the rail/bottom-bar labels are read from `t` at render time
+    // (src/app/shell/navItems.tsx), so they switch with the language.
     await addXtreamSource(page);
     await openSettings(page);
     await page.getByRole('radio', { name: 'Português' }).check();

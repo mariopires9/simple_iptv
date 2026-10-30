@@ -5,6 +5,8 @@
 import Button from '@mui/material/Button';
 import Snackbar, { type SnackbarCloseReason } from '@mui/material/Snackbar';
 import Box from '@mui/material/Box';
+import { useTheme } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { t } from '@/i18n';
 import { visuallyHidden } from './visuallyHidden';
@@ -30,6 +32,13 @@ export interface ToastApi {
   /** Dismisses a toast (visible or queued); without an id, the visible one. */
   dismiss: (id?: number) => void;
 }
+
+/**
+ * Bottom offset of the toast on phones (< 600 px), where the bottom navigation bar is: the toast
+ * sits above the bar (its tallest, two-line labels) instead of over it, so it never intercepts a
+ * tap on the navigation (found by QA-02 on WebKit/iPhone).
+ */
+export const TOAST_PHONE_BOTTOM = 'calc(96px + env(safe-area-inset-bottom))';
 
 export const TOAST_DURATION_MS = 5000;
 export const TOAST_WITH_ACTION_DURATION_MS = 8000;
@@ -106,6 +115,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const theme = useTheme();
+  const phone = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   const isError = current?.severity === 'error';
   const announced = open && current ? current.message : '';
 
@@ -124,6 +135,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         autoHideDuration={current ? durationOf(current) : null}
         onClose={handleClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        data-testid="toast"
+        sx={phone ? { bottom: TOAST_PHONE_BOTTOM } : undefined}
         slotProps={{
           transition: { onExited: handleExited },
           // The live regions above do the announcing; the visible toast is not a second one.

@@ -9,10 +9,8 @@ test('EPG-01: a channel whose programmes have all ended is not re-requested in a
   browserName,
 }) => {
   test.skip(browserName !== 'chromium', 'request-count check; one engine is enough');
-  // Known defect: the fixture's programmes (2026-01-01) are in the past, so the cached entry is
-  // never "fresh" and is asked again and again (measured locally: 81 requests in 5 s, 523 in 3 s).
-  // `test.fail()` keeps CI green and turns red once the defect is fixed: then remove it.
-  test.fail();
+  // The fixture's programmes (2026-01-01) are in the past: before the fix the entry was never
+  // "fresh" and was asked again and again (81 requests in 5 s); now it is kept for its TTL.
 
   await addXtreamSource(page); // ends on Live TV with the channel rows visible
   const start = sandbox.panel.length;
