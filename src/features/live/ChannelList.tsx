@@ -26,14 +26,15 @@ import {
   type MouseEvent,
 } from 'react';
 import { isProtectedItem, type Channel } from '@/core/db';
-import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { ProtectedBadge, ProtectedNote } from '@/ui/catalog/ProtectedBadge';
+import { channelKeyOf } from '@/ui/dpad';
 import { CHANNEL_ROW_HEIGHT, visuallyHidden } from '@/ui/state';
 import { focusRing } from '@/ui/theme/tokens';
 import { ChannelAvatar } from './ChannelAvatar';
-import { SCROLL_DEBOUNCE_MS, currentProgramme, type EpgService } from './epg';
+import { currentProgramme, type EpgService } from './epg';
 import type { PageCache } from './pageCache';
+import { useVisibleEpg } from './useVisibleEpg';
 
 const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
 
@@ -167,11 +168,16 @@ export function ChannelList({
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (total === 0 || event.altKey || event.ctrlKey || event.metaKey) return;
-    switch (event.key) {
+    // UX-05: ↑ on the first row and ↓ on the last are left to the D-pad's spatial focus (the
+    // filter field above, the controls below); the remote's channel keys page like PageUp/Down.
+    const channelKey = channelKeyOf(event);
+    switch (channelKey === 'up' ? 'PageUp' : channelKey === 'down' ? 'PageDown' : event.key) {
       case 'ArrowDown':
+        if (active === total - 1) return;
         move(active + 1);
         break;
       case 'ArrowUp':
+        if (active === 0) return;
         move(active - 1);
         break;
       case 'PageDown':
@@ -310,102 +316,6 @@ export function ChannelList({
 /** Current programme title of `channel`, if cached (`_version` ties the call to a re-render). */
 function nowTitle(epg: EpgService, channel: Channel, _version: number): string | undefined {
   return currentProgramme(epg.peek(channel), Date.now())?.title;
-}
-
-/** Longest single timer (setTimeout overflows above 2³¹−1 ms). */
-const MAX_TIMER_MS = 2_147_483_647;
-
-/**
- * EPG of the visible rows `[start, end]` (EPG-01 AC2):
- * - a new range is requested once it has been still for SCROLL_DEBOUNCE_MS; only then are the
- *   requests of rows that left it cancelled (queued ones are never sent);
- * - a page arriving inside the settled range only adds its newly loaded rows: nothing in flight
- *   is aborted or asked twice;
- * - one timer, at the next programme boundary among the visible rows, re-renders them (the next
- *   programme comes from the cache) and asks again for rows whose cached programmes ran out.
- * Returns a counter bumped whenever programmes arrive or a boundary passes.
- */
-function useVisibleEpg(
-  epg: EpgService | undefined,
-  cache: PageCache,
-  start: number,
-  end: number,
-  /** Bumped when a page arrives. */
-  pages: number,
-): number {
-  const [version, bump] = useReducer((n: number) => n + 1, 0);
-  const inFlight = useRef(new Map<string, AbortController>());
-  const [settled, setSettled] = useState<{ start: number; end: number }>();
-  useEffect(() => (epg ? epg.subscribe(bump) : undefined), [epg]);
-
-  // Debounced range: requests follow only a range that has been still.
-  useEffect(() => {
-    if (!epg || end < start) return undefined;
-    const timer = setTimeout(() => setSettled({ start, end }), SCROLL_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [epg, start, end]);
-
-  // Unmount (or another service/cache): cancel what this list asked for.
-  useEffect(() => {
-    const requests = inFlight.current;
-    return () => {
-      for (const controller of requests.values()) controller.abort();
-      requests.clear();
-    };
-  }, [epg, cache]);
-
-  // Settled range, page arrivals and boundaries: ask for the visible rows still missing, and
-  // cancel the requests of rows that are no longer in the range.
-  useEffect(() => {
-    if (!epg || !settled) return;
-    const requests = inFlight.current;
-    const wanted = new Set<string>();
-    for (let index = settled.start; index <= settled.end; index++) {
-      const channel = cache.get(index);
-      if (!channel) continue;
-      wanted.add(channel.key);
-      if (requests.has(channel.key) || epg.peek(channel) !== undefined) continue;
-      const controller = new AbortController();
-      requests.set(channel.key, controller);
-      epg
-        .load(channel, { signal: controller.signal })
-        .catch((error: unknown) => {
-          if (error instanceof DOMException && error.name === 'AbortError') return;
-          log.warn('live: loading the EPG of a row failed', {
-            error: error instanceof Error ? error.name : 'unknown',
-          });
-        })
-        .finally(() => {
-          if (requests.get(channel.key) === controller) requests.delete(channel.key);
-        });
-    }
-    for (const [key, controller] of requests) {
-      if (wanted.has(key)) continue;
-      controller.abort();
-      requests.delete(key);
-    }
-  }, [epg, cache, settled, pages, version]);
-
-  // One timer at the next start/end of a programme among the visible rows.
-  useEffect(() => {
-    if (!epg || end < start) return undefined;
-    const now = Date.now();
-    let next = Infinity;
-    for (let index = start; index <= end; index++) {
-      const channel = cache.get(index);
-      const programmes = channel && epg.peek(channel);
-      if (!programmes) continue;
-      for (const p of programmes) {
-        if (p.start > now) next = Math.min(next, p.start);
-        else if (p.end > now) next = Math.min(next, p.end);
-      }
-    }
-    if (next === Infinity) return undefined;
-    const timer = setTimeout(bump, Math.min(MAX_TIMER_MS, next - now));
-    return () => clearTimeout(timer);
-  }, [epg, cache, start, end, pages, version]);
-
-  return version;
 }
 
 interface ChannelRowProps {

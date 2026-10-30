@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { log } from '@/core/log';
 import { connectivity, identityRewriter, isNetworkBlocked, type UrlRewriter } from '@/core/net';
 import { t } from '@/i18n';
+import { DPAD_SCOPE_ATTRIBUTE } from '@/ui/dpad';
 import { useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
 import { NO_TRACKS } from '../types';
@@ -34,7 +35,7 @@ import {
 } from './media';
 import { detectPlayerPlatform, type PlayerPlatform } from './platform';
 import { PlaybackErrorOverlay, type FailureProbe } from './PlaybackErrorOverlay';
-import { PlayerControls, type SeekWindow } from './PlayerControls';
+import { PlayerControls, PRIMARY_CONTROL_ATTRIBUTE, type SeekWindow } from './PlayerControls';
 import { TrackMenu, hasTrackChoice } from './TrackMenu';
 import { pickTrack, saveTrackPreference, useTrackPreference } from './trackPreference';
 import { useAutoHide } from './useAutoHide';
@@ -555,6 +556,13 @@ export function PlayerView({
     toggleChannelList: isLive ? onToggleChannelList : undefined,
     // Esc leaves fullscreen first; only then does it close the player.
     close: fullscreen.active && fullscreen.mode === 'element' ? fullscreen.exit : onClose,
+    // UX-05: OK on the video → Play/Pause; on the error state, its first action ("Try again").
+    focusControls: () =>
+      (
+        controls?.querySelector<HTMLElement>(`[${PRIMARY_CONTROL_ATTRIBUTE}]`) ??
+        region?.querySelector<HTMLElement>('[data-testid="player-error"] button:not([disabled])') ??
+        controls?.querySelector<HTMLElement>('button:not([disabled])')
+      )?.focus(),
   });
 
   useMediaSession({
@@ -603,6 +611,8 @@ export function PlayerView({
       role="region"
       aria-label={t.player.region(title)}
       tabIndex={-1}
+      // UX-05: the D-pad moves between the player's controls only; Back closes the player.
+      {...{ [DPAD_SCOPE_ATTRIBUTE]: '' }}
       data-testid="player-region"
       sx={{
         position: 'relative',

@@ -308,6 +308,15 @@ describe('PlayerView — shortcuts', () => {
     expect(t.media.seeks).toEqual([]);
   });
 
+  it('UX-05: OK on the video moves the focus to Play/Pause; the region is a D-pad scope', async () => {
+    const t = setup({ descriptor: LIVE });
+    await flush();
+    t.region().focus();
+    key(t.region(), 'Enter');
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Pause');
+    expect(t.region()).toHaveAttribute('data-dpad-scope');
+  });
+
   it('↑/↓ and L are live-only', async () => {
     const handlers = { onPrevious: vi.fn(), onNext: vi.fn(), onToggleChannelList: vi.fn() };
     const t = setup(handlers);

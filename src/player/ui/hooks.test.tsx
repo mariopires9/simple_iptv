@@ -161,6 +161,47 @@ describe('useShortcuts', () => {
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
   });
+
+  it('UX-05 AC4: the remote channel keys change channel like ↑/↓ (CH+ = previous row)', () => {
+    const h = all();
+    render(<ShortcutHarness handlers={h} />);
+    const region = screen.getByRole('region');
+    for (const init of [
+      { key: 'ChannelUp' },
+      { key: 'Unidentified', keyCode: 427 },
+      { key: 'PageUp' },
+    ]) {
+      expect(fireEvent.keyDown(region, init)).toBe(false);
+    }
+    for (const init of [
+      { key: 'ChannelDown' },
+      { key: 'Unidentified', keyCode: 428 },
+      { key: 'PageDown' },
+    ]) {
+      expect(fireEvent.keyDown(region, init)).toBe(false);
+    }
+    expect(h.previous).toHaveBeenCalledTimes(3);
+    expect(h.next).toHaveBeenCalledTimes(3);
+    // Holding a channel key zaps once.
+    fireEvent.keyDown(region, { key: 'ChannelDown', repeat: true });
+    expect(h.next).toHaveBeenCalledTimes(3);
+  });
+
+  it('UX-05 AC1: arrows on a control are left to the D-pad; OK on the video goes to the controls', () => {
+    const h = { ...all(), focusControls: vi.fn() };
+    render(<ShortcutHarness handlers={h} />);
+    const button = screen.getByRole('button');
+    for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+      expect(fireEvent.keyDown(button, { key })).toBe(true); // not prevented
+    }
+    expect(h.seekBy).not.toHaveBeenCalled();
+    expect(h.previous).not.toHaveBeenCalled();
+    expect(h.next).not.toHaveBeenCalled();
+    fireEvent.keyDown(button, { key: 'Enter' }); // activates the button, not a shortcut
+    expect(h.focusControls).not.toHaveBeenCalled();
+    expect(fireEvent.keyDown(screen.getByRole('region'), { key: 'Enter' })).toBe(false);
+    expect(h.focusControls).toHaveBeenCalledTimes(1);
+  });
 });
 
 function AutoHideHarness({ enabled, pinned }: { enabled: boolean; pinned: boolean }) {

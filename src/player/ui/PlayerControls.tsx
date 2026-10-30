@@ -77,6 +77,9 @@ const liveColor = (theme: Theme) =>
 /** The pointer resting over these parts keeps the controls visible (useAutoHide). */
 const keep = { [AUTO_HIDE_KEEP_ATTR]: '' };
 
+/** Marks Play/Pause: OK on the video surface moves the focus there (UX-05). */
+export const PRIMARY_CONTROL_ATTRIBUTE = 'data-primary-control';
+
 const iconButtonSx = { color: 'common.white', minWidth: 44, minHeight: 44 } as const;
 
 function Control({
@@ -84,16 +87,19 @@ function Control({
   onClick,
   children,
   large = false,
+  primary = false,
 }: {
   label: string;
   onClick: () => void;
   children: ReactNode;
   large?: boolean;
+  primary?: boolean;
 }) {
   return (
     <IconButton
       aria-label={label}
       onClick={onClick}
+      {...(primary ? { [PRIMARY_CONTROL_ATTRIBUTE]: '' } : {})}
       size={large ? 'large' : 'medium'}
       sx={large ? { ...iconButtonSx, '& svg': { fontSize: 48 } } : iconButtonSx}
     >
@@ -221,7 +227,7 @@ export function PlayerControls({
                     <Replay10Rounded />
                   </Control>
                 )}
-            <Control large label={paused ? c.play : c.pause} onClick={onTogglePlay}>
+            <Control large primary label={paused ? c.play : c.pause} onClick={onTogglePlay}>
               {paused ? <PlayArrowRounded /> : <PauseRounded />}
             </Control>
             {isLive

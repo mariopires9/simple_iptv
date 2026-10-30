@@ -57,6 +57,25 @@ export const epgRepo = {
       .toArray();
   },
 
+  /**
+   * Programmes of the channel overlapping `[from, to)`, in start order, at most `limit`
+   * (EPG-04 guide grid).
+   */
+  async between(
+    channelEpgId: string,
+    from: number,
+    to: number,
+    limit = 500,
+  ): Promise<EpgProgram[]> {
+    const db = await getDb();
+    return db.epgPrograms
+      .where('[channelEpgId+start]')
+      .between([channelEpgId, from - MAX_PROGRAMME_MS], [channelEpgId, to], true, false)
+      .filter((p) => p.end > from)
+      .limit(limit)
+      .toArray();
+  },
+
   async countForSource(sourceId: string): Promise<number> {
     const db = await getDb();
     return db.epgPrograms.where('sourceId').equals(sourceId).count();

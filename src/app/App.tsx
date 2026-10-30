@@ -16,6 +16,7 @@ import {
 } from '@/core/session';
 import { loadLockScreen } from '@/features/settings';
 import { hasSources } from '@/features/sources';
+import { DpadFocusStyles, installDpadNavigation } from '@/ui/dpad';
 import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installChunkReload } from './chunkReload';
@@ -88,6 +89,16 @@ function useVaultLockChecked(): boolean {
 
 const LockScreen = lazy(loadLockScreen);
 
+/**
+ * Back key (UX-05): one step back in the app's history; nothing on its first entry, so the remote
+ * never leaves the app by accident. (React Router keeps the entry's index in `history.state`.)
+ */
+function goBack(): void {
+  const state: unknown = window.history.state;
+  const idx = typeof state === 'object' && state !== null ? (state as { idx?: unknown }).idx : 0;
+  if (typeof idx === 'number' && idx > 0) void getAppRouter().navigate(-1);
+}
+
 export interface AppProps {
   /** Called once per mount, when the first screen is up and the browser is idle (QA-04). */
   onStarted?: () => void;
@@ -143,6 +154,11 @@ export function App({ onStarted }: AppProps = {}) {
     () => (settled && onStarted ? scheduleIdle(onStarted) : undefined),
     [settled, onStarted],
   );
+  // UX-05: TV remotes — spatial arrows, Back (Escape and the remotes' back keys) goes back.
+  useEffect(
+    () => (routerReady ? installDpadNavigation({ back: goBack }) : undefined),
+    [routerReady],
+  );
   useEffect(() => {
     if (!routerReady) return undefined;
     const router = getAppRouter();
@@ -177,6 +193,7 @@ export function App({ onStarted }: AppProps = {}) {
 
   return (
     <ThemeModeProvider>
+      <DpadFocusStyles />
       <ToastProvider>
         <Fragment key={locale}>{content}</Fragment>
         <UpdatePrompt />

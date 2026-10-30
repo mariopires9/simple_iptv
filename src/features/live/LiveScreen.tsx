@@ -855,9 +855,21 @@ export function LiveScreen() {
       style={height !== undefined ? { height } : undefined}
       sx={{ display: 'flex', flexDirection: 'column', gap: 1, minHeight: MIN_HEIGHT }}
     >
-      <Typography variant="h3" component="h1" sx={isTablet ? undefined : visuallyHidden}>
-        {t.live.title}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}>
+        <Typography
+          variant="h3"
+          component="h1"
+          sx={isTablet ? { flex: 1, minWidth: 0 } : visuallyHidden}
+        >
+          {t.live.title}
+        </Typography>
+        {ready && (
+          // TV guide grid (EPG-04).
+          <Button component={Link} to="/live/guide" size="small">
+            {t.live.guide.open}
+          </Button>
+        )}
+      </Box>
       {notice !== undefined && (
         <Typography
           variant="body2"

@@ -6,7 +6,7 @@
 // - Items come from a `CatalogPageCache` (pages read by key as the viewport reaches them); a cell
 //   whose page is still loading renders as a placeholder.
 // - Keyboard: ARIA grid with a roving tab stop — one cell is tabbable, arrows move between cells
-//   (and scroll), Home/End jump to the first/last item, Enter opens the focused item's details.
+//   (and scroll; at an edge they are left to the D-pad's spatial focus, UX-05), Home/End jump to the first/last item, Enter opens the focused item's details.
 //   `aria-rowcount`/`aria-rowindex` describe the full grid even though most rows are not in DOM.
 import Box from '@mui/material/Box';
 import Skeleton from '@mui/material/Skeleton';
@@ -249,17 +249,24 @@ export function PosterGrid<T extends PosterItem>({
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (total === 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+    // UX-05: an arrow at the grid's edge is left to spatial focus (to the categories, the nav
+    // rail, the controls above), so a D-pad can leave the grid; inside it, the arrows never wrap.
+    const column = active % columns;
     switch (event.key) {
       case 'ArrowRight':
+        if (column === columns - 1 || active === total - 1) return;
         move(active + 1);
         break;
       case 'ArrowLeft':
+        if (column === 0) return;
         move(active - 1);
         break;
       case 'ArrowDown':
+        if (activeRow === rowCount - 1) return;
         move(active + columns);
         break;
       case 'ArrowUp':
+        if (activeRow === 0) return;
         move(active - columns);
         break;
       case 'PageDown':
