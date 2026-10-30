@@ -5,14 +5,16 @@ const CSS = '@font-face{font-family:Inter Variable;src:url(/repo/assets/inter-la
 
 describe('inlineStylesheets (QA-04)', () => {
   it('replaces the entry stylesheet link by its CSS, under any base path', () => {
-    const inlined: string[] = [];
+    const read: string[] = [];
     const html = inlineStylesheets(
       '<head><link rel="stylesheet" crossorigin href="/repo/assets/index-abc.css"></head>',
-      (file) => (file === 'assets/index-abc.css' ? CSS : undefined),
-      (file) => inlined.push(file),
+      (file) => {
+        read.push(file);
+        return file === 'assets/index-abc.css' ? CSS : undefined;
+      },
     );
     expect(html).toBe(`<head><style>${CSS}</style></head>`);
-    expect(inlined).toEqual(['assets/index-abc.css']);
+    expect(read).toEqual(['assets/index-abc.css']);
   });
 
   it('keeps the link when the file is unknown or its CSS could close the style element', () => {
