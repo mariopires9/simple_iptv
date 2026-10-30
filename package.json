@@ -18,6 +18,7 @@
     "format:check": "prettier --check .",
     "test:coverage": "vitest run --coverage",
     "licenses": "node scripts/check-licenses.mjs",
+    "budget": "node scripts/check-bundle-budget.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "proxy": "node proxy/server.ts",

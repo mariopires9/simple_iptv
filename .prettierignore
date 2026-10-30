@@ -8,3 +8,6 @@ spikes
 fixtures/streams
 .vitest
 graphify-out
+dist-report
+lhci-report
+.lighthouseci

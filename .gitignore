@@ -14,3 +14,6 @@ test-results/
 graphify-out/
 .vitest/
 proxy/config.json
+dist-report/
+lhci-report/
+.lighthouseci/
