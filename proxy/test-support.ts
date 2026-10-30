@@ -53,27 +53,30 @@ export function testConfig(overrides: Record<string, unknown> = {}): ProxyConfig
     upstream?: Record<string, unknown>;
     limits?: Record<string, unknown>;
   };
+  const upstreamDraft: Record<string, unknown> = {
+    allowedHosts: [
+      'upstream.test',
+      '*.edge.test',
+      'private.test',
+      'metadata.test',
+      'mixed.test',
+      'cgnat.test',
+      'v6private.test',
+      'mapped.test',
+      'nxdomain.test',
+      '192.168.1.1',
+      '[::1]',
+      '127.0.0.1',
+    ],
+    headersTimeoutMs: 1000,
+    ...upstream,
+  };
+  // `allowedHosts: null` leaves the key out: no allowlist (PRX-02).
+  if (upstreamDraft.allowedHosts === null) delete upstreamDraft.allowedHosts;
   return validateConfig({
     token: TEST_TOKEN,
     allowedOrigins: [TEST_ORIGIN],
-    upstream: {
-      allowedHosts: [
-        'upstream.test',
-        '*.edge.test',
-        'private.test',
-        'metadata.test',
-        'mixed.test',
-        'cgnat.test',
-        'v6private.test',
-        'mapped.test',
-        'nxdomain.test',
-        '192.168.1.1',
-        '[::1]',
-        '127.0.0.1',
-      ],
-      headersTimeoutMs: 1000,
-      ...upstream,
-    },
+    upstream: upstreamDraft,
     limits: { requestsPerMinute: 100_000, badTokenPerMinute: 1000, ...limits },
     ...rest,
   });

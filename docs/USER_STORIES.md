@@ -816,6 +816,16 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
   3. Given documentation, Then a guide to expose it via HTTPS (e.g. Tailscale Serve) and security warnings (SSRF, exposure to the internet).
 - **Dependencies:** PLY-01, SRC-02, ADR-010.
 
+### PRX-02 — Proxy without a mandatory host allowlist
+- **Priority:** Must · **Effort:** 1 · **Value:** High (owner decision, 2026-10-30; ADR-010 amendment)
+- **Story:** As the owner, I want the personal proxy to work with M3U and Xtream lists from any provider, so that I don't have to reconfigure the server for every new list.
+- **AC:**
+  1. Given a config without `upstream.allowedHosts` (or without `upstream`), Then the proxy starts and relays app-built URLs to any public host.
+  2. Given that config, Then private, loopback, link-local, CGNAT/tailnet and cloud-metadata targets are still refused after DNS (403 `address-blocked`), and the token, methods and origin checks are unchanged.
+  3. Given `allowedHosts` present, Then it is enforced as before; an empty list is refused at startup.
+  4. Given the docs, Then `config.example.json` omits the allowlist, and README, SECURITY.md and ADR-010 describe the default and the residual risk; the README has a Linux setup section.
+- **Dependencies:** PRX-01.
+
 ### NAT-01 — Android shell (Capacitor) — experimental
 - **Status:** Dropped by the product owner (2026-10-30); not planned.
 - **Priority:** Could · **Effort:** 8 (split before starting) · **Value:** High for Android users with HTTP-only providers

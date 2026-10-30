@@ -78,7 +78,8 @@ export async function main(
       logger.log({
         event: 'startup',
         port,
-        allowedHosts: config.upstream.allowedHosts.length,
+        // 0 = no allowlist: any public host (PRX-02).
+        allowedHosts: config.upstream.allowedHosts?.length ?? 0,
         allowedOrigins: config.allowedOrigins.length,
       });
       resolve({

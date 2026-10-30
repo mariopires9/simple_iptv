@@ -14,7 +14,7 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 | ADR-007 | GitHub Pages + HashRouter | **Accepted** (2026-10-28) |
 | ADR-008 | State: Zustand (UI) + TanStack Query (remote) + Dexie (persisted) | **Accepted** (2026-10-28) |
 | ADR-009 | Heavy work in Web Workers (M3U/JSON/XMLTV parsing, MiniSearch index) | **Accepted** (2026-10-28) |
-| ADR-010 | Strategy for HTTP-only/no-CORS servers | **Accepted** (2026-10-29) — personal proxy (PRX-01) |
+| ADR-010 | Strategy for HTTP-only/no-CORS servers | **Accepted** (2026-10-29) — personal proxy (PRX-01); allowlist optional (PRX-02, 2026-10-30) |
 | ADR-011 | Zero telemetry, zero analytics, zero advertising | **Accepted** (2026-10-28) |
 | ADR-012 | UI in pt-PT with externalized strings (i18n-ready) | **Superseded by ADR-015** |
 | ADR-013 | Validation of external data with tolerant schemas (Valibot) | **Accepted** (2026-10-28) |
@@ -74,6 +74,8 @@ Any change to an Accepted decision requires a new ADR that supersedes it — no 
 - **Decision:** keep the static app in direct mode by default and add an optional **personal proxy (PRX-01)**, moved up to Must: a small dependency-free Node relay in `proxy/` that the owner runs on their own PC, reachable over HTTPS through **Tailscale Serve** (private to the owner's tailnet, valid certificate, no port forwarding, residential IP the provider already accepts). Per list, the app can route stream requests (and optionally API requests) through it. NAT-01 stays Could (dropped by the owner on 2026-10-30).
 - **Rejected:** serverless relays (Vercel/Netlify time limits; Cloudflare Workers terms on video); datacenter VPS as the default (providers often block datacenter IPs, monthly cost) — possible later with the same `proxy/` code; serving the app over http (loses secure context).
 - **Consequences:** the proxy sees the provider credentials embedded in stream URLs (it is the owner's own machine); it must not be an open proxy (mandatory token, upstream allowlist, redirects followed only from allowed hosts, private-range targets refused), must not log URLs, and must stream unbuffered and close upstream when the client leaves (providers allow 1 connection). Exposure to the public internet (Tailscale Funnel, port forwarding) is documented as unsafe by default.
+
+- **Amendment PRX-02 (2026-10-30, owner decision):** the upstream allowlist becomes **optional**. Without `allowedHosts` the proxy relays to any public host, so M3U/Xtream lists from different providers work without reconfiguring the server; the mandatory token, the post-DNS private/loopback/tailnet/metadata address policy, GET/HEAD only, the origin check and the tailnet-only exposure remain. Residual risk accepted: a leaked token (plus tailnet access) turns the relay into a general HTTP relay from the owner's IP; owners who want the old behaviour set `allowedHosts`.
 
 ### ADR-011 — No telemetry
 - No analytics, no trackers, no third-party CDN fonts (self-hosted typefaces), no remote error reporting. Logs only in the console and in a redacted local buffer, manually exportable.

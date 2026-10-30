@@ -21,7 +21,11 @@ export interface ProxyConfig {
   /** Fixed public base URL for rewritten playlists; otherwise derived per request. */
   publicBaseUrl?: string;
   upstream: {
-    allowedHosts: HostRule[];
+    /**
+     * Optional allowlist for `u` requests. `null` (the key left out): any public host — the
+     * address policy (no private, loopback, tailnet or metadata targets) and the token still apply.
+     */
+    allowedHosts: HostRule[] | null;
     maxRedirects: number;
     headersTimeoutMs: number;
     idleTimeoutMs: number;
@@ -100,8 +104,9 @@ export function parseHostRule(entry: string): HostRule | null {
   return { host, wildcard };
 }
 
-/** True when `hostname` (a WHATWG `URL.hostname`) matches one of the rules. */
-export function isHostAllowed(hostname: string, rules: readonly HostRule[]): boolean {
+/** True when `hostname` (a WHATWG `URL.hostname`) matches one of the rules; `null` = any host. */
+export function isHostAllowed(hostname: string, rules: readonly HostRule[] | null): boolean {
+  if (rules === null) return true;
   const host = hostname.toLowerCase();
   return rules.some((rule) =>
     rule.wildcard ? host.endsWith(`.${rule.host}`) : host === rule.host,
@@ -177,12 +182,17 @@ export function validateConfig(raw: unknown): ProxyConfig {
     raw,
     'upstream',
     ['allowedHosts', 'maxRedirects', 'headersTimeoutMs', 'idleTimeoutMs'],
-    true,
+    false,
   );
-  if (!Array.isArray(upstream.allowedHosts) || upstream.allowedHosts.length === 0) {
-    throw new ConfigError('upstream.allowedHosts must be a non-empty array');
+  // Left out: any public host (PRX-02). Present: a non-empty list, so an empty one is never read
+  // as "nothing allowed" by the owner and "everything allowed" by the proxy.
+  if (
+    upstream.allowedHosts !== undefined &&
+    (!Array.isArray(upstream.allowedHosts) || upstream.allowedHosts.length === 0)
+  ) {
+    throw new ConfigError('upstream.allowedHosts must be a non-empty array, or left out');
   }
-  const allowedHosts = upstream.allowedHosts.map((value, i) => {
+  const allowedHosts = (upstream.allowedHosts as unknown[] | undefined)?.map((value, i) => {
     const rule = typeof value === 'string' ? parseHostRule(value) : null;
     if (rule === null) {
       throw new ConfigError(
@@ -205,7 +215,7 @@ export function validateConfig(raw: unknown): ProxyConfig {
     allowedOrigins,
     ...(raw.publicBaseUrl === undefined ? {} : { publicBaseUrl: publicBase(raw.publicBaseUrl) }),
     upstream: {
-      allowedHosts,
+      allowedHosts: allowedHosts ?? null,
       maxRedirects: integer(upstream, 'maxRedirects', 'upstream', 0, 10, 5),
       headersTimeoutMs: integer(upstream, 'headersTimeoutMs', 'upstream', 1000, 120_000, 15_000),
       idleTimeoutMs: integer(upstream, 'idleTimeoutMs', 'upstream', 1000, 600_000, 30_000),

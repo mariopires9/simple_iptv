@@ -7,7 +7,6 @@
     "http://localhost:4173"
   ],
   "upstream": {
-    "allowedHosts": ["panel.example.com", "*.example.net"],
     "maxRedirects": 5,
     "headersTimeoutMs": 15000,
     "idleTimeoutMs": 30000
