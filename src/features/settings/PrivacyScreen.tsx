@@ -1,9 +1,11 @@
 // Settings › Privacy and data (UX-04 AC1): what is stored on this device and where it goes. Also
-// the target of onboarding's "Learn more" (UX-01), and of "Delete all data" (SRC-10).
+// the target of onboarding's "Learn more" (UX-01), the master password (SEC-02) and "Delete all
+// data" (SRC-10).
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { t } from '@/i18n';
 import { DeleteAllDataSection } from './privacy/DeleteAllDataSection';
+import { MasterPasswordSection } from './privacy/MasterPasswordSection';
 
 export function PrivacyScreen() {
   const text = t.settings.privacy;
@@ -32,6 +34,7 @@ export function PrivacyScreen() {
       </Box>
       <Typography sx={{ mb: 2 }}>{text.notSent}</Typography>
       <Typography color="text.secondary">{text.noChannels}</Typography>
+      <MasterPasswordSection />
       <DeleteAllDataSection />
     </Box>
   );

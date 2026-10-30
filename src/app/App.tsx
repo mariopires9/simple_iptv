@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useSyncExternalStore } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import {
   activeLocale,
   applyPendingLocale,
@@ -6,7 +6,15 @@ import {
   restoreLanguagePreference,
   subscribeLocale,
 } from '@/i18n';
-import { isPlaybackActive, subscribePlayback } from '@/core/session';
+import {
+  getVaultLockStatus,
+  initVaultLock,
+  installVaultAutoLock,
+  isPlaybackActive,
+  subscribePlayback,
+  subscribeVaultLock,
+} from '@/core/session';
+import { loadLockScreen } from '@/features/settings';
 import { hasSources } from '@/features/sources';
 import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
@@ -57,6 +65,29 @@ function useStartupSourcesChecked(): boolean {
   return checked;
 }
 
+/**
+ * SEC-02: whether a master password is set is checked with the other start-up reads (one settings
+ * read, in parallel), so it adds no step when it is off. The unlock screen's chunk loads only
+ * when it is on.
+ */
+function useVaultLockChecked(): boolean {
+  const [checked, setChecked] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void initVaultLock()
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setChecked(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  return checked;
+}
+
+const LockScreen = lazy(loadLockScreen);
+
 export interface AppProps {
   /** Called once per mount, when the first screen is up and the browser is idle (QA-04). */
   onStarted?: () => void;
@@ -64,6 +95,8 @@ export interface AppProps {
 
 /**
  * Theme and toasts (UX-02), then the start-up storage check, then the hash router (AppShell + lazy screens).
+ * With a master password (SEC-02) the unlock screen comes first; a later lock (background
+ * timeout) covers the mounted router, whose secret reads wait for the unlock.
  * While the check runs only the themed background is shown (UX_UI §5: short loads do not flash a
  * spinner); it normally takes one IndexedDB open. A longer start (e.g. the schema upgrade of a new
  * version, which runs inside that open: PWA-03 AC4) shows the start-up indicator instead. The
@@ -81,6 +114,10 @@ export function App({ onStarted }: AppProps = {}) {
   const db = useDatabaseCheck();
   const languageRestored = useLanguageRestored();
   const sourcesChecked = useStartupSourcesChecked();
+  const lockChecked = useVaultLockChecked();
+  const locked = useSyncExternalStore(subscribeVaultLock, getVaultLockStatus) === 'locked';
+  /** The router has been mounted once: a later lock covers it instead of unmounting it. */
+  const [opened, setOpened] = useState(false);
   const locale = useSyncExternalStore(subscribeLocale, activeLocale);
   useEffect(() => installChunkReload(), []);
   // SRC-10: another tab deleted all data → lock the database and restart on onboarding.
@@ -89,13 +126,19 @@ export function App({ onStarted }: AppProps = {}) {
   useEffect(() => installLanguagePreference(isPlaybackActive, subscribePlayback), []);
   // PWA-04 AC2: scheduled syncs skipped while offline start when the connection returns.
   useEffect(() => installResumeOnReconnect(), []);
+  // SEC-02: lock after some minutes in the background.
+  useEffect(() => installVaultAutoLock(), []);
 
-  const routerReady = db.status === 'ready' && languageRestored && sourcesChecked;
+  const startupReady = db.status === 'ready' && languageRestored && sourcesChecked && lockChecked;
+  // SEC-02: locked on open → nothing that reads secrets mounts before the unlock.
+  const routerReady = startupReady && (opened || !locked);
+  // Derived during render (no extra effect pass).
+  if (routerReady && !opened) setOpened(true);
   // SRC-07 AC5: lists not synced for 24 h are refreshed once the app is up and idle.
   useEffect(() => (routerReady ? scheduleStartupSync() : undefined), [routerReady]);
   // QA-04: work that is not needed for the first screen (the service worker) starts once a screen
   // is up and the browser is idle; the storage-error screen counts (an update may fix it).
-  const settled = routerReady || db.status === 'unavailable';
+  const settled = startupReady || db.status === 'unavailable';
   useEffect(
     () => (settled && onStarted ? scheduleIdle(onStarted) : undefined),
     [settled, onStarted],
@@ -113,8 +156,24 @@ export function App({ onStarted }: AppProps = {}) {
 
   let content = null;
   if (db.status === 'unavailable') content = <DatabaseUnavailableScreen reason={db.reason} />;
-  else if (routerReady) content = <AppRouter router={getAppRouter()} />;
-  else content = <StartupIndicator />;
+  else if (routerReady) {
+    content = (
+      <>
+        <AppRouter router={getAppRouter()} />
+        {locked && (
+          <Suspense fallback={null}>
+            <LockScreen />
+          </Suspense>
+        )}
+      </>
+    );
+  } else if (startupReady && locked) {
+    content = (
+      <Suspense fallback={<StartupIndicator />}>
+        <LockScreen />
+      </Suspense>
+    );
+  } else content = <StartupIndicator />;
 
   return (
     <ThemeModeProvider>

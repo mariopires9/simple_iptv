@@ -10,6 +10,6 @@ export const settingsRoutes: RouteObject[] = [
   },
   {
     path: 'settings/privacy',
-    lazy: lazyScreen(() => import('./PrivacyScreen'), 'PrivacyScreen', ['settings']),
+    lazy: lazyScreen(() => import('./PrivacyScreen'), 'PrivacyScreen', ['settings', 'lock']),
   },
 ];

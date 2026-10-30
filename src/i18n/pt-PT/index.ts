@@ -7,6 +7,7 @@ import { favorites } from './favorites';
 import { install } from './install';
 import { lists } from './lists';
 import { live } from './live';
+import { lock } from './lock';
 import { movies } from './movies';
 import { nav } from './nav';
 import { onboarding } from './onboarding';
@@ -26,6 +27,7 @@ export const ptPT = {
   install,
   lists,
   live,
+  lock,
   movies,
   nav,
   onboarding,
