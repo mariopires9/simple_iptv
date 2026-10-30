@@ -6,6 +6,10 @@
 // resolved after ZAP_SETTLE_MS without another change, and a resolution that finishes after a
 // newer selection is dropped. Meanwhile the previous stream keeps the <video> (the PlayerView
 // stays mounted), and its controller aborts it when the next descriptor arrives.
+//
+// PLY-07: the live container that actually starts is remembered per channel (in memory, saved
+// debounced); the next play of that channel tries it first. The memory is read once, when this
+// player mounts; afterwards the lookup is synchronous (zapping never waits on IndexedDB).
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -27,11 +31,12 @@ import { historyRepo, type Channel, type Source } from '@/core/db';
 import { log } from '@/core/log';
 import type { UrlRewriter } from '@/core/net';
 import { rewritersForSource } from '@/core/session';
+import { loadLearnedFormats, rememberFormat } from '@/core/session/liveFormatMemory';
 import type { PlaybackError, StreamDescriptor } from '@/player';
 import { t } from '@/i18n';
 import { StateView, errorDetails } from '@/ui/state';
 import { CHANNELS_PANEL_ATTRIBUTE } from './ChannelsOverlay';
-import { resolveStream, type ResolvedStream } from './resolveStream';
+import { liveDeviceClass, resolveStream, type ResolvedStream } from './resolveStream';
 import { useWatchTimer } from './useWatchTimer';
 import { ZAP_SETTLE_MS } from './zapping';
 
@@ -118,7 +123,11 @@ export function LivePlayer({
   useEffect(() => {
     let current = true;
     const run = () => {
-      Promise.all([resolveStream(selection.channel, source), rewritersForSource(source)]).then(
+      // `loadLearnedFormats` is settled after the first read: no wait on later plays.
+      Promise.all([
+        loadLearnedFormats().then(() => resolveStream(selection.channel, source)),
+        rewritersForSource(source),
+      ]).then(
         ([outcome, rewriters]) => {
           if (!current) return;
           setResult({ selection, attempt, outcome });
@@ -173,6 +182,19 @@ export function LivePlayer({
     log.info('live: channel playback failed', { kind: error.kind, status: error.status });
   }, []);
 
+  // PLY-07: learn which live container started, for channels that have an alternative.
+  const shownKey = shown?.key;
+  const hasAlternative = (shown?.descriptor.fallbacks?.length ?? 0) > 0;
+  const onStarted = useCallback(
+    (started: StreamDescriptor) => {
+      if (shownKey === undefined || !hasAlternative) return;
+      if (started.container === 'ts' || started.container === 'hls') {
+        rememberFormat(shownKey, liveDeviceClass(), started.container);
+      }
+    },
+    [shownKey, hasAlternative],
+  );
+
   let body: ReactNode;
   if (outcome && outcome.status !== 'ok') {
     body = <ResolveProblem outcome={outcome} onRetry={() => setAttempt((n) => n + 1)} />;
@@ -191,6 +213,7 @@ export function LivePlayer({
           requiredHeaders={shown.requiredHeaders}
           rewriter={shown.rewriter}
           onFinalError={onFinalError}
+          onStarted={onStarted}
           overlay={overlay}
         />
       </Suspense>

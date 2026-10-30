@@ -157,6 +157,7 @@ export function selectEngine(s: StreamDescriptor, caps: Capabilities): PlayerEng
 // { kind, engine, detail?, status?, hint?, target? } where target = shortenUrl(url) (never the raw URL);
 // createPlayerController(video, { rewriter, capabilities }) emits 'attempt' | 'skipped' | 'fallback' |
 // 'notice' (e.g. resume-unsupported) | 'error'; play() never rejects. Audio/text track methods: PLY-05.
+// reportStall() (PLY-07): the view saw the current candidate stall; it fails like an engine error.
 
 // personal proxy URL contract (PRX-01, implemented in proxy/url.ts; the app's UrlRewriter mirrors it)
 // B = configured proxy base URL without trailing slash (a path prefix is allowed)
@@ -260,6 +261,31 @@ flowchart TD
   P -- yes, fallback available --> C
   P -- yes, no fallback --> E[Classify error → actionable message]
 ```
+
+**Live candidate order (PLY-07, `features/live/resolveStream.ts`).** Live channels usually have two
+candidates, TS (mpegts.js) and HLS (hls.js or the native player); the first one that applies decides
+which goes first, and the other always stays as the fallback:
+
+1. **Learned per channel:** the container that last actually started for this channel *on this
+   device class* (`mse` — desktop/Android; `native-hls` — iPhone with ManagedMediaSource but no MSE,
+   and Safari). Learned when the candidate reaches its first frame (PlayerView `onStarted`), kept in
+   memory (synchronous lookup on the play path) and saved debounced in the `liveFormatMemory` setting
+   (channel keys only, never URLs; ≤ 5 000 entries, least recently learned evicted; validated entry
+   by entry on read). Forgotten per list by Settings › Playback › "Reset learned formats", by a change
+   of the list's live format and when the list is removed; "Delete all data" clears it.
+2. **Explicit list preference** (Xtream `ts` / `m3u8`), or the M3U URL's own extension.
+3. **`auto`:** `native-hls` devices → HLS first (native player), TS fallback; `mse` devices → TS
+   first, HLS fallback; neither → HLS only.
+
+Fallbacks are only built when no address has to be invented: Xtream (both URLs known; TS only when
+MSE/MMS can play it), M3U entries without an extension (same URL, other engine) and M3U entries on
+an Xtream-style live path (`/live/<user>/<pass>/<id>.<ext>` or `/<user>/<pass>/<id>.<ext>`, numeric
+id: `.ts` ↔ `.m3u8`). Other M3U URLs keep their single candidate.
+
+**Live stall (PLY-07).** A live candidate that started and then shows no progress for 10 s while
+playing (no error) is failed by the view (`controller.reportStall()`, error `network`/`stalled`):
+the next candidate is tried (and learned if it starts); with none left, the usual PLY-04 reconnects
+follow.
 
 ## 7. Cache and sync
 

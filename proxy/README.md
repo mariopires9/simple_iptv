@@ -77,7 +77,7 @@ notepad "$env:APPDATA\SimpleIPTVProxy\config.json"
 | `upstream.allowedHosts` | **Optional.** Left out (the default in `config.example.json`), the proxy relays to **any public host**, so lists from any provider work without editing the config; private, loopback, tailnet and cloud-metadata addresses are still refused. To restrict it, list your providers' host names **as they appear in the URLs you added to the app** (the API/panel host, the M3U host). `*.example.net` allows every subdomain of `example.net` (not `example.net` itself). Edge hosts reached through redirects never need to be listed. An empty list is refused. |
 | `upstream.maxRedirects` | Redirect hops followed inside the proxy (default 5). |
 | `upstream.headersTimeoutMs` | 504 if the provider sends no response headers in time (default 15000 per hop). |
-| `upstream.idleTimeoutMs` | A stream with no data for this long is closed (default 30000). |
+| `upstream.idleTimeoutMs` | A stream whose provider sends no data for this long while the player is reading is closed (default 30000). |
 | `limits.requestsPerMinute` | Global request budget (default 1200). |
 | `limits.maxConcurrentUpstreams` | Open provider connections at once (default 8). |
 | `limits.badTokenPerMinute` | After this many wrong tokens in a minute, **every** request gets 429 for 60 s (default 10). |
@@ -285,8 +285,10 @@ error header is readable by the app through CORS (`Access-Control-Expose-Headers
 - **HLS detection.** A 200 body is treated as HLS only if, after `#EXTM3U`, an `#EXT-X-` playlist tag
   starts a line within the first 64 KiB. Anything else is streamed unchanged (at most the first
   64 KiB is held back while deciding).
-- **Paused playback.** If the player stops reading for longer than `idleTimeoutMs`, the provider
-  connection is closed; the player reconnects (with `Range` for VOD) when it resumes.
+- **Paused playback.** `idleTimeoutMs` counts only provider silence while the player is reading.
+  A player that stops reading (Safari's native player buffering ahead, ManagedMediaSource
+  `endstreaming`, a paused VOD) keeps its connection for as long as its own socket stays open;
+  the provider connection is closed when the player disconnects (PLY-07).
 - **One connection per request.** Upstream connections are not pooled (`agent: false`), so closing a
   client request always closes its provider connection.
 

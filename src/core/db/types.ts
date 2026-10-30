@@ -429,6 +429,11 @@ export interface SettingsMap {
    * restricted category keys. Untrusted on read: owned and validated by core/session.
    */
   parentalControl: unknown;
+  /**
+   * Learned live format per channel (PLY-07): channel keys and 'ts' | 'hls', never URLs.
+   * Untrusted on read: owned and validated by core/session (liveFormatMemory).
+   */
+  liveFormatMemory: unknown;
 }
 
 export type SettingsKey = keyof SettingsMap;

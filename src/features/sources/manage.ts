@@ -4,6 +4,7 @@
 import { credentialVault } from '@/core/crypto';
 import { settingsRepo, sourcesRepo } from '@/core/db';
 import { log } from '@/core/log';
+import { resetLearnedFormats } from '@/core/session/liveFormatMemory';
 import { setActiveSource } from './activeSource';
 import { beginRemoval, endRemoval, type SyncWorker } from './sourceSync';
 import { setSourcesPresent } from './sourcesPresence';
@@ -132,6 +133,10 @@ async function removeNow(id: string): Promise<RemoveSourceResult> {
       log.warn('Could not delete the secret of a removed source', { error });
     });
   }
+  // PLY-07: its learned live formats (best effort: they only reorder candidates).
+  await resetLearnedFormats(id).catch((error: unknown) => {
+    log.warn('Could not forget the learned formats of a removed source', { error });
+  });
   const remaining = await sourcesRepo.list();
   setSourcesPresent(remaining.length > 0);
   let nextActiveId: string | undefined;

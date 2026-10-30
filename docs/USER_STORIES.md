@@ -339,6 +339,22 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Tests:** controller attempts list; probe with a fake fetch (redirect to http, opaque redirect, http segments, HEVC CODECS, HEVC in the PMT, timeout, cancellation); overlay component (details, copy, cause, layout styles); live stream check, run and screen (report masked).
 - **Not claimed:** it does not fix playback; probe behaviour on real devices (Safari `no-cors`/opaque redirects) is not measured yet.
 
+### PLY-07 — Automatic live format per channel
+- **Priority:** Should · **Effort:** 3 · **Value:** High
+- **Origin:** owner request (2026-10-30): "streams don't all play in the same format; can't the app choose automatically?"; owner report (2026-10-30): iPhone, Xtream list through the personal proxy, `auto`: some channels show green/corrupted frames, then stop a little later without an error (they play in VLC).
+- **Story:** As a user, I want each live channel to start in the format that works for it on my device, and a stream that silently stops to recover, so that I do not have to pick a format per list or watch a frozen picture.
+- **AC:**
+  1. Given a live channel whose candidate (TS or HLS) actually started (first frame), Then `{ channel, device class } → container` is remembered (in memory, saved debounced in the `liveFormatMemory` setting, channel keys only — never URLs; ≤ 5 000 entries, least recently learned evicted; validated on read, corrupt → ignored); the next play of that channel on the same device class puts it first, with the other as fallback. If it fails and the fallback starts, the memory is updated. No extra wait on the play path beyond an in-memory lookup.
+  2. Given an Xtream list with the `m3u8` preference, Then HLS goes first with TS as fallback (only when MSE/MMS can play TS). Given an M3U entry on an Xtream-style live path (`/live/<user>/<pass>/<id>.<ext>` or `/<user>/<pass>/<id>.<ext>`) ending in `.ts` or `.m3u8`, Then the same URL with the other extension is the fallback. Other M3U URLs with a real extension are unchanged (no invented URLs).
+  3. Precedence: learned (this device class) → explicit list preference / M3U extension → `auto`. Documented in `resolveStream.ts` and docs/ARCHITECTURE.md §6.2.
+  4. Given Settings › Playback, Then "Reset learned formats" forgets the active list's learned formats; changing the list's live format and removing the list forget them too; "Delete all data" clears them.
+  5. Given `auto` on a native-HLS device (iPhone: ManagedMediaSource without MSE; Safari), Then HLS goes first, played by the native player, with TS as fallback; on MSE devices (desktop, Android Chrome) TS stays first. A format learned on one device class never reorders another.
+  6. Given a live candidate that started and then makes no progress for 10 s while playing, with no error, Then it is treated as a failure of that candidate: the fallback is tried (and learned if it starts), or — with none left — the PLY-04 reconnects follow; never a frozen player.
+  7. Given the personal proxy (`proxy/`), Then `upstream.idleTimeoutMs` only closes a stream when the provider sends nothing while the client reads; a client that stops reading (backpressure: ManagedMediaSource `endstreaming`, Safari buffering ahead) keeps the connection while its socket is open.
+- **Dependencies:** PLY-01, PLY-04, LIV-02, PRX-01.
+- **Tests:** memory reorders candidates and is per device class; failure updates memory; `m3u8` preference gets the TS fallback; Xtream-style M3U `.ts` ↔ `.m3u8`; non-Xtream M3U unchanged; reset clears; corrupt memory ignored; `auto` on native-HLS devices; PlayerView `onStarted` and stall watchdog; controller `reportStall`; proxy backpressure vs upstream silence.
+- **Not claimed:** that native HLS removes the green frames or stalls on iPhone — not measured on a device yet (unit tests only).
+
 ---
 
 ## E4 — Live TV

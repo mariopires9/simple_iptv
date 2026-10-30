@@ -6,6 +6,11 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { settingsRepo, sourcesRepo, wipeAll, type Source } from '@/core/db';
 import { forgetActiveSource } from '@/core/session';
+import {
+  learnedFormat,
+  rememberFormat,
+  resetLearnedFormatsForTests,
+} from '@/core/session/liveFormatMemory';
 import { t } from '@/i18n';
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { renderSettings } from '../test-utils';
@@ -34,6 +39,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   media.restore();
   forgetActiveSource();
+  resetLearnedFormatsForTests();
   await wipeAll();
 });
 
@@ -151,5 +157,31 @@ describe('PlaybackSection (UX-04 AC1)', () => {
     renderSettings(<PlaybackSection />);
     await screen.findByRole('radiogroup', { name: text.liveFormat });
     expect(screen.getByText(text.liveFormatNoList)).toBeInTheDocument();
+  });
+
+  it('PLY-07: "Reset learned formats" forgets only the active list’s learned formats', async () => {
+    await sourcesRepo.put(source('m3u', 'm3u-url', 1));
+    await sourcesRepo.put(source('x', 'xtream', 2));
+    await settingsRepo.set('activeSourceId', 'm3u');
+    rememberFormat('m3u:live:1', 'mse', 'hls');
+    rememberFormat('x:live:1', 'mse', 'hls');
+    const user = userEvent.setup();
+    renderSettings(<PlaybackSection />);
+    const reset = await screen.findByRole('button', { name: text.resetLearned });
+    expect(reset).toHaveAccessibleDescription(text.resetLearnedHint('List m3u'));
+    await user.click(reset);
+    // The toast (and, at times, its live-region announcement).
+    expect((await screen.findAllByText(text.resetLearnedDone)).length).toBeGreaterThan(0);
+    expect(learnedFormat('m3u:live:1', 'mse')).toBeUndefined();
+    expect(learnedFormat('x:live:1', 'mse')).toBe('hls');
+  });
+
+  it('PLY-07: changing the live format forgets the list’s learned formats', async () => {
+    await sourcesRepo.put(source('x', 'xtream'));
+    rememberFormat('x:live:1', 'mse', 'ts');
+    const user = userEvent.setup();
+    renderSettings(<PlaybackSection />);
+    await user.click(await screen.findByRole('radio', { name: text.liveFormats.m3u8 }));
+    await waitFor(() => expect(learnedFormat('x:live:1', 'mse')).toBeUndefined());
   });
 });
