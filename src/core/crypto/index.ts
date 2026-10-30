@@ -6,6 +6,7 @@ export {
   type CredentialVault,
   type CredentialVaultAdmin,
   type CredentialVaultDeps,
+  type RekeyOptions,
   type RekeyResult,
   type RekeyTarget,
   type VaultKeyLostReason,

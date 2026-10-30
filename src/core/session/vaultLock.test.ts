@@ -4,15 +4,23 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createCredentialVault,
+  createMasterPassword,
   credentialVault,
   getMasterKey,
   MASTER_KID_PREFIX,
   MIN_PBKDF2_ITERATIONS,
   resetVaultLock,
+  VaultKeyLostError,
   VaultLockedError,
   WrongMasterPasswordError,
 } from '@/core/crypto';
-import { closeDatabase, openDatabase, settingsRepo, vaultStore } from '@/core/db';
+import {
+  closeDatabase,
+  openDatabase,
+  settingsRepo,
+  vaultStore,
+  VaultSwapConflictError,
+} from '@/core/db';
 import { clearSecrets } from '@/core/log';
 import {
   disableMasterPassword,
@@ -21,6 +29,7 @@ import {
   initVaultLock,
   installVaultAutoLock,
   lockVaultNow,
+  MasterPasswordChangedError,
   setAutoLockMinutes,
   unlockVault,
 } from './vaultLock';
@@ -248,5 +257,85 @@ describe('background lock (SEC-02)', () => {
     set('visible');
     expect(getVaultLockStatus()).toBe('locked');
     cleanup();
+  });
+});
+
+// Security review of SEC-02 (regressions).
+describe('review fixes (SEC-02)', () => {
+  it('1: a disable in another tab during an unlock never loads a stale key or re-encrypts', async () => {
+    await enableMasterPassword(PASSWORD);
+    expect(await restart()).toBe('locked');
+    const before = await vaultStore.listSecrets();
+    const read = vi.spyOn(settingsRepo, 'get');
+    const unlocking = unlockVault(PASSWORD);
+    // "Tab B" removes the config once tab A has read it, while A is still deriving the key.
+    await vi.waitFor(() => expect(read).toHaveBeenCalledWith('masterPassword'));
+    await read.mock.results[0]?.value;
+    read.mockRestore();
+    await settingsRepo.remove('masterPassword');
+    await expect(unlocking).rejects.toBeInstanceOf(MasterPasswordChangedError);
+    expect(getMasterKey()).toBeNull();
+    expect(getVaultLockStatus()).toBe('off');
+    await settle();
+    expect(await vaultStore.listSecrets()).toEqual(before);
+  });
+
+  it('1: a second enable (another tab) or a rekey against a changed config writes nothing', async () => {
+    await enableMasterPassword(PASSWORD);
+    const before = await vaultStore.listSecrets();
+    const other = await createMasterPassword('another synthetic pw');
+    await expect(
+      credentialVault.rekey(other.key, {
+        expectedKid: null,
+        masterPassword: { value: other.config },
+      }),
+    ).rejects.toBeInstanceOf(VaultSwapConflictError);
+    await expect(
+      credentialVault.rekey(other.key, { expectedKid: other.key.kid }),
+    ).rejects.toBeInstanceOf(VaultSwapConflictError);
+    expect(await vaultStore.listSecrets()).toEqual(before);
+    expect(await readAll()).toEqual(SECRETS);
+  });
+
+  it('2: with the master password off, an orphan master row is lost (not locked) and does not block enable', async () => {
+    await enableMasterPassword(PASSWORD);
+    await settingsRepo.remove('masterPassword'); // its config is gone
+    expect(await restart()).toBe('off');
+    const error: unknown = await credentialVault.get('xtream:a').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(VaultKeyLostError);
+    expect((error as VaultKeyLostError).reason).toBe('missing-key');
+    await credentialVault.put('xtream:new', 'synthetic-new');
+    await enableMasterPassword('a new synthetic pw');
+    expect(await credentialVault.get('xtream:new')).toBe('synthetic-new');
+  });
+
+  it('3: a failing start-up check locks (fail closed); nothing is written while undecided', async () => {
+    resetVaultLock();
+    await expect(credentialVault.put('xtream:x', 'synthetic-x')).rejects.toBeInstanceOf(
+      VaultLockedError,
+    );
+    expect(await vaultStore.getSecret('xtream:x')).toBeUndefined();
+
+    const get = vi.spyOn(settingsRepo, 'get').mockRejectedValueOnce(new Error('read failed'));
+    await expect(initVaultLock()).rejects.toThrow('read failed');
+    get.mockRestore();
+    expect(getVaultLockStatus()).toBe('locked');
+    // The unlock screen copes: with no master password stored, unlocking turns the vault off.
+    await unlockVault('anything');
+    expect(getVaultLockStatus()).toBe('off');
+    expect(await readAll()).toEqual(SECRETS);
+  });
+
+  it('5: reads queued while unlocked wait for the unlock if a lock lands before they run', async () => {
+    await enableMasterPassword(PASSWORD);
+    const first = credentialVault.get('xtream:a');
+    const second = credentialVault.get('m3u:b');
+    lockVaultNow();
+    let settled = false;
+    void Promise.allSettled([first, second]).then(() => (settled = true));
+    await settle();
+    expect(settled).toBe(false);
+    await unlockVault(PASSWORD);
+    expect(await Promise.all([first, second])).toEqual([SECRETS['xtream:a'], SECRETS['m3u:b']]);
   });
 });

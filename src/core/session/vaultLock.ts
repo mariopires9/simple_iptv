@@ -38,9 +38,20 @@ function validMinutes(value: unknown): number | undefined {
  * Start-up check (before any screen that reads secrets): `locked` when a master password is set,
  * else `off`. A stored config that is not valid also locks (fail closed: only "delete all data"
  * gets out of it). Keeps the vault unlocked if it already is with the same key (another tab's
- * change notification).
+ * change notification). If the check itself fails, the vault locks (fail closed) and the error
+ * is rethrown: the unlock screen retries the read (see `unlockVault`).
  */
 export async function initVaultLock(): Promise<VaultLockStatus> {
+  try {
+    return await checkVaultLock();
+  } catch (error) {
+    log.warn('master password: the start-up check failed, locking', { error });
+    setVaultLocked();
+    throw error;
+  }
+}
+
+async function checkVaultLock(): Promise<VaultLockStatus> {
   // Only the database (already open for the start-up check): the crypto chunk loads only when a
   // master password is set, so the check costs one settings read when it is off (QA-04).
   const { settingsRepo } = await import('@/core/db');
@@ -61,17 +72,47 @@ export async function initVaultLock(): Promise<VaultLockStatus> {
   return 'locked';
 }
 
-/** Rejects with `WrongMasterPasswordError` when the password is not the master password. */
+/** The master password changed (another tab) while a key was being derived: try again. */
+export class MasterPasswordChangedError extends Error {
+  override readonly name = 'MasterPasswordChangedError';
+  constructor() {
+    super('The master password changed meanwhile');
+  }
+}
+
+/**
+ * The config is re-read after the (slow) derivation: a key is only loaded if it still belongs to
+ * the stored config, else another tab turned the master password off or replaced it meanwhile.
+ */
+async function assertStillCurrent(kid: string): Promise<void> {
+  const [{ settingsRepo }, crypto] = await modules();
+  const current = crypto.parseMasterPasswordConfig(await settingsRepo.get('masterPassword'));
+  if (current?.kid === kid) return;
+  await initVaultLock().catch(() => undefined);
+  throw new MasterPasswordChangedError();
+}
+
+/**
+ * Rejects with `WrongMasterPasswordError` when the password is not the master password, and with
+ * `MasterPasswordChangedError` when another tab changed it meanwhile. With no master password
+ * stored (e.g. a vault locked because the start-up check failed) the vault is simply off.
+ */
 export async function unlockVault(password: string): Promise<void> {
   const [{ settingsRepo }, crypto] = await modules();
-  const config = crypto.parseMasterPasswordConfig(await settingsRepo.get('masterPassword'));
+  const stored = await settingsRepo.get('masterPassword');
+  if (stored === undefined) {
+    setVaultLockOff();
+    return;
+  }
+  const config = crypto.parseMasterPasswordConfig(stored);
   if (!config) throw new crypto.WrongMasterPasswordError();
   const key = await crypto.openMasterPassword(config, password);
+  await assertStillCurrent(key.kid);
   crypto.setMasterKey(key);
   log.info('master password: unlocked');
   // A secret written with the device key while the master password was set (e.g. by a tab that
-  // had not seen it yet) is moved under the master key.
-  void crypto.credentialVault.rekey(key).catch((error: unknown) => {
+  // had not seen it yet) is moved under the master key; aborts if the config changed meanwhile.
+  void crypto.credentialVault.rekey(key, { expectedKid: key.kid }).catch((error: unknown) => {
     log.warn('master password: re-encryption after unlock failed', { error });
   });
 }
@@ -95,7 +136,12 @@ export async function enableMasterPassword(password: string): Promise<void> {
   }
   const [, crypto] = await modules();
   const { config, key } = await crypto.createMasterPassword(password);
-  await crypto.credentialVault.rekey(key, { value: config }, () => crypto.setMasterKey(key));
+  // Aborts (nothing written) if another tab set a master password meanwhile.
+  await crypto.credentialVault.rekey(key, {
+    expectedKid: null,
+    masterPassword: { value: config },
+    onCommit: () => crypto.setMasterKey(key),
+  });
   log.info('master password: enabled');
   announceChange();
 }
@@ -109,9 +155,15 @@ export async function disableMasterPassword(password: string): Promise<void> {
   const config = crypto.parseMasterPasswordConfig(await settingsRepo.get('masterPassword'));
   if (!config) throw new crypto.WrongMasterPasswordError();
   const key = await crypto.openMasterPassword(config, password);
+  await assertStillCurrent(key.kid);
   // Reading needs the key: also covers a vault locked meanwhile.
   crypto.setMasterKey(key);
-  await crypto.credentialVault.rekey('device', null, () => setVaultLockOff());
+  // Aborts (nothing written) if another tab changed the master password meanwhile.
+  await crypto.credentialVault.rekey('device', {
+    expectedKid: key.kid,
+    masterPassword: null,
+    onCommit: () => setVaultLockOff(),
+  });
   log.info('master password: disabled');
   announceChange();
 }

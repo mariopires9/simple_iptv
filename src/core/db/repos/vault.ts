@@ -9,12 +9,19 @@ export interface SecretSwap {
   next: SecretRecord;
 }
 
-/** Thrown by `swapSecrets` when a row changed since it was read: nothing was written. */
+/** Thrown by `swapSecrets` when a row or the master password changed since it was read. */
 export class VaultSwapConflictError extends Error {
   override readonly name = 'VaultSwapConflictError';
   constructor() {
     super('A vault secret changed during re-encryption');
   }
+}
+
+/** Kid of a stored master password config (`null`: none; `''`: present but malformed). */
+function configKid(config: unknown): string | null {
+  if (config === undefined) return null;
+  const kid = (config as { kid?: unknown } | null)?.kid;
+  return typeof kid === 'string' ? kid : '';
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
@@ -65,17 +72,23 @@ export const vaultStore = {
   },
 
   /**
-   * SEC-02: replaces the given secret rows and sets (`value`) or removes (`null`) the
-   * `masterPassword` setting, all in one rw transaction: either every change is written or none.
-   * A row that is gone or no longer has the expected `kid`/IV aborts with
-   * `VaultSwapConflictError`. `masterPassword: undefined` leaves the setting alone.
+   * SEC-02: replaces the given secret rows and sets (`masterPassword: { value }`) or removes
+   * (`null`) the `masterPassword` setting (`undefined`: unchanged), all in one rw transaction:
+   * either every change is written or none. Aborts with `VaultSwapConflictError`, writing
+   * nothing, when the stored master password config's kid is not `expectedKid` (`null` = no
+   * config), or a row is gone or no longer has the expected `kid`/IV.
    */
   async swapSecrets(
     swaps: SecretSwap[],
-    masterPassword?: { value: unknown } | null,
+    {
+      expectedKid,
+      masterPassword,
+    }: { expectedKid: string | null; masterPassword?: { value: unknown } | null },
   ): Promise<void> {
     const db = await getDb();
     await db.transaction('rw', db.secrets, db.settings, async () => {
+      const config = (await db.settings.get('masterPassword'))?.value;
+      if (configKid(config) !== expectedKid) throw new VaultSwapConflictError();
       for (const { expected, next } of swaps) {
         const current = await db.secrets.get(expected.ref);
         if (

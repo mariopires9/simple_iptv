@@ -51,10 +51,29 @@ export function proxyRoutingOf(source: Pick<Source, 'prefs'>): ProxyRouting {
 }
 
 /**
+ * A proxy is saved but its token cannot be read from the vault (locked, key lost…). Requests of a
+ * list routed through the proxy fail instead of going direct (SEC-02): direct would send the
+ * list's traffic, Xtream credentials included, to the provider the user chose to avoid.
+ */
+export class ProxyTokenUnavailableError extends Error {
+  override readonly name = 'ProxyTokenUnavailableError';
+  constructor(options?: { cause?: unknown }) {
+    super('The personal proxy token cannot be read', options);
+  }
+}
+
+export interface LoadPersonalProxyOptions {
+  /** Throw `ProxyTokenUnavailableError` instead of `undefined` when the token cannot be read. */
+  failOnUnreadableToken?: boolean;
+}
+
+/**
  * The saved proxy, or `undefined` when none is saved or what is stored is not valid (the token
  * missing or unreadable, a corrupt URL). The token is registered with the log redactor.
  */
-export async function loadPersonalProxy(): Promise<PersonalProxyConfig | undefined> {
+export async function loadPersonalProxy(
+  options: LoadPersonalProxyOptions = {},
+): Promise<PersonalProxyConfig | undefined> {
   const [{ settingsRepo }, { credentialVault }, { parseProxyBaseUrl, isValidProxyToken }] =
     await Promise.all([import('@/core/db'), import('@/core/crypto'), import('@/core/net')]);
   const stored: unknown = await settingsRepo.get('personalProxy');
@@ -70,9 +89,12 @@ export async function loadPersonalProxy(): Promise<PersonalProxyConfig | undefin
   try {
     token = await credentialVault.get(PROXY_TOKEN_REF);
   } catch (error) {
-    log.warn('proxy: the proxy token could not be read, using direct', {
-      error: error instanceof Error ? error.name : 'unknown',
-    });
+    const name = error instanceof Error ? error.name : 'unknown';
+    if (options.failOnUnreadableToken) {
+      log.warn('proxy: the proxy token could not be read', { error: name });
+      throw new ProxyTokenUnavailableError({ cause: error });
+    }
+    log.warn('proxy: the proxy token could not be read, using direct', { error: name });
     return undefined;
   }
   if (token === undefined || !isValidProxyToken(token)) {
@@ -131,7 +153,8 @@ export interface RewritersDeps {
 
 /**
  * The rewriters for a list's requests. Direct (identity) when the list's routing is `off` (no
- * storage read then), and when no valid proxy is saved.
+ * storage read then), and when no valid proxy is saved. A list routed through the proxy whose
+ * settings or token cannot be read rejects (never direct): the request or sync fails.
  */
 export async function rewritersForSource(
   source: Pick<Source, 'prefs'>,
@@ -139,15 +162,9 @@ export async function rewritersForSource(
 ): Promise<SourceRewriters> {
   const routing = proxyRoutingOf(source);
   if (routing === 'off') return DIRECT;
-  let config: PersonalProxyConfig | undefined;
-  try {
-    config = await (deps.loadProxy ?? loadPersonalProxy)();
-  } catch (error) {
-    log.warn('proxy: the proxy settings could not be read, using direct', {
-      error: error instanceof Error ? error.name : 'unknown',
-    });
-    return DIRECT;
-  }
+  const config = await (
+    deps.loadProxy ?? (() => loadPersonalProxy({ failOnUnreadableToken: true }))
+  )();
   if (!config) {
     log.warn('proxy: a list is routed through the proxy but none is saved, using direct');
     return DIRECT;
