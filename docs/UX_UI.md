@@ -188,6 +188,7 @@ Rotate to landscape → automatic fullscreen (configurable). Vertical swipe on t
 - Bottom: progress bar (VOD) or EPG progress (live) · volume · PiP · tracks (post-MVP) · fullscreen.
 - "Channels" side panel (live) overlaid in fullscreen, opened by a button or the `L` key.
 - Shortcuts: `Space`/`K` play, `F` fullscreen, `M` mute, `←/→` ±10 s, `↑/↓` channel, `L` list, `Esc` exit.
+- On the video surface the arrows are shortcuts; on a control they move between controls (UX-05). OK (`Enter`) on the video moves to Play/Pause ("Try again" on the error state). Channel keys (`ChannelUp`/`ChannelDown`, Tizen 427/428, `PageUp`/`PageDown` on LG) zap like `↑/↓`.
 
 ### 4.6 Cards
 | Card | Size | Content | States |
@@ -268,6 +269,7 @@ stateDiagram-v2
 - Virtualized lists with `role="listbox"`/`aria-activedescendant` or `role="list"` + roving tabindex; `aria-setsize`/`aria-posinset`.
 - Player: buttons with `aria-label`; `aria-live="polite"` announcements on channel change ("Watching RTP 1").
 - Full keyboard navigation: `Tab` between regions, arrows inside lists/grids, `/` focuses search.
+- D-pad / TV remote (UX-05): arrows that a widget does not use move the focus spatially to the nearest tab stop that way, staying in the current region when it can (nav rail ↔ categories ↔ grid/list ↔ player controls); entering a navigation lands on its current item; grids and lists hand the arrow on at their edges. Back (`Escape`, `Backspace` outside text fields, `GoBack`/`BrowserBack`, Tizen 10009, webOS 461) closes the open player/panel/menu/dialog, else goes back one history step (never out of the app). With the focus lost (its element removed), the next D-pad key returns it to the main content. While the D-pad is in use the focus ring is 4 px + 3 px offset (`html[data-input="dpad"]`).
 - Respect `prefers-reduced-motion`, `prefers-color-scheme` ("System" option), zoom up to 200 % without loss.
 - `<html lang>` always matches the active locale (en / pt-PT) so screen readers use the right pronunciation.
 

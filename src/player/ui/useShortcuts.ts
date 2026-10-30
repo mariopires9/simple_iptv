@@ -1,6 +1,11 @@
 // Player keyboard shortcuts (PLY-02 AC4, docs/UX_UI.md §4.5). Listened on the player region, so
 // they only apply while focus is inside the player; never while typing in a text field.
+// UX-05 (TV remotes): the arrows are shortcuts on the video surface (the region itself); on a
+// control they are left to the D-pad's spatial focus, so a remote can move along the controls.
+// OK (Enter) on the surface moves to the controls; the channel keys (CH+/CH−, PageUp/PageDown)
+// change channel like ↑/↓.
 import { useEffect, useRef } from 'react';
+import { channelKeyOf } from '@/ui/dpad';
 
 export interface ShortcutHandlers {
   togglePlay?: (() => void) | undefined;
@@ -12,6 +17,8 @@ export interface ShortcutHandlers {
   next?: (() => void) | undefined;
   toggleChannelList?: (() => void) | undefined;
   close?: (() => void) | undefined;
+  /** OK (Enter) on the video surface: move the focus to the controls (UX-05, TV remotes). */
+  focusControls?: (() => void) | undefined;
 }
 
 export const SEEK_STEP_S = 10;
@@ -53,6 +60,12 @@ function ownsSpace(el: Element): boolean {
   return el.matches('button, a[href], input, [role="button"], [role="checkbox"], [role="switch"]');
 }
 
+/** A control (button, link, other tab stop) inside the player, as opposed to the video surface. */
+function isControl(el: Element, region: HTMLElement): boolean {
+  const control = el.closest('button, a[href], input, [tabindex]:not([tabindex="-1"])');
+  return control !== null && control !== region && region.contains(control);
+}
+
 /** Marks the container of PlayerView's `overlay`: keys pressed inside it are not shortcuts. */
 export const OVERLAY_ATTRIBUTE = 'data-player-overlay';
 
@@ -73,8 +86,10 @@ export function useShortcuts(region: HTMLElement | null, handlers: ShortcutHandl
       // A panel shown over the video (PlayerView `overlay`) has its own keys.
       if (target.closest(`[${OVERLAY_ATTRIBUTE}]`)) return;
       const h = ref.current;
+      const onSurface = !isControl(target, region);
+      const channelKey = channelKeyOf(event);
       let action: (() => void) | undefined;
-      switch (event.key) {
+      switch (channelKey === 'up' ? 'PageUp' : channelKey === 'down' ? 'PageDown' : event.key) {
         case ' ':
         case 'Spacebar':
           if (!ownsSpace(target)) action = h.togglePlay;
@@ -98,20 +113,29 @@ export function useShortcuts(region: HTMLElement | null, handlers: ShortcutHandl
         case 'Escape':
           action = h.close;
           break;
+        case 'Enter':
+          if (target === region) action = h.focusControls;
+          break;
+        case 'PageUp':
+          action = h.previous;
+          break;
+        case 'PageDown':
+          action = h.next;
+          break;
         case 'ArrowLeft':
         case 'ArrowRight': {
           const seekBy = h.seekBy;
-          if (seekBy && !ownsArrows(target)) {
+          if (seekBy && onSurface && !ownsArrows(target)) {
             const delta = event.key === 'ArrowLeft' ? -SEEK_STEP_S : SEEK_STEP_S;
             action = () => seekBy(delta);
           }
           break;
         }
         case 'ArrowUp':
-          if (!ownsArrows(target)) action = h.previous;
+          if (onSurface && !ownsArrows(target)) action = h.previous;
           break;
         case 'ArrowDown':
-          if (!ownsArrows(target)) action = h.next;
+          if (onSurface && !ownsArrows(target)) action = h.next;
           break;
       }
       if (!action) return;
