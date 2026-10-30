@@ -41,6 +41,12 @@ export const settings = {
     liveFormatNoList: 'Adicione uma lista Xtream Codes para escolher o formato em direto.',
     liveFormats: { auto: 'Automático', ts: 'MPEG-TS', m3u8: 'HLS' },
     saveError: 'Não foi possível guardar a definição. Tente novamente.',
+    resetLearned: 'Repor formatos aprendidos',
+    resetLearnedHint: (list: string) =>
+      `A aplicação memoriza o formato em que cada canal de ${list} foi reproduzido e tenta-o primeiro da próxima vez. Reponha para recomeçar a partir do formato preferido.`,
+    resetLearnedNoList: 'Adicione uma lista para usar os formatos aprendidos por canal.',
+    resetLearnedDone: 'Formatos aprendidos repostos.',
+    resetLearnedError: 'Não foi possível repor os formatos aprendidos. Tente novamente.',
   },
   proxy: {
     intro:

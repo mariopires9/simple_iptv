@@ -136,11 +136,18 @@ function sendHop(
       options.headersTimeoutMs,
     );
     options.signal.addEventListener('abort', onAbort, { once: true });
-    // Idle timeout for the whole exchange (socket inactivity), including the body.
+    // Idle timeout until the response arrives (socket inactivity); then for the body, see
+    // `watchBodyIdle`.
     req.setTimeout(options.idleTimeoutMs, () => {
       req.destroy(Object.assign(new Error('upstream idle'), { code: 'ETIMEDOUT' }));
     });
-    req.on('response', (response) => finish({ kind: 'response', response }));
+    req.on('response', (response) => {
+      // A socket timeout would also fire while the CLIENT does not read (backpressure: the body
+      // is paused, so the socket goes quiet) — e.g. a live stream the browser stopped fetching.
+      req.setTimeout(0);
+      watchBodyIdle(response, options.idleTimeoutMs);
+      finish({ kind: 'response', response });
+    });
     req.on('error', (error: NodeJS.ErrnoException) => {
       const code =
         typeof error.code === 'string' && TLS_CODE.test(error.code)
@@ -151,6 +158,47 @@ function sendHop(
     if (options.signal.aborted) onAbort();
     else req.end();
   });
+}
+
+/**
+ * Body idle timeout (PLY-07): destroys `response` only when the upstream sends nothing for
+ * `idleMs` while the body is being read. While it is paused (the client is not reading:
+ * backpressure, a player that stopped fetching), the quiet time does not count; a client that
+ * leaves closes the upstream anyway (the relay aborts it).
+ */
+export function watchBodyIdle(response: IncomingMessage, idleMs: number): void {
+  // Progress is read from the socket's byte counter: a 'data' listener on the body would switch
+  // it to flowing mode before the relay is ready to read it.
+  const bytesRead = () => response.socket?.bytesRead ?? 0;
+  let seen = bytesRead();
+  let last = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  const check = () => {
+    timer = undefined;
+    if (response.destroyed || response.readableEnded) return;
+    const now = Date.now();
+    const read = bytesRead();
+    // New bytes, a paused body or a full buffer (the consumer is not reading): not idle.
+    if (
+      read !== seen ||
+      response.isPaused() ||
+      response.readableLength >= response.readableHighWaterMark
+    ) {
+      seen = read;
+      last = now;
+    } else if (now - last >= idleMs) {
+      response.destroy(Object.assign(new Error('upstream idle'), { code: 'ETIMEDOUT' }));
+      return;
+    }
+    timer = setTimeout(check, Math.max(50, Math.min(idleMs, last + idleMs - now)));
+  };
+  response.once('end', stop);
+  response.once('close', stop);
+  timer = setTimeout(check, idleMs);
 }
 
 /**

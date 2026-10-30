@@ -147,6 +147,7 @@ export interface FakeController extends PlayerController {
   readonly stop: ReturnType<typeof vi.fn<PlayerController['stop']>>;
   readonly selectAudioTrack: ReturnType<typeof vi.fn<PlayerController['selectAudioTrack']>>;
   readonly selectTextTrack: ReturnType<typeof vi.fn<PlayerController['selectTextTrack']>>;
+  readonly reportStall: ReturnType<typeof vi.fn<PlayerController['reportStall']>>;
   emit<K extends keyof PlayerEvents>(evt: K, payload: PlayerEvents[K]): void;
   listenerCount(): number;
 }
@@ -177,5 +178,6 @@ export function fakeController(): FakeController {
     tracks: () => ({ audio: [], text: [] }),
     selectAudioTrack: vi.fn<PlayerController['selectAudioTrack']>(),
     selectTextTrack: vi.fn<PlayerController['selectTextTrack']>(),
+    reportStall: vi.fn<PlayerController['reportStall']>(),
   };
 }

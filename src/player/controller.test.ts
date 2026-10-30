@@ -171,6 +171,26 @@ describe('player controller — selection and fallbacks (fake engines)', () => {
     expect(controller.engine).toBe('hls');
   });
 
+  it('PLY-07: a reported stall fails the current candidate: the fallback is tried', async () => {
+    const controller = createPlayerController(new FakeVideo().asElement(), {
+      capabilities: CHROME,
+      engines: fakeEngines(),
+    });
+    const events = record(controller);
+    await controller.play({ ...ts(), fallbacks: [m3u8()] });
+    controller.reportStall();
+    await flush();
+    expect(events).toEqual([
+      ['attempt', 'mpegts:ts:0'],
+      ['fallback', 'network->hls'],
+      ['attempt', 'hls:hls:1'],
+    ]);
+    // With nothing left, a stall is the final (recoverable) network error.
+    controller.reportStall();
+    await flush();
+    expect(events.at(-1)).toEqual(['error', 'network']);
+  });
+
   it('every candidate fails: each is tried exactly once and the last error is reported once', async () => {
     const controller = createPlayerController(new FakeVideo().asElement(), {
       capabilities: CHROME,

@@ -42,6 +42,13 @@ export const settings = {
     liveFormatNoList: 'Add an Xtream Codes list to choose its live format.',
     liveFormats: { auto: 'Auto', ts: 'MPEG-TS', m3u8: 'HLS' },
     saveError: 'The setting could not be saved. Try again.',
+    /** PLY-07: the live format learned per channel. */
+    resetLearned: 'Reset learned formats',
+    resetLearnedHint: (list: string) =>
+      `The app remembers which format each channel of ${list} played in and tries it first next time. Reset to start again from the preferred format.`,
+    resetLearnedNoList: 'Add a list to use the formats learned per channel.',
+    resetLearnedDone: 'Learned formats reset.',
+    resetLearnedError: 'The learned formats could not be reset. Try again.',
   },
   /** PRX-01: the personal proxy (a relay the user runs on their own computer, ADR-010). */
   proxy: {
