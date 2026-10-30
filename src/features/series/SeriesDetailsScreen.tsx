@@ -260,8 +260,17 @@ function SeriesDetails({ source, series, history, favorite: initialFavorite }: S
   // --- progress -----------------------------------------------------------------------------------
   const [seriesEntry, setSeriesEntry] = useState(history.entry);
   const [progress, setProgress] = useState<ReadonlyMap<string, EpisodeProgress>>(history.episodes);
+  // A save started by the player can finish after this screen is gone (closing it unmounts both).
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const onSaved = useCallback(
     (episode: Episode, snapshot: ProgressSnapshot) => {
+      if (!mounted.current) return;
       setProgress((previous) => new Map(previous).set(episode.key, snapshot));
       // Same rule as seriesHistory.ts: a finished episode points the series at the next one.
       const next = snapshot.completed ? nextEpisode(playable, episode.key) : undefined;
