@@ -392,6 +392,11 @@ export interface SettingsMap {
    * Untrusted on read: validated by core/session.
    */
   personalProxy: { baseUrl: string };
+  /**
+   * Preferred audio and subtitle languages (PLY-05): the language of the last track chosen in
+   * the player (`subtitles: null` = subtitles off). Untrusted on read: validated by the player.
+   */
+  trackLanguages: unknown;
 }
 
 export type SettingsKey = keyof SettingsMap;

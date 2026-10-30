@@ -13,6 +13,7 @@ import { pageMargin } from '@/ui/theme/tokens';
 import { BottomNav } from './shell/BottomNav';
 import { navIdForPath } from './shell/navItems';
 import { NavRail } from './shell/NavRail';
+import { mainLandmarkProps, SkipLink } from './shell/SkipLink';
 import { TopBar } from './shell/TopBar';
 
 export type NavLayout = 'bottom' | 'rail' | 'expanded';
@@ -49,6 +50,7 @@ export function AppShell({
 
   return (
     <Box sx={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      <SkipLink />
       <TopBar
         showSettings={isMobile}
         settingsSelected={selected === 'settings'}
@@ -59,7 +61,10 @@ export function AppShell({
         {!isMobile && <NavRail expanded={layout === 'expanded'} selected={selected} />}
         <Box
           component="main"
+          {...mainLandmarkProps}
           sx={{
+            // Focused by the skip link (UX-03): a landmark, not a control, so no focus ring.
+            '&:focus': { outline: 'none' },
             flex: 1,
             minWidth: 0,
             // Same breakpoints as the navigation layout (sm = 600, lg = 1200).

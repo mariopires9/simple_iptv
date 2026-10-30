@@ -25,6 +25,13 @@ export const player = {
     close: 'Fechar leitor',
     goLive: 'Ir para o direto',
   },
+  tracks: {
+    menu: 'Áudio e legendas',
+    audio: 'Áudio',
+    subtitles: 'Legendas',
+    off: 'Desligadas',
+    unnamed: (position: string) => `Faixa ${position}`,
+  },
   timeOf: (current: string, total: string) => `${current} de ${total}`,
   announce: {
     playing: 'A reproduzir',

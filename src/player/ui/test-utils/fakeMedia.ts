@@ -145,6 +145,8 @@ export function installFakeMedia(video: HTMLVideoElement): FakeMedia {
 export interface FakeController extends PlayerController {
   readonly play: ReturnType<typeof vi.fn<PlayerController['play']>>;
   readonly stop: ReturnType<typeof vi.fn<PlayerController['stop']>>;
+  readonly selectAudioTrack: ReturnType<typeof vi.fn<PlayerController['selectAudioTrack']>>;
+  readonly selectTextTrack: ReturnType<typeof vi.fn<PlayerController['selectTextTrack']>>;
   emit<K extends keyof PlayerEvents>(evt: K, payload: PlayerEvents[K]): void;
   listenerCount(): number;
 }
@@ -172,5 +174,8 @@ export function fakeController(): FakeController {
       return n;
     },
     engine: undefined,
+    tracks: () => ({ audio: [], text: [] }),
+    selectAudioTrack: vi.fn<PlayerController['selectAudioTrack']>(),
+    selectTextTrack: vi.fn<PlayerController['selectTextTrack']>(),
   };
 }

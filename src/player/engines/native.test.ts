@@ -121,3 +121,63 @@ describe('native engine', () => {
     ).rejects.toThrow('attach() must be called before load()');
   });
 });
+
+/** A minimal `AudioTrackList` / `TextTrackList`: indexed tracks + track events. */
+function trackList<T extends object>(tracks: T[]): EventTarget & { length: number } & T[] {
+  const list = Object.assign(new EventTarget(), { length: tracks.length });
+  tracks.forEach((track, i) => Object.assign(list, { [i]: track }));
+  return list as EventTarget & { length: number } & T[];
+}
+
+describe('native engine tracks (PLY-05 AC2)', () => {
+  it('lists audioTracks and subtitle textTracks and switches them in place', async () => {
+    const video = new FakeVideo();
+    const audio = trackList([
+      { label: 'English', language: 'en', enabled: true },
+      { label: 'Português', language: 'pt', enabled: false },
+    ]);
+    const text = trackList([
+      { kind: 'metadata', label: 'id3', language: '', mode: 'hidden' },
+      { kind: 'subtitles', label: 'English', language: 'en', mode: 'disabled' },
+    ]);
+    Object.assign(video, { audioTracks: audio, textTracks: text });
+    const engine = createNativeEngine({ rewriter: { rewrite: (u) => u } });
+    const seen: unknown[] = [];
+    engine.on('tracks', (t) => seen.push(t));
+    engine.attach(video.asElement());
+    await engine.load({ url: 'https://a.test/live.m3u8', kind: 'live', container: 'hls' });
+
+    expect(engine.tracks?.()).toEqual({
+      audio: [
+        { id: '0', label: 'English', language: 'en' },
+        { id: '1', label: 'Português', language: 'pt' },
+      ],
+      audioId: '0',
+      text: [{ id: '1', label: 'English', language: 'en' }],
+    });
+
+    engine.selectAudioTrack?.('1');
+    engine.selectTextTrack?.('1');
+    expect([audio[0]?.enabled, audio[1]?.enabled]).toEqual([false, true]);
+    expect(text[1]?.mode).toBe('showing');
+    expect(text[0]?.mode).toBe('hidden'); // metadata tracks are left alone
+    engine.selectTextTrack?.(undefined);
+    expect(text[1]?.mode).toBe('disabled');
+
+    text.dispatchEvent(new Event('change'));
+    expect(seen).toHaveLength(1);
+    await engine.destroy();
+    audio.dispatchEvent(new Event('addtrack'));
+    text.dispatchEvent(new Event('change'));
+    expect(seen).toHaveLength(1); // listeners removed
+  });
+
+  it('lists no tracks for a plain file without alternatives (AC3)', async () => {
+    const video = new FakeVideo();
+    Object.assign(video, { textTracks: trackList([]) });
+    const engine = createNativeEngine({ rewriter: { rewrite: (u) => u } });
+    engine.attach(video.asElement());
+    await engine.load({ url: 'https://a.test/m.mp4', kind: 'vod', container: 'mp4' });
+    expect(engine.tracks?.()).toEqual({ audio: [], text: [] });
+  });
+});

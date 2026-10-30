@@ -17,3 +17,5 @@ proxy/config.json
 dist-report/
 lhci-report/
 .lighthouseci/
+# Local Lighthouse runs on WSL (chrome-launcher profile folders)
+C:*
