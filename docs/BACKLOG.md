@@ -72,6 +72,8 @@ Allowed statuses (exactly one per story):
 | PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | In Review |
 | PRX-02 | Proxy: optional upstream allowlist (any public host by default) | E1 | Must | 1 | PRX-01 | 8 | M3 | In Review |
 | PLY-06 | Diagnosable live playback failures | E3 | Must | 3 | PLY-04, SRC-09 | 8 | M3 | Done |
+| PLY-07 | Automatic live format per channel (learned; iOS HLS first; stall fallback) | E3 | Must | 3 | PLY-06 | 8 | M3 | In Review |
+| PLY-08 | Open in an external player (VLC) | E3 | Must | 2 | PLY-02 | 8 | M3 | In Progress |
 | UX-07 | Mark protected content | E11 | Should | 3 | SRC-04, VOD-04, UX-04 | 8 | M3 | Done |
 
 ## Post-MVP
@@ -134,3 +136,4 @@ flowchart LR
 | 2026-10-30 | EPG-02 | AC3 (100 MB, worker < 200 MB) measured in Node only (heap peak 109 MB); xz decoding (WASM) not verified in a browser; EPG-03 AC5 manual override not done | Measure in a browser during DEP-02 | Open |
 | 2026-10-30 | EPG-04 | ≥ 55 fps not measured (jsdom only); ARIA grid shape needs a screen-reader check; 48 h window fixed at open | Browser performance trace + screen reader in DEP-02 | Open |
 | 2026-10-30 | UX-05 | No real TV tested (Android TV, Fire TV, Tizen, webOS key codes from docs) | Manual check in DEP-02 | Open |
+| 2026-10-30 | PLY-07 | Owner's iPhone: some channels show green frames (TS via MMS) or audio without video (native HLS) — likely a codec WebKit cannot decode (HEVC in TS / H.264 10-bit / MPEG-2); VLC plays them | PLY-07 (HLS first + stall fallback) and PLY-08 (open in VLC); codec to be confirmed in VLC; proxy remux (HEVC → fMP4) possible later | Open |
