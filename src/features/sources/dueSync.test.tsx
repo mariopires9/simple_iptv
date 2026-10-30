@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { wipeAll } from '@/core/db';
 import { t } from '@/i18n';
 import { forgetActiveSource } from './activeSource';
-import { startDueSyncs, type DueSyncDeps } from './dueSync';
+import { startDueSyncs, startImportedSyncs, type DueSyncDeps } from './dueSync';
 import { resetSourceSyncs, startSourceSync, type SyncRun, type SyncWorker } from './sourceSync';
 import { SyncActivityIndicator } from './SyncActivityIndicator';
 import { DAY, HOUR, makeSource, renderRoutes, seedSource, setStoredActive } from './test-utils';
@@ -102,5 +102,39 @@ describe('SyncActivityIndicator', () => {
       if (run.dispatch === 'started') await run.done;
     });
     expect(screen.queryByTestId('sync-activity')).not.toBeInTheDocument();
+  });
+});
+
+describe('startImportedSyncs (EXP-01)', () => {
+  const lists = [
+    makeSource({ id: 'x', kind: 'xtream', name: 'X' }),
+    makeSource({ id: 'm', kind: 'm3u-url', name: 'M' }),
+    makeSource({ id: 'f', kind: 'm3u-file', name: 'F' }),
+    makeSource({ id: 'other', kind: 'm3u-url', name: 'Not imported' }),
+  ];
+
+  it('starts the imported M3U-URL lists (Xtream ones are due anyway; files need the user)', async () => {
+    const start = vi.fn(() => Promise.resolve(started()));
+    const ids = await startImportedSyncs({
+      takePending: () => ['x', 'm', 'f'],
+      loadSources: () => Promise.resolve(lists),
+      start,
+      isOnline: () => true,
+    });
+    expect(ids).toEqual(['m']);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledWith({ id: 'm', kind: 'm3u-url' });
+  });
+
+  it('offline: the queue is kept for later', async () => {
+    const takePending = vi.fn(() => ['m']);
+    const ids = await startImportedSyncs({
+      takePending,
+      loadSources: () => Promise.resolve(lists),
+      start: vi.fn(),
+      isOnline: () => false,
+    });
+    expect(ids).toEqual([]);
+    expect(takePending).not.toHaveBeenCalled();
   });
 });

@@ -46,4 +46,17 @@ export const favoritesRepo = {
     const list = await db.favorites.where('[sourceId+type]').equals([sourceId, type]).toArray();
     return list.sort((a, b) => b.addedAt - a.addedAt);
   },
+
+  /** Every favorite of every source (EXP-01 export). */
+  async listAll(): Promise<Favorite[]> {
+    const db = await getDb();
+    return db.favorites.toArray();
+  },
+
+  /** Writes already-validated favorites in one transaction (EXP-01 import). */
+  async putMany(favorites: readonly Favorite[]): Promise<void> {
+    if (favorites.length === 0) return;
+    const db = await getDb();
+    await db.favorites.bulkPut([...favorites]);
+  },
 };

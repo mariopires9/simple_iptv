@@ -8,6 +8,7 @@ export const settings = {
     language: 'Idioma',
     playback: 'Reprodução',
     proxy: 'Proxy pessoal',
+    backup: 'Cópia de segurança',
     storage: 'Armazenamento',
     privacy: 'Privacidade',
     about: 'Acerca',
@@ -161,6 +162,79 @@ export const settings = {
         continue: 'Continuar',
       },
     },
+  },
+  backup: {
+    intro:
+      'Guarde as suas listas, favoritos, histórico e definições num ficheiro e restaure-os noutro dispositivo. Os canais, filmes e séries não ficam no ficheiro: são descarregados de novo após a importação.',
+    exportTitle: 'Exportar',
+    includeSecrets: 'Incluir palavras-passe e endereços das listas',
+    includeSecretsHint:
+      'São cifrados com uma palavra-passe à sua escolha. Sem ela, o ficheiro não tem palavras-passe e terá de as escrever de novo após importar.',
+    password: 'Palavra-passe da exportação',
+    passwordHint: (min: number) =>
+      `Pelo menos ${min} caracteres. Guarde-a bem: sem ela, as palavras-passe do ficheiro não podem ser recuperadas.`,
+    confirmPassword: 'Repita a palavra-passe',
+    errors: {
+      tooShort: (min: number) => `Use pelo menos ${min} caracteres`,
+      mismatch: 'As palavras-passe não coincidem',
+    },
+    export: 'Exportar para ficheiro',
+    exporting: 'A exportar…',
+    exported: 'Ficheiro de cópia de segurança guardado',
+    exportedMissing: (count: number) =>
+      count === 1
+        ? 'Ficheiro guardado, sem a palavra-passe de 1 lista (não foi possível lê-la)'
+        : `Ficheiro guardado, sem as palavras-passe de ${count} listas (não foi possível lê-las)`,
+    exportError: 'Não foi possível criar o ficheiro de cópia de segurança',
+    importTitle: 'Importar',
+    importHint:
+      'Escolha um ficheiro exportado desta aplicação. Pode revê-lo antes de qualquer alteração.',
+    choose: 'Importar de ficheiro',
+    readErrors: {
+      'too-large': 'Este ficheiro é demasiado grande para ser uma cópia de segurança.',
+      'not-json': 'Este ficheiro não é uma cópia de segurança desta aplicação.',
+      'not-backup':
+        'Este ficheiro não é uma cópia de segurança desta aplicação, ou está danificado.',
+      'newer-version':
+        'Esta cópia de segurança foi feita por uma versão mais recente da aplicação. Atualize a aplicação primeiro.',
+    },
+    readError: 'Não foi possível ler o ficheiro',
+    preview: {
+      title: 'Importar cópia de segurança',
+      exportedAt: (date: string) => `Exportada em ${date}`,
+      lists: (count: number, formatted: string) =>
+        count === 1 ? '1 lista' : `${formatted} listas`,
+      favorites: (count: number, formatted: string) =>
+        count === 1 ? '1 favorito' : `${formatted} favoritos`,
+      history: (count: number, formatted: string) =>
+        count === 1 ? '1 entrada do histórico' : `${formatted} entradas do histórico`,
+      settings: (count: number, formatted: string) =>
+        count === 1 ? '1 definição' : `${formatted} definições`,
+      skipped: (count: number, formatted: string) =>
+        count === 1
+          ? '1 entrada inválida será ignorada'
+          : `${formatted} entradas inválidas serão ignoradas`,
+      secretsIncluded: (lists: number, formatted: string) =>
+        lists === 1
+          ? 'Segredos cifrados: a palavra-passe ou o endereço de 1 lista'
+          : `Segredos cifrados: as palavras-passe ou os endereços de ${formatted} listas`,
+      proxyTokenIncluded: 'Segredos cifrados: o token do proxy pessoal',
+      noSecrets:
+        'Este ficheiro não tem palavras-passe nem endereços de listas: as listas Xtream vão pedir a palavra-passe e as listas M3U por endereço ficam de fora.',
+      catalogue: 'Os canais, filmes e séries são descarregados de novo após a importação.',
+      password: 'Palavra-passe da cópia de segurança',
+      passwordHint: 'Deixe vazio para importar sem as palavras-passe e os endereços das listas.',
+      wrongPassword: 'Palavra-passe errada, ou o ficheiro foi alterado.',
+      mode: 'Como importar',
+      merge: 'Juntar com este dispositivo',
+      mergeHint: 'Mantém as listas, favoritos e histórico que já cá estão.',
+      replace: 'Substituir os dados deste dispositivo',
+      replaceHint:
+        'Remove primeiro as listas que já cá estão, com os seus favoritos, histórico e palavras-passe.',
+      confirm: 'Importar',
+      importing: 'A importar…',
+    },
+    importError: 'Não foi possível importar a cópia de segurança',
   },
   about: {
     version: 'Versão',

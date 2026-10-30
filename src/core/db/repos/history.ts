@@ -172,4 +172,17 @@ export const historyRepo = {
     const list = await db.history.where('[sourceId+type]').equals([sourceId, type]).toArray();
     return list.sort((a, b) => b.lastWatchedAt - a.lastWatchedAt).slice(0, limit);
   },
+
+  /** Every history entry of every source (EXP-01 export). */
+  async listAll(): Promise<HistoryEntry[]> {
+    const db = await getDb();
+    return db.history.toArray();
+  },
+
+  /** Writes already-validated entries in one transaction (EXP-01 import). */
+  async putMany(entries: readonly HistoryEntry[]): Promise<void> {
+    if (entries.length === 0) return;
+    const db = await getDb();
+    await db.history.bulkPut([...entries]);
+  },
 };

@@ -6,6 +6,7 @@
 | Xtream credentials / M3U URLs | Reading of app data (backup, profile copy, casual forensic tool) | AES-GCM with non-exportable key (ADR-006) | Anyone using the unlocked device on the same origin can use the credentials |
 | Credentials | XSS via malicious metadata/lists | Rendering as text only, CSP without `unsafe-eval`/external scripts, lint against `dangerouslySetInnerHTML`, URL validation | Vulnerability in a dependency |
 | Credentials | Exposure in logs/errors/reports | Central redaction (FND-06), property tests | — |
+| Credentials | Export file (EXP-01) copied, shared or left in Downloads | Secrets (Xtream passwords, M3U list URLs, proxy token) are written only when the user sets an export password: AES-GCM 256, key from PBKDF2-SHA-256 (600 000 iterations, random salt, random IV), WebCrypto; never the device key | Server URL, username and list names are in plain text; a weak export password can be brute-forced offline |
 | Credentials | Visible in stream URLs (Xtream protocol) | Inherent to the protocol; documented | Visible in DevTools and to the IPTV server/proxy |
 | Credentials | `Referer` leak to third parties | `no-referrer` | — |
 | Privacy | Telemetry/tracking | No analytics; self-hosted fonts; E2E domain allowlist test | — |
