@@ -73,7 +73,7 @@ Allowed statuses (exactly one per story):
 | PRX-02 | Proxy: optional upstream allowlist (any public host by default) | E1 | Must | 1 | PRX-01 | 8 | M3 | In Review |
 | PLY-06 | Diagnosable live playback failures | E3 | Must | 3 | PLY-04, SRC-09 | 8 | M3 | Done |
 | PLY-07 | Automatic live format per channel (learned; iOS HLS first; stall fallback) | E3 | Must | 3 | PLY-06 | 8 | M3 | In Review |
-| PLY-08 | Open in an external player (VLC) | E3 | Must | 2 | PLY-02 | 8 | M3 | In Progress |
+| PLY-08 | Open in an external player (VLC) | E3 | Must | 2 | PLY-02 | 8 | M3 | In Review |
 | UX-07 | Mark protected content | E11 | Should | 3 | SRC-04, VOD-04, UX-04 | 8 | M3 | Done |
 
 ## Post-MVP

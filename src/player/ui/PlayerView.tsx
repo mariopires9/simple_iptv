@@ -19,6 +19,13 @@ import { t } from '@/i18n';
 import { DPAD_SCOPE_ATTRIBUTE } from '@/ui/dpad';
 import { useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
+import { defaultShowOpenInVlc, externalStreamUrl, type HandoffPlatform } from '../external';
+import {
+  defaultHandoffEnv,
+  handOffToVlc,
+  type HandoffEnv,
+  type HandoffOutcome,
+} from '../external/handoff';
 import { NO_TRACKS } from '../types';
 import type { MediaTrack, MediaTracks, PlaybackError, StreamDescriptor } from '../types';
 import { AUDIO_CHECK_DELAY_MS, audioMissing } from './audioCheck';
@@ -46,6 +53,7 @@ import { useMediaState } from './useMediaState';
 import { usePictureInPicture } from './usePictureInPicture';
 import { usePlayerController, type ControllerFactory } from './usePlayerController';
 import { OVERLAY_ATTRIBUTE, useShortcuts } from './useShortcuts';
+import { useShowOpenInVlcSetting } from './useShowOpenInVlcSetting';
 
 /** A live stream shows a seek bar only when its seekable (DVR) window is longer than this. */
 export const DVR_MIN_WINDOW_S = 30;
@@ -72,6 +80,11 @@ export const LIVE_STALL_TIMEOUT_MS = 10_000;
  * The action is a router link: PlayerView is always rendered inside the app's router.
  */
 export const DIAGNOSTICS_PATH = '/settings/sources/diagnostics';
+/**
+ * iOS: if the page is still visible this long after the hand-off, VLC did not open (it is not
+ * installed: Safari gives the page no other signal) — PLY-08 AC3.
+ */
+export const VLC_OPEN_CHECK_MS = 2_000;
 /** How long the "Starting from the beginning" notice stays (VOD-03 AC4). */
 export const RESUME_NOTICE_MS = 6_000;
 
@@ -147,6 +160,22 @@ export interface PlayerViewProps {
   artwork?: string | undefined;
   /** MSS-01, VOD: the system "next track" button (e.g. the next episode). */
   onNextItem?: (() => void) | undefined;
+  /**
+   * PLY-08: show "Open in VLC" (controls and error overlay). Default: the stored setting
+   * (Settings › Playback), else on for phones and tablets.
+   */
+  showOpenInVlc?: boolean;
+  /** PLY-08: hand-off platform and side effects (tests inject fakes). Default: detected/real. */
+  handoff?: Partial<HandoffEnv>;
+}
+
+/** A hand-off to VLC, tied to the load it stopped. */
+interface Handoff {
+  load: object;
+  platform: HandoffPlatform;
+  outcome: HandoffOutcome;
+  /** iOS: VLC apparently did not open. */
+  notOpened?: boolean;
 }
 
 export function PlayerView({
@@ -171,6 +200,8 @@ export function PlayerView({
   failureProbe,
   artwork,
   onNextItem,
+  showOpenInVlc: showOpenInVlcProp,
+  handoff: handoffProp,
 }: PlayerViewProps) {
   const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
   // Only read when it can matter: no explicit prop, and a phone or tablet.
@@ -541,9 +572,55 @@ export function PlayerView({
     seek = { min: media.seekableStart, max: media.seekableEnd, value: media.currentTime };
   }
 
+  // --- hand-off to VLC (PLY-08) -------------------------------------------------------------
+  const [handoffEnv] = useState<HandoffEnv>(() => ({ ...defaultHandoffEnv(), ...handoffProp }));
+  const storedShowOpenInVlc = useShowOpenInVlcSetting(showOpenInVlcProp === undefined);
+  const vlcEnabled =
+    showOpenInVlcProp ?? storedShowOpenInVlc ?? defaultShowOpenInVlc(handoffEnv.platform);
+  const [handoff, setHandoff] = useState<Handoff>();
+  const handedOff = handoff?.load === load ? handoff : undefined;
+  const openInVlc = () => {
+    // The provider may allow one connection: the in-app stream stops first. The engine teardown
+    // (which aborts its requests) starts synchronously in stop(), before the navigation below,
+    // which stays in the tap's task so the browser allows it.
+    video?.pause();
+    if (controller) void controller.stop();
+    const outcome = handOffToVlc(externalStreamUrl(stream), title, handoffEnv);
+    log.info('player: handed off to VLC', { platform: handoffEnv.platform, outcome });
+    setHandoff({ load, platform: handoffEnv.platform, outcome });
+  };
+  const waitingForVlc =
+    handedOff?.platform === 'ios' && handedOff.outcome === 'opened' && !handedOff.notOpened;
+  useEffect(() => {
+    if (!waitingForVlc) return undefined;
+    let left = false;
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') left = true;
+    };
+    const onPageHide = () => {
+      left = true;
+    };
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onPageHide);
+    const timer = setTimeout(() => {
+      if (left || document.visibilityState !== 'visible') return;
+      setHandoff((h) => (h?.load === load ? { ...h, notOpened: true } : h));
+    }, VLC_OPEN_CHECK_MS);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [waitingForVlc, load]);
+
   // --- actions ----------------------------------------------------------------------------
   const togglePlay = () => {
     if (!video || error) return;
+    // The stream was stopped for VLC: Play loads it again here.
+    if (handedOff) {
+      retry();
+      return;
+    }
     if (video.paused) playMedia(video);
     else video.pause();
   };
@@ -770,6 +847,7 @@ export function PlayerView({
         onTogglePictureInPicture={pip.supported ? pip.toggle : undefined}
         pictureInPicture={pip.active}
         onClose={onClose}
+        onOpenInVlc={vlcEnabled && error === undefined ? openInVlc : undefined}
         trackMenu={
           hasTrackChoice(tracks) && error === undefined ? (
             <TrackMenu tracks={tracks} onSelectAudio={selectAudio} onSelectText={selectText} />
@@ -874,8 +952,30 @@ export function PlayerView({
           onRetry={retry}
           onNext={isLive ? onNext : undefined}
           diagnosticsPath={DIAGNOSTICS_PATH}
+          onOpenInVlc={vlcEnabled ? openInVlc : undefined}
           {...(failureProbe ? { probe: failureProbe } : {})}
         />
+      )}
+
+      {handedOff && (
+        // After the error overlay in the DOM: shown above it when the hand-off came from there.
+        <Alert
+          severity={handedOff.notOpened ? 'warning' : 'info'}
+          role="status"
+          data-testid="player-vlc-handoff"
+          action={
+            <Button color="inherit" size="small" onClick={retry} sx={{ minHeight: 44 }}>
+              {t.player.external.playHere}
+            </Button>
+          }
+          sx={{ position: 'absolute', left: 16, right: 16, bottom: 16, mx: 'auto', maxWidth: 560 }}
+        >
+          {handedOff.notOpened
+            ? t.player.external.notOpened
+            : handedOff.outcome === 'downloaded'
+              ? t.player.external.downloaded
+              : t.player.external.opened}
+        </Alert>
       )}
 
       <Box role="status" aria-live="polite" sx={visuallyHidden}>

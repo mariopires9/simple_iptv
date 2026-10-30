@@ -398,6 +398,11 @@ export interface SettingsMap {
    */
   fullscreenOnLandscape: boolean;
   /**
+   * Show the player's "Open in VLC" action (PLY-08; Settings › Playback). Absent = on for phones
+   * and tablets, off on desktop.
+   */
+  showOpenInVlc: boolean;
+  /**
    * Last global searches, most recent first (SCH-02, max. 10). Untrusted on read: owned and
    * validated by features/search.
    */

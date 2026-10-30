@@ -121,6 +121,14 @@ export const player = {
   nativeFullscreenNote:
     'Neste dispositivo, o ecrã inteiro usa o leitor do sistema e os respetivos controlos.',
   resumeUnsupported: 'A começar do início',
+  external: {
+    openInVlc: 'Abrir no VLC',
+    opened: 'A abrir no VLC. O leitor aqui foi parado.',
+    playHere: 'Reproduzir aqui',
+    notOpened: 'O VLC não abriu — instale o VLC a partir da App Store',
+    downloaded:
+      'Foi transferido um ficheiro de lista: abra-o com o VLC. Contém a palavra-passe da sua lista; não o partilhe.',
+  },
   attempts: {
     heading: 'Tentativas:',
     line: (position: number, format: string, engine: string, error: string) =>

@@ -6,6 +6,7 @@ import Forward10Rounded from '@mui/icons-material/Forward10Rounded';
 import FullscreenExitRounded from '@mui/icons-material/FullscreenExitRounded';
 import FullscreenRounded from '@mui/icons-material/FullscreenRounded';
 import ListRounded from '@mui/icons-material/ListRounded';
+import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded';
 import PauseRounded from '@mui/icons-material/PauseRounded';
 import PictureInPictureAltRounded from '@mui/icons-material/PictureInPictureAltRounded';
 import PlayArrowRounded from '@mui/icons-material/PlayArrowRounded';
@@ -67,6 +68,8 @@ export interface PlayerControlsProps {
   onClose?: (() => void) | undefined;
   /** PLY-05: the audio/subtitle track menu, when the stream has a choice. */
   trackMenu?: ReactNode;
+  /** PLY-08: "Open in VLC"; omitted when the setting hides it. */
+  onOpenInVlc?: (() => void) | undefined;
 }
 
 const scrim = (theme: Theme) => alpha(theme.palette.common.black, 0.55);
@@ -164,6 +167,7 @@ export function PlayerControls({
   pictureInPicture = false,
   onClose,
   trackMenu,
+  onOpenInVlc,
 }: PlayerControlsProps) {
   const c = t.player.controls;
   const isLive = kind === 'live';
@@ -292,6 +296,11 @@ export function PlayerControls({
                 </Control>
               )}
               {trackMenu}
+              {onOpenInVlc && (
+                <Control label={t.player.external.openInVlc} onClick={onOpenInVlc}>
+                  <OpenInNewRounded />
+                </Control>
+              )}
               {onTogglePictureInPicture && (
                 <Control
                   label={pictureInPicture ? c.exitPictureInPicture : c.pictureInPicture}
