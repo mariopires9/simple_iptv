@@ -90,7 +90,9 @@ describe('service worker registration (PWA-02)', () => {
     expect(source).toMatch(/import\('virtual:pwa-register'\)/);
     expect(source).not.toMatch(/^\s*import\s+(?!type\b)[^;]*from\s+['"]virtual:pwa-register['"]/m);
     const main = readFileSync(join(import.meta.dirname, '..', '..', 'main.tsx'), 'utf8');
-    expect(main).toMatch(/if \(import\.meta\.env\.PROD\) void registerServiceWorker\(\)/);
+    // Production only, once the first screen is up (QA-04: `App` calls `onStarted` when idle).
+    expect(main).toMatch(/import\.meta\.env\.PROD \? \(\) => void registerServiceWorker\(\)/);
+    expect(main).toMatch(/<App onStarted=\{onStarted\} \/>/);
   });
 });
 

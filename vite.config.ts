@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { cspPlugin } from './build/csp.ts';
+import { inlineCssPlugin } from './build/inlineCss.ts';
 import { licensesPlugin } from './build/licenses.ts';
 import { pwaOptions, themeColorPlugin } from './build/pwa.ts';
 
@@ -13,7 +14,15 @@ const base = process.env.VITE_BASE ?? '/';
 export default defineConfig({
   base,
   // PWA-01/PWA-02: manifest + generateSW precache of the app shell (rules in build/pwa.ts).
-  plugins: [react(), cspPlugin(), licensesPlugin(), themeColorPlugin(), VitePWA(pwaOptions(base))],
+  // QA-04: the entry stylesheet is inlined into index.html (build/inlineCss.ts).
+  plugins: [
+    react(),
+    inlineCssPlugin(),
+    cspPlugin(),
+    licensesPlugin(),
+    themeColorPlugin(),
+    VitePWA(pwaOptions(base)),
+  ],
   // Workers as ES modules: allows dynamic import() inside tasks (FND-07).
   worker: { format: 'es' },
   build: {
@@ -32,6 +41,11 @@ export default defineConfig({
               priority: 3,
             },
             { name: 'router', test: /node_modules[\\/]react-router[\\/]/, priority: 2 },
+            // QA-04: the rest of the start-up graph (app, i18n, MUI core) in one chunk instead of a
+            // dozen small shared ones: each request is a round trip on a slow mobile connection.
+            // `$initial` only captures modules statically reachable from the entry, which load
+            // at start-up anyway; lazy-only modules keep their own chunks.
+            { name: 'startup', tags: ['$initial'], priority: 1 },
           ],
         },
       },
