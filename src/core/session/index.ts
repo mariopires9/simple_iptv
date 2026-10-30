@@ -40,3 +40,5 @@ export {
 } from './proxy';
 // Lists imported from a backup, waiting for their first sync after the restart (EXP-01).
 export { markSourcesForSync, PENDING_SYNC_KEY, takeSourcesPendingSync } from './pendingSync';
+// Parental control (SEC-03) is imported from `@/core/session/parental` directly, not from this
+// barrel: the barrel is in the initial bundle, and only the lazy catalogue screens need it.

@@ -70,6 +70,7 @@ export type LazyNamespace =
   | 'live'
   | 'movies'
   | 'onboarding'
+  | 'parental'
   | 'player'
   | 'search'
   | 'series'
@@ -106,6 +107,10 @@ const lazy: NamespaceLoaders<LazyMessages, Locale> = {
   onboarding: {
     en: () => import('./en/onboarding').then((m) => m.onboarding),
     'pt-PT': () => import('./pt-PT/onboarding').then((m) => m.onboarding),
+  },
+  parental: {
+    en: () => import('./en/parental').then((m) => m.parental),
+    'pt-PT': () => import('./pt-PT/parental').then((m) => m.parental),
   },
   player: {
     en: () => import('./en/player').then((m) => m.player),

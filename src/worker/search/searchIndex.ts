@@ -145,6 +145,8 @@ export interface QueryOptions {
   limit?: number;
   /** Leave protected items (DRM/DASH, UX-07) out of hits and totals. */
   hideProtected?: boolean;
+  /** Category keys whose items are left out of hits and totals (parental control, SEC-03). */
+  excludeCategoryKeys?: readonly string[];
 }
 
 /**
@@ -155,8 +157,14 @@ export function querySearchIndex(
   index: SearchIndex,
   sourceId: string,
   query: string,
-  { types = CONTENT_TYPES, limit = 20, hideProtected = false }: QueryOptions = {},
+  {
+    types = CONTENT_TYPES,
+    limit = 20,
+    hideProtected = false,
+    excludeCategoryKeys = [],
+  }: QueryOptions = {},
 ): RawResults {
+  const excluded = new Set(excludeCategoryKeys);
   const results = emptyResults();
   if (!isSearchableQuery(query)) return results;
   const wanted = new Set(types);
@@ -167,13 +175,15 @@ export function querySearchIndex(
     const type = TYPE_BY_CODE[id.slice(0, separator)];
     if (type === undefined || !wanted.has(type)) continue;
     if (hideProtected && (match as { p?: unknown }).p === 1) continue;
+    const c = (match as { c?: unknown }).c;
+    const category = typeof c === 'string' && c !== '' ? categoryKey(sourceId, type, c) : undefined;
+    if (category !== undefined && excluded.has(category)) continue;
     const group = results[type];
     group.total++;
     if (group.hits.length >= max) continue;
     const externalId = id.slice(separator + 1);
     const hit: RawHit = { key: itemKey(sourceId, type, externalId), type, externalId };
-    const c = (match as { c?: unknown }).c;
-    if (typeof c === 'string' && c !== '') hit.categoryKey = categoryKey(sourceId, type, c);
+    if (category !== undefined) hit.categoryKey = category;
     group.hits.push(hit);
   }
   return results;

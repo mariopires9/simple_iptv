@@ -232,3 +232,22 @@ describe('protected content (UX-07)', () => {
     expect(shown.movie).toEqual({ total: 1, hits: [expect.objectContaining({ externalId: '4' })] });
   });
 });
+
+describe('parental control (SEC-03)', () => {
+  const items = [
+    channel(1, 'Night One'),
+    channel(2, 'Night Two', { categoryKey: categoryKey(SRC, 'live', 'adult') }),
+    movie(3, 'Night Movie', { categoryKey: categoryKey(SRC, 'movie', 'adult') }),
+    movie(4, 'Night Story'),
+  ];
+
+  it('excludeCategoryKeys leaves those categories out of hits and totals (also after a reload)', () => {
+    const index = loadSearchIndex(serializeSearchIndex(buildSearchIndex(items)));
+    expect(querySearchIndex(index, SRC, 'night').live.total).toBe(2);
+    const shown = querySearchIndex(index, SRC, 'night', {
+      excludeCategoryKeys: [categoryKey(SRC, 'live', 'adult'), categoryKey(SRC, 'movie', 'adult')],
+    });
+    expect(shown.live).toEqual({ total: 1, hits: [expect.objectContaining({ externalId: '1' })] });
+    expect(shown.movie).toEqual({ total: 1, hits: [expect.objectContaining({ externalId: '4' })] });
+  });
+});
