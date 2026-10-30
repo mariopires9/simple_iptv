@@ -21,6 +21,11 @@ import {
   type SyncM3uResult,
 } from '@/providers/m3u';
 import {
+  importEpg as importXmltvEpg,
+  type ImportEpgInput,
+  type ImportEpgResult,
+} from '@/providers/xmltv';
+import {
   rebuildSearchIndexAfterSync,
   searchCatalog,
   warmUpSearch,
@@ -92,6 +97,16 @@ export function syncM3uFile(input: SyncM3uFileInput, ctx: TaskContext): Promise<
 }
 
 /**
+ * EPG-02/EPG-03: downloads, decompresses and parses an M3U list's XMLTV guide (manual URL or the
+ * header's `url-tvg`) and stores the programmes of its matched channels (−2 h … +48 h), through
+ * the list's data rewriter (personal proxy, PRX-01). Skipped while the guide is fresh unless
+ * `force`.
+ */
+export function importEpg(input: ImportEpgInput, ctx: TaskContext): Promise<ImportEpgResult> {
+  return importXmltvEpg(input, ctx, { rewriterFor: dataRewriterFor });
+}
+
+/**
  * SCH-01: global search over the source's index (loaded from IndexedDB, or built if missing or
  * stale). Results grouped by type, at most `limit` per type.
  */
@@ -122,6 +137,7 @@ export const tasks = {
   syncXtream,
   syncM3u,
   syncM3uFile,
+  importEpg,
   waitSyncIdle,
   searchQuery,
   searchWarmup,
