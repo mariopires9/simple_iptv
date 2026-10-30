@@ -285,6 +285,22 @@ describe('LIV-02 AC1 — opening the player', () => {
     await playerShows(2);
   });
 
+  it('UX-03: closing the player returns focus to the channel list', async () => {
+    const user = userEvent.setup();
+    show('/live/category/1', 1400);
+    const list = await listbox('Channels in News');
+    await within(list).findByText('Channel 1');
+    list.focus();
+    await user.keyboard('{Enter}');
+    await playerShows(1);
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Player: Channel 1' })).toHaveFocus(),
+    );
+    act(() => lastView().onClose?.());
+    await waitFor(() => expect(screen.queryByTestId('live-player')).toBeNull());
+    expect(await listbox('Channels in News')).toHaveFocus();
+  });
+
   it('mobile: a 16:9 player pinned above the category chips and the list', async () => {
     await openFrom('/live/category/1', 'Channel 1', 400);
     await playerShows(1);

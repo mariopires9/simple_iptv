@@ -1,4 +1,4 @@
-// QA-02 AC2: axe on every main route, light and dark, with no serious/critical violations.
+// QA-02 AC2 / UX-03 AC2: axe on every route, light and dark, with no serious/critical violations.
 // Three tests (onboarding, browsing, settings) so they run in parallel and a failure is local.
 import type { Page } from '@playwright/test';
 import { addXtreamSource } from './support/app';
@@ -10,6 +10,8 @@ interface RouteCheck {
   path: string;
   /** Optional interaction after the page is ready (e.g. open the player). */
   prepare?: (page: Page) => Promise<void>;
+  /** What `prepare` shows, for the report. */
+  note?: string;
 }
 
 /** Full-screen routes reachable before any list exists. */
@@ -30,6 +32,7 @@ const BROWSE: readonly RouteCheck[] = [
       await page.getByRole('option', { name: /Example News HD/ }).click();
       await expect(page.getByRole('region', { name: 'Player: Example News HD' })).toBeVisible();
     },
+    note: 'player open',
   },
   { path: '/movies' },
   { path: '/movies/2001' },
@@ -48,8 +51,28 @@ const SETTINGS: readonly RouteCheck[] = [
   { path: '/settings/sources/add/xtream' },
   { path: '/settings/sources/add/m3u-url' },
   { path: '/settings/sources/add/m3u-file' },
+  // UX-03: the Diagnostics screen (SRC-09) of the active list, once its checks have finished.
+  { path: '/settings/sources/diagnostics', prepare: diagnosticsDone, note: 'results' },
   { path: '/no-such-page' },
 ];
+
+/** The diagnostics run (one API request and a short live stream test) has a result. */
+async function diagnosticsDone(page: Page): Promise<void> {
+  await expect(page.getByRole('button', { name: 'Copy report' })).toBeVisible({ timeout: 30_000 });
+}
+
+/** Synthetic proxy settings (PRX-01): never contacted, only saved, so every control is shown. */
+const PROXY = {
+  url: 'https://proxy.example.test',
+  token: 'e2e-synthetic-proxy-token-0123456789',
+} as const;
+
+const proxySection = (page: Page) => page.getByRole('region', { name: 'Personal proxy' });
+
+/** Settings › Personal proxy with a saved proxy: "Remove proxy" and the routing selects enabled. */
+async function proxySaved(page: Page): Promise<void> {
+  await expect(proxySection(page).getByRole('button', { name: 'Remove proxy' })).toBeVisible();
+}
 
 /**
  * Waits until CSS transitions/animations (MUI fades, toasts) are over, so contrast is final. No
@@ -83,7 +106,7 @@ async function check(page: Page, route: RouteCheck): Promise<AxeFinding[]> {
     await expect(page.locator('main').getByRole('heading', { level: 1 }).first()).toBeVisible();
     await route.prepare?.(page);
     await settle(page);
-    const label = `${route.path}${route.prepare ? ' (player open)' : ''} [${colorScheme}]`;
+    const label = `${route.path}${route.note ? ` (${route.note})` : ''} [${colorScheme}]`;
     findings.push(...(await seriousViolations(page, label)));
   }
   return findings;
@@ -132,6 +155,17 @@ test.describe('axe: no serious or critical violations', () => {
       await expect(page.getByRole('heading', { name: 'Edit list', level: 1 })).toBeVisible();
       const editPath = new URL(page.url()).hash.slice(1);
       findings.push(...(await check(page, { path: editPath })));
+    });
+    await test.step('axe /settings with a saved personal proxy', async () => {
+      await page.goto('./#/settings');
+      const section = proxySection(page);
+      await section.getByRole('textbox', { name: 'Proxy address' }).fill(PROXY.url);
+      await section.getByLabel('Access token', { exact: true }).fill(PROXY.token);
+      await section.getByRole('button', { name: 'Save', exact: true }).click();
+      await proxySaved(page);
+      findings.push(
+        ...(await check(page, { path: '/settings', prepare: proxySaved, note: 'proxy saved' })),
+      );
     });
     await report(findings);
   });

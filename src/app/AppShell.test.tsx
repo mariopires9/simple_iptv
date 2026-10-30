@@ -218,6 +218,19 @@ describe('AppShell — accessibility and selection', () => {
     expect(within(mainNav()).getByRole('link', { current: 'page' })).toHaveAccessibleName('Movies');
   });
 
+  // UX-03 AC3: the first tab stop is a "Skip to content" link that moves focus to <main>.
+  it.each([375, 1400])('at %i px the first tab stop skips to the main content', async (width) => {
+    const user = userEvent.setup();
+    renderAt(width, '/movies');
+    await user.tab();
+    const skip = screen.getByRole('link', { name: 'Skip to content' });
+    expect(skip).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('main')).toHaveFocus();
+    // The hash router owns the URL: the skip link does not navigate.
+    expect(currentPath()).toBe('/movies');
+  });
+
   it('page margins follow the layout breakpoints (16 / 24 / 32 px)', () => {
     renderAt(1400);
     const css = emotionCss(screen.getByRole('main'));
