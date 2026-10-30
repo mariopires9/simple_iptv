@@ -3,7 +3,7 @@
 import Hls from 'hls.js';
 import type { LevelLoadedData, Loader, LoaderContext } from 'hls.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UrlRewriter } from '@/core/net';
+import { createProxyRewriter, type UrlRewriter } from '@/core/net';
 import { createRewritingLoader, hlsRequestPurpose } from './hlsLoader';
 import type { LoaderConstructor } from './hlsLoader';
 
@@ -193,5 +193,79 @@ describe('createRewritingLoader with real hls.js', () => {
     for (const type of ['manifest', 'level', 'audioTrack', 'subtitleTrack', 'steering-manifest']) {
       expect(hlsRequestPurpose(ctx(type))).toBe('playlist');
     }
+  });
+
+  it('personal proxy (PRX-01): absolute proxy child URLs are not wrapped twice; the original URL is reported', async () => {
+    // The proxy rewrites playlists so that their URIs are absolute proxy URLs (B/v1/…).
+    const base = 'https://pc.example.test/relay';
+    const token = 'tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789';
+    const rewriter = createProxyRewriter({
+      baseUrl: base,
+      token,
+      purposes: ['stream', 'playlist'],
+    });
+    const upstreamMaster = 'http://edge.example.test/live/master.m3u8';
+    const proxiedMaster = rewriter.rewrite(upstreamMaster, 'playlist');
+    const childMedia = `${base}/v1/${token}/u/aHR0cDovL2VkZ2UuZXhhbXBsZS50ZXN0L2xpdmUvdjEubTN1OA/v1.m3u8`;
+    const childSegment = `${base}/v1/${token}/u/aHR0cDovL2VkZ2UuZXhhbXBsZS50ZXN0L2xpdmUvczAudHM/s0.ts`;
+    const bodies: Record<string, string> = {
+      [proxiedMaster]:
+        '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,CODECS="avc1.42e01e,mp4a.40.2"\n' +
+        `${childMedia}\n`,
+      [childMedia]:
+        '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n' +
+        `#EXTINF:6.0,\n${childSegment}\n#EXT-X-ENDLIST\n`,
+    };
+    const requests: string[] = [];
+    const responseUrls: string[] = [];
+    const Network = class {
+      context: LoaderContext | null = null;
+      stats = newStats();
+      load(context: LoaderContext, _c: unknown, cb: Parameters<Loader<LoaderContext>['load']>[2]) {
+        requests.push(context.url);
+        const body = bodies[context.url];
+        setTimeout(() => {
+          if (body === undefined)
+            cb.onError({ code: 404, text: 'Not Found' }, context, null, this.stats);
+          else cb.onSuccess({ url: context.url, data: body, code: 200 }, this.stats, context, null);
+        }, 0);
+      }
+      abort() {}
+      destroy() {}
+    } as unknown as LoaderConstructor;
+    const Wrapped = createRewritingLoader(Network, rewriter);
+    const Reporting = class extends (Wrapped as unknown as new (
+      c: unknown,
+    ) => Loader<LoaderContext>) {
+      override load(
+        context: LoaderContext,
+        config: Parameters<Loader<LoaderContext>['load']>[1],
+        callbacks: Parameters<Loader<LoaderContext>['load']>[2],
+      ) {
+        super.load(context, config, {
+          ...callbacks,
+          onSuccess: (response, stats, ctx, details) => {
+            responseUrls.push(response.url);
+            callbacks.onSuccess(response, stats, ctx, details);
+          },
+        });
+      }
+    } as unknown as LoaderConstructor;
+    hls = new Hls({ debug: false, enableWorker: false, loader: Reporting });
+    const levelLoaded = new Promise<LevelLoadedData>((resolve, reject) => {
+      hls?.on(Hls.Events.LEVEL_LOADED, (_e, data) => resolve(data));
+      hls?.on(Hls.Events.ERROR, (_e, data) => {
+        if (data.fatal) reject(new Error(data.details));
+      });
+    });
+    hls.loadSource(upstreamMaster);
+    hls.startLoad();
+    const level = await levelLoaded;
+
+    expect(requests).toEqual([proxiedMaster, childMedia]);
+    // The rewritten request reports the upstream URL; the proxy child passes through as is.
+    expect(responseUrls).toEqual([upstreamMaster, childMedia]);
+    expect(level.details.fragments.map((f) => f.url)).toEqual([childSegment]);
+    expect(rewriter.rewrite(childSegment, 'stream')).toBe(childSegment);
   });
 });

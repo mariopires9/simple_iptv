@@ -14,7 +14,7 @@ import { alpha } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { log } from '@/core/log';
-import { connectivity, isNetworkBlocked } from '@/core/net';
+import { connectivity, identityRewriter, isNetworkBlocked, type UrlRewriter } from '@/core/net';
 import { t } from '@/i18n';
 import { useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
@@ -105,6 +105,12 @@ export interface PlayerViewProps {
   /** Controller factory (tests inject a fake). Default: `createPlayerController`. */
   createController?: ControllerFactory;
   /**
+   * Routes the stream and playlist requests (the list's personal proxy, PRX-01). Read at each
+   * request: a new one applies from the next request without recreating the controller.
+   * Default: direct.
+   */
+  rewriter?: UrlRewriter;
+  /**
    * Rendered inside the player region, above everything else — so it is part of the fullscreen
    * element (e.g. the live "Channels" panel, LIV-05).
    */
@@ -137,6 +143,7 @@ export function PlayerView({
   platform: platformProp,
   autoFocus = true,
   createController,
+  rewriter,
   overlay,
   onFinalError,
   onVideoElement,
@@ -147,7 +154,16 @@ export function PlayerView({
   const storedFullscreenOnLandscape = useFullscreenOnLandscapeSetting(
     fullscreenOnLandscape === undefined && platform.mobile,
   );
-  const { videoRef, bound } = usePlayerController(createController);
+  // One stable rewriter per view that delegates to the latest prop; updated before the play
+  // effect below runs, so a descriptor and its rewriter given together are used together.
+  const rewriterRef = useRef<UrlRewriter>(rewriter ?? identityRewriter);
+  useEffect(() => {
+    rewriterRef.current = rewriter ?? identityRewriter;
+  }, [rewriter]);
+  const [delegatingRewriter] = useState<UrlRewriter>(() => ({
+    rewrite: (url, purpose) => rewriterRef.current.rewrite(url, purpose),
+  }));
+  const { videoRef, bound } = usePlayerController(createController, delegatingRewriter);
   const video = bound?.video ?? null;
   const controller = bound?.controller;
   const onVideoElementRef = useRef(onVideoElement);

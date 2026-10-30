@@ -52,12 +52,12 @@ export const player = {
     blocked: {
       title: 'Emissão bloqueada pelo browser',
       message:
-        'O browser bloqueou esta emissão. Provavelmente o servidor não permite o acesso a partir de aplicações web (CORS) ou não usa HTTPS. O diagnóstico de ligação explica o que pode fazer.',
+        'O browser bloqueou esta emissão. Provavelmente o servidor não permite o acesso a partir de aplicações web (CORS) ou não usa HTTPS. Pode encaminhar esta lista pelo seu proxy pessoal (Definições › Proxy pessoal); o diagnóstico de ligação explica outras opções.',
     },
     blockedMixedContent: {
       title: 'Endereço da emissão inseguro',
       message:
-        'Esta emissão usa HTTP, que os browsers bloqueiam numa página segura (HTTPS). Use uma origem HTTPS se o fornecedor a disponibilizar; o diagnóstico de ligação explica outras opções.',
+        'Esta emissão usa HTTP, que os browsers bloqueiam numa página segura (HTTPS). Use uma origem HTTPS se o fornecedor a disponibilizar, ou encaminhe esta lista pelo seu proxy pessoal (Definições › Proxy pessoal); o diagnóstico de ligação explica outras opções.',
     },
     'unsupported-container': {
       title: 'Formato ou codec não suportado',

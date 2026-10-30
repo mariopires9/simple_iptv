@@ -96,6 +96,7 @@ export function EpisodePlayer({
 
   return (
     <VodPlayer
+      source={source}
       title={texts.title(series.name, season, number, episodeName(episode))}
       resolve={resolve}
       startAt={startAt}

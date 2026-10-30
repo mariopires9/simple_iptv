@@ -40,3 +40,24 @@ export type {
   StreamBody,
   UrlRewriter,
 } from './http';
+// Personal proxy URL contract (PRX-01, ADR-010).
+export {
+  MAX_PROXY_BASE_URL_LENGTH,
+  MAX_PROXY_TARGET_BYTES,
+  PROXY_API_VERSION,
+  PROXY_ERROR_HEADER,
+  PROXY_SERVICE_NAME,
+  createProxyRewriter,
+  encodeBase64Url,
+  isValidProxyToken,
+  parseProxyBaseUrl,
+  parseProxyHealth,
+  proxyHealthUrl,
+  proxyTargetName,
+} from './proxy';
+export type {
+  ProxyBaseUrlRejection,
+  ProxyBaseUrlResult,
+  ProxyHealth,
+  ProxyRewriterOptions,
+} from './proxy';

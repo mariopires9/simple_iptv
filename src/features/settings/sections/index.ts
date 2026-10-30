@@ -8,6 +8,7 @@ import { InstallSection } from './InstallSection';
 import { LanguageSection } from './LanguageSection';
 import { PlaybackSection } from './PlaybackSection';
 import { PrivacySection } from './PrivacySection';
+import { ProxySection } from './ProxySection';
 import { SourcesSection } from './SourcesSection';
 import { StorageSection } from './StorageSection';
 
@@ -22,6 +23,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionEntry[] = [
   { id: 'appearance', Component: AppearanceSection },
   { id: 'language', Component: LanguageSection },
   { id: 'playback', Component: PlaybackSection },
+  { id: 'proxy', Component: ProxySection },
   { id: 'storage', Component: StorageSection },
   { id: 'install', Component: InstallSection },
   { id: 'privacy', Component: PrivacySection },

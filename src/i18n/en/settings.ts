@@ -6,6 +6,7 @@ export const settings = {
     appearance: 'Appearance',
     language: 'Language',
     playback: 'Playback',
+    proxy: 'Personal proxy',
     storage: 'Storage',
     privacy: 'Privacy',
     about: 'About',
@@ -40,6 +41,60 @@ export const settings = {
     liveFormatNoList: 'Add an Xtream Codes list to choose its live format.',
     liveFormats: { auto: 'Auto', ts: 'MPEG-TS', m3u8: 'HLS' },
     saveError: 'The setting could not be saved. Try again.',
+  },
+  /** PRX-01: the personal proxy (a relay the user runs on their own computer, ADR-010). */
+  proxy: {
+    intro:
+      'For providers that only work over HTTP: route a list through a proxy you run on your own computer, for example reachable with Tailscale Serve. Lists connect directly unless you choose otherwise below.',
+    url: 'Proxy address',
+    urlHint: 'The HTTPS address of your proxy, for example https://my-pc.example.ts.net',
+    token: 'Access token',
+    tokenHint: 'The token configured in your proxy',
+    tokenKeep: 'A token is saved. Leave this empty to keep it.',
+    showToken: 'Show token',
+    save: 'Save',
+    test: 'Test connection',
+    testing: 'Testing…',
+    remove: 'Remove proxy',
+    saved: 'Proxy saved',
+    removed: 'Proxy removed. Every list connects directly again.',
+    saveError: 'The proxy could not be saved. Try again.',
+    removeError: 'The proxy could not be removed. Try again.',
+    testError: 'The test could not be run. Try again.',
+    errors: {
+      baseUrl: {
+        empty: 'Enter the address of your proxy.',
+        invalid: 'Enter a valid address, starting with https://.',
+        'too-long': 'This address is too long.',
+        insecure: 'The address must use HTTPS (http:// only works for this device itself).',
+        credentials: 'Remove the user name and password from the address.',
+        query: 'Remove the part after ? or # from the address.',
+      },
+      token: {
+        required: 'Enter the token configured in your proxy.',
+        invalid: 'The token has 32 to 128 characters: letters, digits, - or _.',
+      },
+    },
+    outcomes: {
+      ok: (streams: string) => `Your proxy answered. Streams it is relaying now: ${streams}.`,
+      okList: (list: string, streams: string) =>
+        `Your proxy answered and allows the server of ${list}. Streams it is relaying now: ${streams}.`,
+      auth: 'The proxy rejected the token. Check that it is the one configured in the proxy.',
+      unreachable:
+        'The proxy could not be reached. Check that Tailscale is on on this device, that the address uses HTTPS, and that the computer running the proxy is awake with the proxy started.',
+      notProxy: 'This address does not answer like a Simple IPTV proxy. Check the address.',
+      notAllowed: (list: string) =>
+        `The proxy works, but the server of ${list} is not in its list of allowed hosts. Add it to the proxy’s allowlist.`,
+    },
+    routing: {
+      title: 'Lists',
+      hint: 'Streams only: the player goes through the proxy. Streams and API: the list’s downloads and programme guide too.',
+      disabledHint: 'Save a proxy to route lists through it.',
+      noLists: 'You have no lists yet.',
+      label: (list: string) => `Proxy for ${list}`,
+      options: { off: 'Off (direct)', streams: 'Streams only', all: 'Streams and API' },
+      saveError: 'The list’s setting could not be saved. Try again.',
+    },
   },
   storage: {
     persisted: 'Persistent storage',
