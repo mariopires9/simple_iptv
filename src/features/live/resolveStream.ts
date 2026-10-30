@@ -247,8 +247,6 @@ async function resolveXtream(
   );
   // PLY-08: VLC is handed the `.ts` stream, whatever is played here.
   descriptor.externalUrl = xtreamLiveStreamUrl(serverUrl, username, password, streamId, 'ts');
-  // PLY-08: VLC is handed the `.ts` stream, whatever is played here.
-  descriptor.externalUrl = xtreamLiveStreamUrl(serverUrl, username, password, streamId, 'ts');
   return { status: 'ok', descriptor, requiredHeaders: false };
 }
 
@@ -267,5 +265,8 @@ export async function resolveStream(
   if (resolved.status !== 'ok' || !resolved.descriptor.fallbacks?.length) return resolved;
   // PLY-07: the learned container (on this device class) beats the list's preference.
   const learned = (deps.learned ?? learnedFormat)(channel.key, liveDeviceClass(caps()));
-  return { ...resolved, descriptor: preferContainer(resolved.descriptor, learned) };
+  const { externalUrl, ...descriptor } = resolved.descriptor;
+  const ordered = preferContainer(descriptor, learned);
+  // PLY-08: the VLC hand-off address belongs to the stream, not to the candidate tried first.
+  return { ...resolved, descriptor: externalUrl ? { ...ordered, externalUrl } : ordered };
 }

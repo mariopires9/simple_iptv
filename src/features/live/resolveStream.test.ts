@@ -301,6 +301,7 @@ describe('PLY-07 — learned format and fallbacks', () => {
       kind: 'live',
       container: 'hls',
       fallbacks: [{ url: `${ENC}.ts`, kind: 'live', container: 'ts' }],
+      externalUrl: `${ENC}.ts`,
     });
   });
 
@@ -321,6 +322,7 @@ describe('PLY-07 — learned format and fallbacks', () => {
       kind: 'live',
       container: 'ts',
       fallbacks: [{ url: `${ENC}.m3u8`, kind: 'live', container: 'hls' }],
+      externalUrl: `${ENC}.ts`,
     });
   });
 
