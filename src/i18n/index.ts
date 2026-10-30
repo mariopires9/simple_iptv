@@ -68,8 +68,10 @@ export type LazyNamespace =
   | 'favorites'
   | 'install'
   | 'live'
+  | 'lock'
   | 'movies'
   | 'onboarding'
+  | 'parental'
   | 'player'
   | 'search'
   | 'series'
@@ -99,6 +101,10 @@ const lazy: NamespaceLoaders<LazyMessages, Locale> = {
     en: () => import('./en/live').then((m) => m.live),
     'pt-PT': () => import('./pt-PT/live').then((m) => m.live),
   },
+  lock: {
+    en: () => import('./en/lock').then((m) => m.lock),
+    'pt-PT': () => import('./pt-PT/lock').then((m) => m.lock),
+  },
   movies: {
     en: () => import('./en/movies').then((m) => m.movies),
     'pt-PT': () => import('./pt-PT/movies').then((m) => m.movies),
@@ -106,6 +112,10 @@ const lazy: NamespaceLoaders<LazyMessages, Locale> = {
   onboarding: {
     en: () => import('./en/onboarding').then((m) => m.onboarding),
     'pt-PT': () => import('./pt-PT/onboarding').then((m) => m.onboarding),
+  },
+  parental: {
+    en: () => import('./en/parental').then((m) => m.parental),
+    'pt-PT': () => import('./pt-PT/parental').then((m) => m.parental),
   },
   player: {
     en: () => import('./en/player').then((m) => m.player),

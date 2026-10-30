@@ -2,7 +2,7 @@
 // per-list rewriters (off / streams / all). Synthetic hosts and tokens only.
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { credentialVault } from '@/core/crypto';
+import { credentialVault, VaultLockedError } from '@/core/crypto';
 import { settingsRepo, sourcesRepo, wipeAll, type Source } from '@/core/db';
 import { clearSecrets, log, redact } from '@/core/log';
 import type { RequestPurpose } from '@/core/net';
@@ -10,6 +10,7 @@ import {
   InvalidProxyConfigError,
   loadPersonalProxy,
   PROXY_TOKEN_REF,
+  ProxyTokenUnavailableError,
   proxyRoutingOf,
   removePersonalProxy,
   rewritersForSource,
@@ -125,19 +126,39 @@ describe('rewritersForSource', () => {
     expect(routed(data)).toEqual(['api', 'playlist', 'epg']);
   });
 
-  it('an unknown routing value, no proxy saved or a failing read → direct with a warning', async () => {
+  it('an unknown routing value or no proxy saved → direct with a warning', async () => {
     const warn = vi.spyOn(log, 'warn');
     expect(proxyRoutingOf(source('a', 'everything'))).toBe('off');
     expect(proxyRoutingOf(source('a', 7))).toBe('off');
-    for (const deps of [
-      { loadProxy: () => Promise.resolve(undefined) },
-      { loadProxy: () => Promise.reject(new Error('db')) },
-    ]) {
-      const { playback, data } = await rewritersForSource(source('a', 'all'), deps);
-      expect(routed(playback)).toEqual([]);
-      expect(routed(data)).toEqual([]);
-    }
-    expect(warn).toHaveBeenCalledTimes(4);
+    const { playback, data } = await rewritersForSource(source('a', 'all'), {
+      loadProxy: () => Promise.resolve(undefined),
+    });
+    expect(routed(playback)).toEqual([]);
+    expect(routed(data)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(3);
+  });
+
+  // SEC-02 review: a routed list never falls back to direct when its proxy cannot be read.
+  it('a failing read of the proxy settings rejects instead of going direct', async () => {
+    await expect(
+      rewritersForSource(source('a', 'all'), { loadProxy: () => Promise.reject(new Error('db')) }),
+    ).rejects.toThrow('db');
+  });
+
+  it('a saved proxy whose token cannot be read (vault locked) rejects instead of going direct', async () => {
+    await savePersonalProxy({ baseUrl: BASE, token: TOKEN });
+    const get = vi
+      .spyOn(credentialVault, 'get')
+      .mockRejectedValueOnce(new VaultLockedError())
+      .mockRejectedValueOnce(new VaultLockedError());
+    await expect(rewritersForSource(source('a', 'streams'))).rejects.toBeInstanceOf(
+      ProxyTokenUnavailableError,
+    );
+    // The settings screen still reads it as "no usable proxy".
+    expect(await loadPersonalProxy()).toBeUndefined();
+    get.mockRestore();
+    // Lists that are not routed stay direct without reading anything.
+    expect(routed((await rewritersForSource(source('b', 'off'))).playback)).toEqual([]);
   });
 
   it('reads the saved proxy by default', async () => {

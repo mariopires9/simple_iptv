@@ -233,6 +233,12 @@ export interface PagerOptions {
    * none (`Source.protectedCounts`), so nothing is walked.
    */
   hideProtected?: boolean;
+  /**
+   * Parental control (SEC-03): category keys whose channels are left out of "Favorites" and
+   * "Recent" while locked. ("All" gets `sourceCategoryKeys` without them; a locked source category
+   * is never paged.)
+   */
+  lockedCategories?: ReadonlySet<string>;
 }
 
 /** A pager, and how many protected channels the setting left out of it (UX-07 empty state). */
@@ -249,9 +255,13 @@ export async function createPager(
   sourceId: string,
   sourceCategoryKeys: readonly string[],
   syncStamp?: number,
-  { hideProtected = false }: PagerOptions = {},
+  { hideProtected = false, lockedCategories }: PagerOptions = {},
 ): Promise<ChannelPager> {
-  const inMemory = (channels: readonly Channel[]) => {
+  const inMemory = (all: readonly Channel[]) => {
+    const channels =
+      lockedCategories && lockedCategories.size > 0
+        ? all.filter((c) => c.categoryKey === undefined || !lockedCategories.has(c.categoryKey))
+        : all;
     if (!hideProtected) return memoryPager(channels);
     const shown = channels.filter(playable);
     return withHidden(memoryPager(shown), channels.length - shown.length);

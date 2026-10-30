@@ -6,6 +6,7 @@ import {
   encryptWithPassword,
   type PasswordCipherDeps,
   type PasswordEnvelope,
+  whenVaultUnlocked,
 } from '@/core/crypto';
 import { favoritesRepo, historyRepo, settingsRepo, sourcesRepo, type Source } from '@/core/db';
 import { log } from '@/core/log';
@@ -108,6 +109,8 @@ export async function buildBackup(options: BuildBackupOptions = {}): Promise<Bui
 
   let unreadableSecrets = 0;
   if (password !== undefined && password !== '') {
+    // SEC-02: secrets are exported only after the master password unlocked the vault.
+    await whenVaultUnlocked();
     // Null prototype: ids are plain own keys, never inherited properties.
     const secrets: BackupSecrets = { sources: Object.create(null) as Record<string, string> };
     for (const source of sources) {

@@ -79,12 +79,13 @@ function source(id: string, extra: Partial<Source> = {}): Source {
 }
 
 describe('registry and client', () => {
-  it('registers selfTest, the syncs, the guide import and the search tasks', () => {
+  it('registers selfTest, the syncs, the guide import, the search tasks and the vault key', () => {
     expect(Object.keys(tasks).sort()).toEqual([
       'importEpg',
       'searchQuery',
       'searchWarmup',
       'selfTest',
+      'setVaultKey',
       'syncM3u',
       'syncM3uFile',
       'syncXtream',

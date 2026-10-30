@@ -26,10 +26,12 @@ import {
   type Channel,
 } from '@/core/db';
 import { log } from '@/core/log';
+import { isCategoryLocked, loadParentalControl } from '@/core/session/parental';
 import { t } from '@/i18n';
 import { CategoryNav } from '@/ui/catalog/CategoryNav';
 import { useActiveSource } from '@/ui/hooks/useActiveSource';
 import { useFillHeight } from '@/ui/hooks/useFillHeight';
+import { ParentalGate, useParental } from '@/ui/parental';
 import {
   LIVE_VIRTUAL_CATEGORY_IDS,
   liveCategoryPath,
@@ -157,20 +159,30 @@ export function LiveScreen() {
 
   const ready = source.status === 'ready' ? source : undefined;
   const category = ready?.categories.find((c) => c.id === categoryId);
+  // Parental control (SEC-03): while locked, a restricted category shows a PIN gate instead of
+  // its channels, and its channels are left out of "All", "Favorites" and "Recent".
+  const parental = useParental();
+  const lockedCategories = parental.locked;
+  const categoryLocked = category?.kind === 'source' && lockedCategories.has(category.key);
 
   // One pager per (source, category, attempt) — and, for "Favorites", per favourites change; a
   // stale result is ignored by comparing keys. While "Favorites" is re-read, the previous pager of
   // the same category (`base`) stays on screen instead of flashing the skeleton.
   const [pagerAttempt, setPagerAttempt] = useState(0);
-  const pagerBase = ready && category ? `${ready.source.id}\n${category.id}\n${pagerAttempt}` : '';
+  const pagerBase =
+    ready && category && parental.known && !categoryLocked
+      ? `${ready.source.id}\n${category.id}\n${pagerAttempt}\n${lockedCategories.size}`
+      : '';
   const pagerKey = category?.kind === 'favorites' ? `${pagerBase}\n${favoritesVersion}` : pagerBase;
   const [pager, setPager] = useState<PagerState | undefined>();
   useEffect(() => {
-    if (!ready || !category) return undefined;
+    if (!ready || !category || pagerBase === '') return undefined;
     let cancelled = false;
     const base = pagerBase;
-    createPager(category, ready.source.id, ready.sourceCategoryKeys, ready.source.lastSyncAt, {
+    const allKeys = ready.sourceCategoryKeys.filter((key) => !lockedCategories.has(key));
+    createPager(category, ready.source.id, allKeys, ready.source.lastSyncAt, {
       hideProtected: ready.hideProtected,
+      lockedCategories,
     }).then(
       (p) => {
         if (!cancelled) setPager({ key: pagerKey, base, status: 'ready', cache: new PageCache(p) });
@@ -534,10 +546,18 @@ export function LiveScreen() {
       return undefined;
     }
     let cancelled = false;
-    catalogRepo.get('live', channelKey).then(
-      (channel) => {
+    // The parental setting is read first: a restricted channel must never start from a link.
+    Promise.all([catalogRepo.get('live', channelKey), loadParentalControl()]).then(
+      ([channel, parentalNow]) => {
         if (cancelled || selectionRef.current?.channel.key === channelKey) return;
-        if (channel && channel.sourceId === sourceId && refuseProtected(channel)) {
+        if (
+          channel &&
+          channel.sourceId === sourceId &&
+          isCategoryLocked(channel.categoryKey, parentalNow)
+        ) {
+          // Restricted and locked (SEC-03): never played from a link; the link is dropped.
+          navigate({ search: '' }, { replace: true });
+        } else if (channel && channel.sourceId === sourceId && refuseProtected(channel)) {
           // Protected (UX-07): the reason instead of the player; the link is dropped.
           navigate({ search: '' }, { replace: true });
         } else if (channel && channel.sourceId === sourceId) {
@@ -728,7 +748,10 @@ export function LiveScreen() {
     );
     const nav = (
       <CategoryNav
-        categories={source.categories}
+        categories={source.categories.map((c) =>
+          c.kind === 'source' && lockedCategories.has(c.key) ? { ...c, restricted: true } : c,
+        )}
+        restrictedLabel={t.parental.restrictedCategory}
         selectedId={categoryId}
         variant={chips ? 'chips' : 'list'}
         label={t.live.categories}
@@ -764,6 +787,7 @@ export function LiveScreen() {
         >
           <ChannelPane
             category={category}
+            locked={categoryLocked}
             pager={currentPager}
             waiting={saved === undefined || wantsRestore}
             readInitialView={readInitialView}
@@ -856,6 +880,8 @@ const LIST_ID = 'live-channel-list';
 
 interface ChannelPaneProps {
   category: LiveCategory | undefined;
+  /** Restricted by parental control and locked (SEC-03): the PIN gate instead of the list. */
+  locked: boolean;
   pager: PagerState | undefined;
   /** The saved view is still being read/resolved (LIV-03): keep the skeleton. */
   waiting: boolean;
@@ -877,6 +903,7 @@ interface ChannelPaneProps {
 
 function ChannelPane({
   category,
+  locked,
   pager,
   waiting,
   readInitialView,
@@ -910,6 +937,9 @@ function ChannelPane({
         actions={showAll}
       />
     );
+  }
+  if (locked && category.kind === 'source') {
+    return <ParentalGate categoryKey={category.key}>{null}</ParentalGate>;
   }
   if (pager?.status === 'error') return <LoadError error={pager.error} onRetry={onRetry} />;
   if (!pager || waiting || filter === 'pending') {

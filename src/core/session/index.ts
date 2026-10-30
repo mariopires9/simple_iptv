@@ -30,13 +30,38 @@ export {
   loadPersonalProxy,
   PROXY_ROUTINGS,
   PROXY_TOKEN_REF,
+  ProxyTokenUnavailableError,
   proxyRoutingOf,
   removePersonalProxy,
   rewritersForSource,
   savePersonalProxy,
+  type LoadPersonalProxyOptions,
   type PersonalProxyConfig,
   type RewritersDeps,
   type SourceRewriters,
 } from './proxy';
 // Lists imported from a backup, waiting for their first sync after the restart (EXP-01).
 export { markSourcesForSync, PENDING_SYNC_KEY, takeSourcesPendingSync } from './pendingSync';
+// Master password lock (SEC-02, ADR-006).
+export {
+  DEFAULT_LOCK_MINUTES,
+  disableMasterPassword,
+  enableMasterPassword,
+  getAutoLockMinutes,
+  getVaultLockStatus,
+  initVaultLock,
+  installVaultAutoLock,
+  LOCK_MINUTE_CHOICES,
+  lockVaultNow,
+  MasterPasswordChangedError,
+  MIN_MASTER_PASSWORD_LENGTH,
+  setAutoLockMinutes,
+  subscribeVaultLock,
+  unlockVault,
+  whenVaultUnlocked,
+  type AutoLockOptions,
+  type VaultLockStatus,
+} from './vaultLock';
+
+// Parental control (SEC-03) is imported from `@/core/session/parental` directly, not from this
+// barrel: the barrel is in the initial bundle, and only the lazy catalogue screens need it.

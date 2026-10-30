@@ -417,6 +417,18 @@ export interface SettingsMap {
    * the player (`subtitles: null` = subtitles off). Untrusted on read: validated by the player.
    */
   trackLanguages: unknown;
+  /**
+   * Master password (SEC-02): only the non-secret parameters and a verifier, never the password
+   * or its key. Untrusted on read: validated by core/crypto. Absent = no master password.
+   */
+  masterPassword: unknown;
+  /** Lock after this many minutes in the background (SEC-02); absent = 5. Validated on read. */
+  masterPasswordLockMinutes: unknown;
+  /**
+   * Parental control (SEC-03): salted PBKDF2/SHA-256 hash of the PIN (never the PIN) and the
+   * restricted category keys. Untrusted on read: owned and validated by core/session.
+   */
+  parentalControl: unknown;
 }
 
 export type SettingsKey = keyof SettingsMap;

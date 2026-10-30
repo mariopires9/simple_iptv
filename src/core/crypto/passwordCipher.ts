@@ -65,12 +65,16 @@ export function base64ToBytes(text: string): Uint8Array<ArrayBuffer> {
 
 const encoder = new TextEncoder();
 
-async function deriveKey(
-  subtle: SubtleCrypto,
+/**
+ * PBKDF2-SHA-256 → non-extractable AES-GCM 256 key with the given usages (also the master password
+ * key of SEC-02). The caller enforces the iteration bounds.
+ */
+export async function derivePasswordKey(
   password: string,
   salt: Uint8Array<ArrayBuffer>,
   iterations: number,
-  usage: KeyUsage,
+  usages: KeyUsage[],
+  subtle: SubtleCrypto = globalThis.crypto.subtle,
 ): Promise<CryptoKey> {
   const material = await subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, [
     'deriveKey',
@@ -80,8 +84,18 @@ async function deriveKey(
     material,
     { name: 'AES-GCM', length: 256 },
     false,
-    [usage],
+    usages,
   );
+}
+
+function deriveKey(
+  subtle: SubtleCrypto,
+  password: string,
+  salt: Uint8Array<ArrayBuffer>,
+  iterations: number,
+  usage: KeyUsage,
+): Promise<CryptoKey> {
+  return derivePasswordKey(password, salt, iterations, [usage], subtle);
 }
 
 function deps(d: PasswordCipherDeps) {
