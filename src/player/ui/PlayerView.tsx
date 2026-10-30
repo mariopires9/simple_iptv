@@ -18,7 +18,8 @@ import { connectivity, identityRewriter, isNetworkBlocked, type UrlRewriter } fr
 import { t } from '@/i18n';
 import { useDelayedFlag, visuallyHidden } from '@/ui/state';
 import { errorName } from '../errors';
-import type { PlaybackError, StreamDescriptor } from '../types';
+import { NO_TRACKS } from '../types';
+import type { MediaTrack, MediaTracks, PlaybackError, StreamDescriptor } from '../types';
 import { AUDIO_CHECK_DELAY_MS, audioMissing } from './audioCheck';
 import { formatCodecs } from './codecNames';
 import { describePlaybackError, isTransientFailure } from './describePlaybackError';
@@ -34,9 +35,12 @@ import {
 import { detectPlayerPlatform, type PlayerPlatform } from './platform';
 import { PlaybackErrorOverlay, type FailureProbe } from './PlaybackErrorOverlay';
 import { PlayerControls, type SeekWindow } from './PlayerControls';
+import { TrackMenu, hasTrackChoice } from './TrackMenu';
+import { pickTrack, saveTrackPreference, useTrackPreference } from './trackPreference';
 import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
 import { useFullscreenOnLandscapeSetting } from './useFullscreenOnLandscapeSetting';
+import { useMediaSession } from './useMediaSession';
 import { useMediaState } from './useMediaState';
 import { usePictureInPicture } from './usePictureInPicture';
 import { usePlayerController, type ControllerFactory } from './usePlayerController';
@@ -127,6 +131,10 @@ export interface PlayerViewProps {
   onVideoElement?: (video: HTMLVideoElement | null) => void;
   /** PLY-06: root-cause probe after a final failure (tests inject a fake). */
   failureProbe?: FailureProbe;
+  /** MSS-01: channel logo or poster for the system media controls (lock screen). */
+  artwork?: string | undefined;
+  /** MSS-01, VOD: the system "next track" button (e.g. the next episode). */
+  onNextItem?: (() => void) | undefined;
 }
 
 export function PlayerView({
@@ -148,6 +156,8 @@ export function PlayerView({
   onFinalError,
   onVideoElement,
   failureProbe,
+  artwork,
+  onNextItem,
 }: PlayerViewProps) {
   const [platform] = useState(() => platformProp ?? detectPlayerPlatform());
   // Only read when it can matter: no explicit prop, and a phone or tablet.
@@ -233,6 +243,8 @@ export function PlayerView({
   /** The load whose resume position could not be reached (VOD-03 AC4): plays from the start. */
   const [resumeFailedFor, setResumeFailedFor] = useState<object>();
   const dismissResumeNotice = useCallback(() => setResumeFailedFor(undefined), []);
+  /** PLY-05: the audio/subtitle tracks of a load, as the controller last reported them. */
+  const [trackState, setTrackState] = useState<{ load: object; tracks: MediaTracks }>();
 
   useEffect(() => {
     if (!controller || !video) return undefined;
@@ -279,6 +291,9 @@ export function PlayerView({
       else if (notice.type === 'video-unsupported') setNoVideo(warning(notice.codec));
       else if (notice.type === 'no-audio-track') noAudioTrackFor.current = load;
       else if (notice.type === 'resume-unsupported') setResumeFailedFor(load);
+    });
+    const offTracks = controller.on('tracks', (tracks) => {
+      if (current) setTrackState({ load, tracks });
     });
     // Readiness listeners are attached only once controller.play() resolved: by then the
     // previous stream has been torn down, so its late events cannot mark this load ready.
@@ -336,6 +351,7 @@ export function PlayerView({
       if (timer !== undefined) clearTimeout(timer);
       offError();
       offNotice();
+      offTracks();
       if (listening) {
         for (const type of READY) video.removeEventListener(type, markReady);
         video.removeEventListener('playing', onPlaying);
@@ -377,6 +393,45 @@ export function PlayerView({
       for (const type of DISARM) video.removeEventListener(type, disarm);
     };
   }, [video, ready, load]);
+
+  // --- audio and subtitle tracks (PLY-05) ----------------------------------------------------
+  const tracks = trackState?.load === load ? trackState.tracks : NO_TRACKS;
+  const trackPreference = useTrackPreference();
+  /** The saved languages are applied once per load, as soon as its tracks are known. */
+  const preferenceApplied = useRef<{ load: object; audio: boolean; text: boolean }>(undefined);
+  useEffect(() => {
+    if (!controller || !trackPreference) return;
+    let applied = preferenceApplied.current;
+    if (applied?.load !== load) {
+      applied = { load, audio: false, text: false };
+      preferenceApplied.current = applied;
+    }
+    if (!applied.audio && tracks.audio.length > 1) {
+      applied.audio = true;
+      const wanted = trackPreference.audio;
+      const match = wanted !== undefined ? pickTrack(tracks.audio, wanted) : undefined;
+      if (match && match.id !== tracks.audioId) controller.selectAudioTrack(match.id);
+    }
+    if (!applied.text && tracks.text.length > 0) {
+      applied.text = true;
+      const wanted = trackPreference.subtitles;
+      if (wanted === null) {
+        if (tracks.textId !== undefined) controller.selectTextTrack(undefined);
+      } else if (wanted !== undefined) {
+        const match = pickTrack(tracks.text, wanted);
+        if (match && match.id !== tracks.textId) controller.selectTextTrack(match.id);
+      }
+    }
+  }, [controller, trackPreference, load, tracks]);
+  const selectAudio = (track: MediaTrack) => {
+    controller?.selectAudioTrack(track.id);
+    if (track.language !== undefined) saveTrackPreference({ audio: track.language });
+  };
+  const selectText = (track: MediaTrack | undefined) => {
+    controller?.selectTextTrack(track?.id);
+    if (!track) saveTrackPreference({ subtitles: null });
+    else if (track.language !== undefined) saveTrackPreference({ subtitles: track.language });
+  };
 
   // --- announcements (polite live region) -------------------------------------------------
   const buffering =
@@ -502,6 +557,14 @@ export function PlayerView({
     close: fullscreen.active && fullscreen.mode === 'element' ? fullscreen.exit : onClose,
   });
 
+  useMediaSession({
+    video,
+    title,
+    artwork,
+    onPrevious: isLive ? onPrevious : undefined,
+    onNext: isLive ? onNext : onNextItem,
+  });
+
   const visible = useAutoHide({
     enabled: !media.paused && error === undefined,
     container: region,
@@ -553,8 +616,8 @@ export function PlayerView({
         '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' },
       }}
     >
-      {/* Captions/subtitles come from the stream's own text tracks (PLY-05); there is no
-          separate caption file to attach here. */}
+      {/* Captions/subtitles come from the stream's own text tracks (PLY-05, track menu); there
+          is no separate caption file to attach here. */}
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={videoRef}
@@ -628,6 +691,11 @@ export function PlayerView({
         onTogglePictureInPicture={pip.supported ? pip.toggle : undefined}
         pictureInPicture={pip.active}
         onClose={onClose}
+        trackMenu={
+          hasTrackChoice(tracks) && error === undefined ? (
+            <TrackMenu tracks={tracks} onSelectAudio={selectAudio} onSelectText={selectText} />
+          ) : undefined
+        }
       />
 
       {showUnmute && (

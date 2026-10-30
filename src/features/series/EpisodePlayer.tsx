@@ -104,6 +104,8 @@ export function EpisodePlayer({
       onClose={onClose}
       overlay={overlay}
       onVideoElement={setVideo}
+      artwork={episode.image ?? series.cover}
+      onNextItem={next ? advance : undefined}
       texts={texts}
       testId="episode-player"
       logPrefix="series"

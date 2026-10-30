@@ -65,6 +65,8 @@ export interface PlayerControlsProps {
   onTogglePictureInPicture?: (() => void) | undefined;
   pictureInPicture?: boolean;
   onClose?: (() => void) | undefined;
+  /** PLY-05: the audio/subtitle track menu, when the stream has a choice. */
+  trackMenu?: ReactNode;
 }
 
 const scrim = (theme: Theme) => alpha(theme.palette.common.black, 0.55);
@@ -155,6 +157,7 @@ export function PlayerControls({
   onTogglePictureInPicture,
   pictureInPicture = false,
   onClose,
+  trackMenu,
 }: PlayerControlsProps) {
   const c = t.player.controls;
   const isLive = kind === 'live';
@@ -282,6 +285,7 @@ export function PlayerControls({
                   <ListRounded />
                 </Control>
               )}
+              {trackMenu}
               {onTogglePictureInPicture && (
                 <Control
                   label={pictureInPicture ? c.exitPictureInPicture : c.pictureInPicture}

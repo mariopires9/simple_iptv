@@ -54,6 +54,10 @@ export interface VodPlayerProps {
   overlay?: ReactNode;
   /** The <video> element once mounted (`null` when it goes). */
   onVideoElement?: ((video: HTMLVideoElement | null) => void) | undefined;
+  /** MSS-01: poster or episode image for the system media controls. */
+  artwork?: string | undefined;
+  /** MSS-01: the system "next track" button (series: the next episode). */
+  onNextItem?: (() => void) | undefined;
   texts: VodPlayerTexts;
   /** Test id of the 16:9 frame. */
   testId: string;
@@ -70,6 +74,8 @@ export function VodPlayer({
   onClose,
   overlay,
   onVideoElement,
+  artwork,
+  onNextItem,
   texts,
   testId,
   logPrefix,
@@ -127,6 +133,8 @@ export function VodPlayer({
           onClose={onClose}
           overlay={overlay}
           onVideoElement={handleVideo}
+          artwork={artwork}
+          onNextItem={onNextItem}
           {...(result?.rewriter ? { rewriter: result.rewriter } : {})}
         />
       </Suspense>

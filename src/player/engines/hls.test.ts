@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UrlRewriter } from '@/core/net';
 import { FakeVideo, stubObjectUrls } from '../test-utils/fakeVideo';
 import { libState, resetLibState } from '../test-utils/libMocks';
-import type { PlaybackError, StreamDescriptor } from '../types';
+import type { MediaTracks, PlaybackError, StreamDescriptor } from '../types';
 import { HLS_CONFIG, createHlsEngine, createRecoveryPolicy } from './hls';
 
 vi.mock('hls.js', async () => (await import('../test-utils/libMocks')).hlsModule());
@@ -262,5 +262,57 @@ describe('createRecoveryPolicy', () => {
     expect(policy.shouldRecover()).toBe(false); // 2 in the window
     t = 1000;
     expect(policy.shouldRecover()).toBe(true); // the first one left the window
+  });
+});
+
+describe('hls engine tracks (PLY-05 AC1)', () => {
+  it('lists the audio renditions and subtitles and switches them without reloading', async () => {
+    const { engine, hls } = await loaded(VOD);
+    const seen: MediaTracks[] = [];
+    engine.on('tracks', (tracks) => seen.push(tracks));
+    expect(engine.tracks?.()).toEqual({ audio: [], text: [] });
+
+    hls.setTracks(
+      [
+        { name: 'English', lang: 'en' },
+        { name: ' Português ', lang: 'pt' },
+      ],
+      [{ name: 'English', lang: 'en' }],
+    );
+    expect(seen.at(-1)).toEqual({
+      audio: [
+        { id: '0', label: 'English', language: 'en' },
+        { id: '1', label: 'Português', language: 'pt' },
+      ],
+      audioId: '0',
+      text: [{ id: '0', label: 'English', language: 'en' }],
+    });
+
+    engine.selectAudioTrack?.('1');
+    engine.selectTextTrack?.('0');
+    expect(hls.audioTrack).toBe(1);
+    expect(hls.subtitleTrack).toBe(0);
+    expect(hls.subtitleDisplay).toBe(true);
+    expect(seen.at(-1)).toMatchObject({ audioId: '1', textId: '0' });
+    engine.selectTextTrack?.(undefined);
+    expect(hls.subtitleTrack).toBe(-1);
+    // Switching never reloads the source.
+    expect(libState.hls).toHaveLength(1);
+    expect(hls.source).toBe(VOD.url);
+
+    engine.selectAudioTrack?.('7'); // unknown id: ignored
+    expect(hls.audioTrack).toBe(1);
+  });
+
+  it('drops an implausible language tag and removes its track listeners on destroy', async () => {
+    const { engine, hls } = await loaded(VOD);
+    hls.setTracks([{ name: 'A', lang: '<script>' }, { name: 'B' }], []);
+    expect(engine.tracks?.().audio).toEqual([
+      { id: '0', label: 'A' },
+      { id: '1', label: 'B' },
+    ]);
+    await engine.destroy();
+    expect(hls.count('hlsAudioTracksUpdated')).toBe(0);
+    expect(hls.count('hlsSubtitleTrackSwitch')).toBe(0);
   });
 });
