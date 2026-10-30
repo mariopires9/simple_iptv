@@ -1,0 +1,40 @@
+# QA-03 AC1/AC3: Lighthouse CI (mobile) against `vite preview` of the production build.
+# Run after `npm run build` (CI job `lighthouse`). Results stay on the runner and are uploaded as a
+# GitHub Actions artifact only: never `temporary-public-storage` or an LHCI server (CLAUDE.md: no
+# third-party upload).
+ci:
+  collect:
+    startServerCommand: npx vite preview --port 4173 --strictPort
+    startServerReadyPattern: Local
+    startServerReadyTimeout: 60000
+    # The start page: with no list configured (a fresh profile) it redirects to #/onboarding,
+    # which renders without any provider data. Other onboarding screens are hash routes, which
+    # LHCI groups under the same URL (the fragment is ignored), so they cannot be asserted apart.
+    url:
+      - http://localhost:4173/
+    numberOfRuns: 3
+    settings:
+      # The default Lighthouse config is mobile (Moto G Power emulation, simulated slow 4G).
+      onlyCategories:
+        - performance
+        - accessibility
+        - best-practices
+      chromeFlags: --headless=new --no-sandbox
+  assert:
+    # No preset: only the QA-03 category minimums, on the median run of each URL.
+    assertions:
+      categories:performance:
+        - error
+        - minScore: 0.9
+          aggregationMethod: median-run
+      categories:accessibility:
+        - error
+        - minScore: 0.95
+          aggregationMethod: median-run
+      categories:best-practices:
+        - error
+        - minScore: 0.95
+          aggregationMethod: median-run
+  upload:
+    target: filesystem
+    outputDir: lhci-report
