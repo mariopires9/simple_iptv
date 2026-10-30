@@ -479,12 +479,21 @@ export function LiveScreen() {
     if (playedKey !== undefined) void saveLastChannel(playedKey);
   }, [playedKey]);
 
+  // UX-03: closing the player (Esc, "Close player") returns focus to the channel list, instead of
+  // leaving it on the removed player (the document body), so the keyboard user carries on there.
+  const focusListOnClose = useRef(false);
   const closePlayer = useCallback(() => {
     selectionRef.current = undefined;
+    focusListOnClose.current = true;
     setSelection(undefined);
     setChannelsOpen(false);
     navigate(liveCategoryPath(categoryId), { replace: true });
   }, [navigate, categoryId]);
+  useEffect(() => {
+    if (selection !== undefined || !focusListOnClose.current) return;
+    focusListOnClose.current = false;
+    document.getElementById(LIST_ID)?.focus({ preventScroll: true });
+  }, [selection]);
 
   // SRC-08 AC4: another list became active → close the player, leave a category of the previous
   // list (virtual ones are kept) and reload the categories. The first known value is not a change.
