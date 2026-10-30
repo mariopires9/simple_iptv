@@ -137,13 +137,13 @@ export const player = {
     causes: {
       ok: 'O endereço responde e parece um stream válido: o problema é o formato ou o codec deste stream neste browser, não a ligação.',
       'insecure-url':
-        'O endereço do stream usa http://, que o browser bloqueia dentro de uma app segura (https). Este fornecedor precisa de uma app de leitor no seu dispositivo: os browsers em https não reproduzem streams http.',
+        'O endereço do stream usa http://, que o browser bloqueia dentro de uma app segura (https). Os browsers em https não reproduzem streams http: encaminhe esta lista pelo seu proxy pessoal (Definições › Proxy pessoal) ou use uma app de leitor no seu dispositivo.',
       'insecure-redirect':
-        'O servidor redireciona o stream para um endereço http:// inseguro, que o browser bloqueia dentro de uma app https. Este fornecedor precisa de uma app de leitor no seu dispositivo: os browsers em https não reproduzem streams http.',
+        'O servidor redireciona o stream para um endereço http:// inseguro, que o browser bloqueia dentro de uma app https. Os browsers em https não reproduzem streams http: encaminhe esta lista pelo seu proxy pessoal (Definições › Proxy pessoal) ou use uma app de leitor no seu dispositivo.',
       'insecure-segments':
-        'A playlist aponta para endereços http:// inseguros, que o browser bloqueia dentro de uma app https. Este fornecedor precisa de uma app de leitor no seu dispositivo: os browsers em https não reproduzem streams http.',
+        'A playlist aponta para endereços http:// inseguros, que o browser bloqueia dentro de uma app https. Os browsers em https não reproduzem streams http: encaminhe esta lista pelo seu proxy pessoal (Definições › Proxy pessoal) ou use uma app de leitor no seu dispositivo.',
       'redirect-blocked':
-        'O servidor redireciona o stream para outro endereço que o browser não conseguiu abrir — normalmente um endereço http:// inseguro, que os browsers bloqueiam dentro de uma app https. Se for o caso, este fornecedor precisa de uma app de leitor no seu dispositivo.',
+        'O servidor redireciona o stream para outro endereço que o browser não conseguiu abrir — normalmente um endereço http:// inseguro, que os browsers bloqueiam dentro de uma app https. Se for o caso, encaminhe esta lista pelo seu proxy pessoal (Definições › Proxy pessoal) ou use uma app de leitor no seu dispositivo.',
       'no-cors':
         'O servidor não permite que apps web leiam o stream (sem cabeçalhos CORS), por isso este formato não reproduz no browser. Experimente o outro formato de direto nesta lista (o HLS reproduz de forma nativa no Safari).',
       'no-cors-native':

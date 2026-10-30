@@ -159,13 +159,13 @@ export const player = {
     causes: {
       ok: 'The address answers and looks like a valid stream: the problem is the format or codec of this stream in this browser, not the connection.',
       'insecure-url':
-        'The stream address uses http://, which the browser blocks inside a secure (https) app. This provider needs a player app on your device: browsers on https cannot play http streams.',
+        'The stream address uses http://, which the browser blocks inside a secure (https) app. Browsers on https cannot play http streams: route this list through your personal proxy (Settings › Personal proxy) or use a player app on your device.',
       'insecure-redirect':
-        'The server redirects the stream to an insecure http:// address, which the browser blocks inside an https app. This provider needs a player app on your device: browsers on https cannot play http streams.',
+        'The server redirects the stream to an insecure http:// address, which the browser blocks inside an https app. Browsers on https cannot play http streams: route this list through your personal proxy (Settings › Personal proxy) or use a player app on your device.',
       'insecure-segments':
-        'The playlist points to insecure http:// addresses, which the browser blocks inside an https app. This provider needs a player app on your device: browsers on https cannot play http streams.',
+        'The playlist points to insecure http:// addresses, which the browser blocks inside an https app. Browsers on https cannot play http streams: route this list through your personal proxy (Settings › Personal proxy) or use a player app on your device.',
       'redirect-blocked':
-        'The server redirects the stream to another address that the browser could not open — usually an insecure http:// address, which browsers block inside an https app. If so, this provider needs a player app on your device.',
+        'The server redirects the stream to another address that the browser could not open — usually an insecure http:// address, which browsers block inside an https app. If so, route this list through your personal proxy (Settings › Personal proxy) or use a player app on your device.',
       'no-cors':
         'The server does not allow web apps to read the stream (no CORS headers), so this format cannot play in the browser. Try the other live format for this list (HLS plays natively in Safari).',
       'no-cors-native':
