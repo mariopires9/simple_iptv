@@ -68,6 +68,12 @@ export interface PlayerController {
   selectAudioTrack(id: string): void;
   /** PLY-05: shows a subtitle track, or none with `undefined`. Unknown ids are ignored. */
   selectTextTrack(id: string | undefined): void;
+  /**
+   * PLY-07: the view saw the current candidate stall (no progress, no error): it fails like an
+   * engine error (`network`, detail `stalled`), so the next candidate is tried — or, with none
+   * left, the final `error` is emitted. No-op without an engine.
+   */
+  reportStall(): void;
 }
 
 export interface PlayerControllerOptions {
@@ -118,7 +124,9 @@ export function createPlayerController(
 
   /** Bumped by every play()/stop(); an operation whose token is stale stops at its next step. */
   let generation = 0;
-  let current: { engine: PlayerEngine; unsubscribe: () => void } | undefined;
+  let current:
+    | { engine: PlayerEngine; unsubscribe: () => void; fail: (error: PlaybackError) => void }
+    | undefined;
   /** The current engine listed tracks: its teardown clears them for the listeners. */
   let listedTracks = false;
 
@@ -257,7 +265,11 @@ export function createPlayerController(
           emit('tracks', tracks);
         }),
       ];
-      current = { engine, unsubscribe: () => unsubscribers.forEach((off) => off()) };
+      current = {
+        engine,
+        unsubscribe: () => unsubscribers.forEach((off) => off()),
+        fail: failSafely,
+      };
       engine.attach(video);
       log.info('player: loading', {
         engine: id,
@@ -320,6 +332,15 @@ export function createPlayerController(
 
     selectTextTrack(id) {
       current?.engine.selectTextTrack?.(id);
+    },
+
+    reportStall() {
+      const active = current;
+      if (!active) return;
+      log.info('player: stalled', { engine: active.engine.id });
+      active.fail(
+        new PlaybackError({ kind: 'network', engine: active.engine.id, detail: 'stalled' }),
+      );
     },
   };
 }

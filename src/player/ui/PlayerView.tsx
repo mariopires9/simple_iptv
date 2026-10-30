@@ -61,6 +61,12 @@ export const LIVE_RECONNECT_DELAYS_MS: readonly number[] = [1000, 2000, 4000];
 /** Seconds of playback progress after which the reconnect attempts start again from zero. */
 export const SUSTAINED_PLAYBACK_S = 10;
 /**
+ * PLY-07: a live stream that started and then shows no progress for this long while playing
+ * (no error: e.g. the connection silently stopped delivering) fails its candidate — the next one
+ * is tried, or the usual reconnects follow.
+ */
+export const LIVE_STALL_TIMEOUT_MS = 10_000;
+/**
  * Where the overlay's "Connection diagnostics" action leads: the diagnostics of the active list
  * (SRC-09).
  * The action is a router link: PlayerView is always rendered inside the app's router.
@@ -126,6 +132,11 @@ export interface PlayerViewProps {
    */
   onFinalError?: (error: PlaybackError) => void;
   /**
+   * PLY-07: the candidate (the descriptor or one of its fallbacks) that actually started — its
+   * first frame is available. Called once per candidate per load; Live learns its format.
+   */
+  onStarted?: (descriptor: StreamDescriptor) => void;
+  /**
    * The <video> element once mounted (`null` when it goes): VOD progress saving (VOD-03) and the
    * next-episode card (SER-03) read its time and listen to its media events.
    */
@@ -155,6 +166,7 @@ export function PlayerView({
   rewriter,
   overlay,
   onFinalError,
+  onStarted,
   onVideoElement,
   failureProbe,
   artwork,
@@ -226,9 +238,11 @@ export function PlayerView({
   const reconnects = useRef({ stream, count: 0, started: false });
   const isLiveRef = useRef(kind === 'live');
   const onFinalErrorRef = useRef(onFinalError);
+  const onStartedRef = useRef(onStarted);
   useEffect(() => {
     isLiveRef.current = kind === 'live';
     onFinalErrorRef.current = onFinalError;
+    onStartedRef.current = onStarted;
   });
   /** The reconnect whose delay is running, tied to the load that failed. */
   const [reconnectingFor, setReconnectingFor] = useState<object>();
@@ -296,12 +310,26 @@ export function PlayerView({
     const offTracks = controller.on('tracks', (tracks) => {
       if (current) setTrackState({ load, tracks });
     });
+    // PLY-07: the candidate being loaded, reported once it is ready (the success signal).
+    let attempted: StreamDescriptor | undefined;
+    let reported: StreamDescriptor | undefined;
+    const offAttempt = controller.on('attempt', ({ descriptor }) => {
+      if (current) attempted = descriptor;
+    });
     // Readiness listeners are attached only once controller.play() resolved: by then the
     // previous stream has been torn down, so its late events cannot mark this load ready.
     const markReady = () => {
       if (!current) return;
       setReadyFor(load);
       reconnects.current.started = true;
+      if (attempted !== undefined && attempted !== reported) {
+        reported = attempted;
+        try {
+          onStartedRef.current?.(attempted);
+        } catch (e) {
+          log.error('player: onStarted threw', { error: errorName(e) });
+        }
+      }
     };
     // Only sustained playback gives the next failure the full set of reconnects again.
     let progressFrom: number | undefined;
@@ -353,6 +381,7 @@ export function PlayerView({
       offError();
       offNotice();
       offTracks();
+      offAttempt();
       if (listening) {
         for (const type of READY) video.removeEventListener(type, markReady);
         video.removeEventListener('playing', onPlaying);
@@ -365,6 +394,46 @@ export function PlayerView({
 
   // Decoder counters, read after a few seconds of real playback of a ready load.
   const ready = readyFor === load;
+
+  // PLY-07: stall watchdog for a live load that started. Progress (`timeupdate` moving the
+  // position) or a new `playing` re-arms it; a pause disarms it (a paused live stream is not
+  // stalled). When it fires the controller fails the current candidate, as for an engine error.
+  useEffect(() => {
+    if (!controller || !video || !ready || kind !== 'live') return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let position = video.currentTime;
+    const disarm = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+    };
+    const arm = () => {
+      disarm();
+      if (video.paused) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (video.paused) return;
+        log.info('player: live stream stalled', { timeoutMs: LIVE_STALL_TIMEOUT_MS });
+        controller.reportStall();
+      }, LIVE_STALL_TIMEOUT_MS);
+    };
+    const onTime = () => {
+      if (video.currentTime === position) return;
+      position = video.currentTime;
+      arm();
+    };
+    arm();
+    video.addEventListener('playing', arm);
+    video.addEventListener('seeked', arm);
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('pause', disarm);
+    return () => {
+      disarm();
+      video.removeEventListener('playing', arm);
+      video.removeEventListener('seeked', arm);
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('pause', disarm);
+    };
+  }, [controller, video, ready, kind, load]);
   useEffect(() => {
     if (!video || !ready) return undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;

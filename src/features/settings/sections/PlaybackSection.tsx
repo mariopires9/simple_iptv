@@ -1,3 +1,4 @@
+import Button from '@mui/material/Button';
 import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormHelperText from '@mui/material/FormHelperText';
@@ -14,6 +15,7 @@ import { useToast } from '@/ui/state';
 import {
   LIVE_FORMATS,
   loadPlaybackSettings,
+  resetLearnedLiveFormats,
   saveFullscreenOnLandscape,
   saveHideProtectedContent,
   saveLiveFormat,
@@ -87,7 +89,9 @@ export function PlaybackSection() {
   const text = t.settings.playback;
   const toast = useToast();
   const formatLabelId = useId();
+  const resetHintId = useId();
   const [settings, setSettings] = useState<PlaybackSettings>();
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -177,6 +181,31 @@ export function PlaybackSection() {
           </RadioGroup>
           <FormHelperText sx={{ mx: 0 }}>{formatHint}</FormHelperText>
         </FormControl>
+        <div>
+          <Button
+            variant="outlined"
+            disabled={!list || resetting}
+            aria-describedby={resetHintId}
+            onClick={() => {
+              if (!list) return;
+              setResetting(true);
+              resetLearnedLiveFormats(list.id)
+                .then(
+                  () => toast.show({ message: text.resetLearnedDone, severity: 'success' }),
+                  (error: unknown) => {
+                    log.warn('settings: the learned formats could not be reset', { error });
+                    toast.show({ message: text.resetLearnedError, severity: 'error' });
+                  },
+                )
+                .finally(() => setResetting(false));
+            }}
+          >
+            {text.resetLearned}
+          </Button>
+          <FormHelperText id={resetHintId} sx={{ mx: 0 }}>
+            {list ? text.resetLearnedHint(list.name) : text.resetLearnedNoList}
+          </FormHelperText>
+        </div>
       </Stack>
     </SettingsSection>
   );

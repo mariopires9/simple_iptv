@@ -6,10 +6,28 @@
 // - M3U: the entry's own URL (`streamUrl`, falling back to `streamPath`) with its `container`
 //   (or the one inferred from the extension). Entries flagged `drm` or DASH are never attempted
 //   (PLY-04 AC7, no DRM circumvention — SECURITY.md §8).
+//
+// Live candidate order (PLY-07, docs/ARCHITECTURE.md §6.2), first match wins:
+// 1. the container this channel last actually started with (learned per channel, in memory);
+// 2. the list's explicit format preference (Xtream `ts` / `m3u8`), or the M3U URL's extension;
+// 3. `auto`: on native-HLS devices (iPhone: ManagedMediaSource without MSE; Safari) HLS first,
+//    played natively, with TS as the fallback; elsewhere MPEG-TS when the browser has
+//    MSE/ManagedMediaSource, else HLS. (On iPhone, mpegts.js over ManagedMediaSource showed green
+//    frames and stalls; native HLS is the platform's own path.)
+// The memory is kept per device class (`liveDeviceClass`): a format learned on one class never
+// reorders another.
+// The other live container always stays as a fallback when one can be built without inventing
+// an address: Xtream (both URLs are known), M3U entries without an extension (same URL, other
+// engine) and M3U entries on an Xtream-style live path (same URL, `.ts` ↔ `.m3u8`).
 import type { Channel, LiveFormat, Source } from '@/core/db';
 import { VaultKeyLostError, credentialVault, type CredentialVault } from '@/core/crypto';
 import { parseExternalUrl } from '@/core/net';
 import { getCapabilities, type Capabilities } from '@/core/platform';
+import {
+  learnedFormat,
+  type LearnedContainer,
+  type LiveDeviceClass,
+} from '@/core/session/liveFormatMemory';
 import {
   NATIVE_AUDIO_CONTAINER,
   containerOfExtension,
@@ -48,13 +66,29 @@ export type ResolvedStream =
 
 export interface ResolveDeps {
   vault?: Pick<CredentialVault, 'get'>;
-  capabilities?: Pick<Capabilities, 'mse' | 'mms'>;
+  capabilities?: LiveCapabilities;
+  /** PLY-07: the learned container of a channel (default: the in-memory memory). */
+  learned?: (channelKey: string, deviceClass: LiveDeviceClass) => LearnedContainer | undefined;
 }
 
-let cachedCapabilities: Pick<Capabilities, 'mse' | 'mms'> | undefined;
-function defaultCapabilities(): Pick<Capabilities, 'mse' | 'mms'> {
+/** What live format selection reads (`nativeHls`/`isSafari` absent = false). */
+export type LiveCapabilities = Pick<Capabilities, 'mse' | 'mms'> &
+  Partial<Pick<Capabilities, 'nativeHls' | 'isSafari'>>;
+
+let cachedCapabilities: LiveCapabilities | undefined;
+function defaultCapabilities(): LiveCapabilities {
   cachedCapabilities ??= getCapabilities();
   return cachedCapabilities;
+}
+
+/**
+ * PLY-07: `native-hls` where HLS is best played by the browser itself — iPhone (ManagedMediaSource
+ * but no MSE) and Safari — else `mse`. Recent Chrome also reports native HLS but keeps `mse`.
+ */
+export function liveDeviceClass(caps: LiveCapabilities = defaultCapabilities()): LiveDeviceClass {
+  return (caps.isSafari === true && caps.nativeHls === true) || (!caps.mse && caps.mms)
+    ? 'native-hls'
+    : 'mse';
 }
 
 export interface InferredContainer {
@@ -83,7 +117,44 @@ function hasHeaders(value: unknown): boolean {
   return value !== false && value !== '';
 }
 
-function resolveM3u(channel: Channel): ResolvedStream {
+/**
+ * Xtream-style live path: `/live/<user>/<pass>/<id>.<ext>` or the short `/<user>/<pass>/<id>.<ext>`
+ * (numeric id). Such servers serve the same channel as `.ts` and `.m3u8`.
+ */
+const XTREAM_STYLE_LIVE_PATH = /^(?:\/live)?\/[^/]+\/[^/]+\/\d+\.(ts|m3u8)$/i;
+
+/** The same URL with the other live extension, for an Xtream-style live path; else undefined. */
+export function xtreamStyleAlternative(
+  url: URL,
+  container: StreamContainer,
+): StreamDescriptor | undefined {
+  const match = XTREAM_STYLE_LIVE_PATH.exec(url.pathname);
+  const ext = match?.[1]?.toLowerCase();
+  if (!((ext === 'ts' && container === 'ts') || (ext === 'm3u8' && container === 'hls'))) {
+    return undefined;
+  }
+  const other = new URL(url.href);
+  other.pathname = url.pathname.replace(/\.(ts|m3u8)$/i, ext === 'ts' ? '.m3u8' : '.ts');
+  return { url: other.href, kind: 'live', container: ext === 'ts' ? 'hls' : 'ts' };
+}
+
+/**
+ * Puts the candidate with the `preferred` container first (PLY-07); the others keep their order
+ * as fallbacks. Unchanged when there is no such candidate or it is already first.
+ */
+export function preferContainer(
+  descriptor: StreamDescriptor,
+  preferred: LearnedContainer | undefined,
+): StreamDescriptor {
+  const { fallbacks = [], ...first } = descriptor;
+  const index = fallbacks.findIndex((d) => d.container === preferred);
+  const chosen = fallbacks[index];
+  if (preferred === undefined || first.container === preferred || !chosen) return descriptor;
+  const rest = [first, ...fallbacks.filter((_, i) => i !== index)];
+  return { ...chosen, fallbacks: rest };
+}
+
+function resolveM3u(channel: Channel, caps: () => LiveCapabilities): ResolvedStream {
   const fields = channel as Channel & M3uChannelFields;
   if (fields.drm !== undefined && fields.drm !== null && fields.drm !== false) {
     return { status: 'unsupported', reason: 'drm' };
@@ -103,6 +174,18 @@ function resolveM3u(channel: Channel): ResolvedStream {
     // Same URL, other live engine: mpegts.js ↔ hls.js, tried if the guess fails.
     const other: StreamContainer = container === 'hls' ? 'ts' : 'hls';
     descriptor.fallbacks = [{ url, kind: 'live', container: other }];
+    // A guess is "auto": native-HLS devices try HLS first (see the header).
+    if (liveDeviceClass(caps()) === 'native-hls') {
+      return {
+        status: 'ok',
+        descriptor: preferContainer(descriptor, 'hls'),
+        requiredHeaders: hasHeaders(fields.requiredHeaders),
+      };
+    }
+  } else {
+    // PLY-07: only on an Xtream-style path; other URLs get no invented address.
+    const alternative = xtreamStyleAlternative(parsed.url, container);
+    if (alternative) descriptor.fallbacks = [alternative];
   }
   return {
     status: 'ok',
@@ -118,20 +201,26 @@ export function xtreamLiveDescriptor(
   password: string,
   streamId: string,
   format: LiveFormat,
-  caps: Pick<Capabilities, 'mse' | 'mms'>,
+  caps: LiveCapabilities,
 ): StreamDescriptor {
   const url = (ext: 'ts' | 'm3u8') => xtreamLiveStreamUrl(base, username, password, streamId, ext);
   const ts: StreamDescriptor = { url: url('ts'), kind: 'live', container: 'ts' };
   const hls: StreamDescriptor = { url: url('m3u8'), kind: 'live', container: 'hls' };
-  if (format === 'm3u8') return hls;
-  if (format === 'ts' || caps.mse || caps.mms) return { ...ts, fallbacks: [hls] };
-  return hls;
+  const mediaSource = caps.mse || caps.mms;
+  // PLY-07: HLS first, with TS as the fallback when this browser can play it (mpegts.js).
+  const hlsFirst = mediaSource ? { ...hls, fallbacks: [ts] } : hls;
+  if (format === 'm3u8') return hlsFirst;
+  if (format === 'ts') return { ...ts, fallbacks: [hls] };
+  // auto
+  if (liveDeviceClass(caps) === 'native-hls') return hlsFirst;
+  return mediaSource ? { ...ts, fallbacks: [hls] } : hls;
 }
 
 async function resolveXtream(
   channel: Channel,
   source: Source,
   deps: ResolveDeps,
+  caps: () => LiveCapabilities,
 ): Promise<ResolvedStream> {
   const { serverUrl, username, secretRef } = source;
   // Stored as the bare id; tolerate an extension left by an older catalogue.
@@ -154,10 +243,7 @@ async function resolveXtream(
     password,
     streamId,
     source.prefs.liveFormat,
-    // Only "auto" depends on the browser; probing creates a <video>, so skip it otherwise.
-    source.prefs.liveFormat === 'auto'
-      ? (deps.capabilities ?? defaultCapabilities())
-      : { mse: false, mms: false },
+    caps(),
   );
   return { status: 'ok', descriptor, requiredHeaders: false };
 }
@@ -168,5 +254,14 @@ export async function resolveStream(
   source: Source,
   deps: ResolveDeps = {},
 ): Promise<ResolvedStream> {
-  return source.kind === 'xtream' ? resolveXtream(channel, source, deps) : resolveM3u(channel);
+  // Probed on first need (it creates a <video>), then cached for the session.
+  const caps = () => deps.capabilities ?? defaultCapabilities();
+  const resolved =
+    source.kind === 'xtream'
+      ? await resolveXtream(channel, source, deps, caps)
+      : resolveM3u(channel, caps);
+  if (resolved.status !== 'ok' || !resolved.descriptor.fallbacks?.length) return resolved;
+  // PLY-07: the learned container (on this device class) beats the list's preference.
+  const learned = (deps.learned ?? learnedFormat)(channel.key, liveDeviceClass(caps()));
+  return { ...resolved, descriptor: preferContainer(resolved.descriptor, learned) };
 }
