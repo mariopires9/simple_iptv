@@ -31,10 +31,8 @@ describe('validateConfig', () => {
     expect(() => validateConfig(example)).toThrow(/"token"/);
     const config = validateConfig(valid());
     expect(config.listen).toEqual({ host: '127.0.0.1', port: 8787 });
-    expect(config.upstream.allowedHosts).toEqual([
-      { host: 'panel.example.com', wildcard: false },
-      { host: 'example.net', wildcard: true },
-    ]);
+    // The example has no allowlist: any public host (PRX-02).
+    expect(config.upstream.allowedHosts).toBeNull();
     expect(config.limits.playlistMaxBytes).toBe(4 * 1024 * 1024);
     expect(config.grantTtlSeconds).toBe(86_400);
   });
@@ -51,11 +49,19 @@ describe('validateConfig', () => {
     expect(config.limits.maxConcurrentUpstreams).toBe(8);
   });
 
+  it('without allowedHosts (or without upstream) allows any public host (PRX-02)', () => {
+    const base = { token: TOKEN, allowedOrigins: ['https://user.github.io'] };
+    expect(validateConfig(base).upstream.allowedHosts).toBeNull();
+    expect(
+      validateConfig({ ...base, upstream: { maxRedirects: 3 } }).upstream.allowedHosts,
+    ).toBeNull();
+    expect(isHostAllowed('any.example', null)).toBe(true);
+  });
+
   const refusals: Array<[string, (c: Draft) => void]> = [
     ['a short token', (c) => (c.token = 'short')],
     ['a token with spaces', (c) => (c.token = `${TOKEN} x`)],
     ['empty allowedHosts', (c) => (c.upstream.allowedHosts = [])],
-    ['missing upstream', (c) => Reflect.deleteProperty(c, 'upstream')],
     ['empty allowedOrigins', (c) => (c.allowedOrigins = [])],
     ['an origin with a trailing slash', (c) => (c.allowedOrigins = ['https://user.github.io/'])],
     ['an origin with a path', (c) => (c.allowedOrigins = ['https://user.github.io/simple_iptv'])],
@@ -107,7 +113,7 @@ describe('validateConfig', () => {
       'Panel.Example.com',
     ];
     const parsed = validateConfig(config);
-    expect(parsed.upstream.allowedHosts.map((r) => r.host)).toEqual([
+    expect(parsed.upstream.allowedHosts!.map((r) => r.host)).toEqual([
       '203.0.113.5',
       '[2001:db8::1]',
       'xn--bcher-kva.example',

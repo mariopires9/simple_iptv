@@ -221,6 +221,21 @@ describe('upstream allowlist and request validation', () => {
     expect(upstream.requests).toHaveLength(4);
   });
 
+  it('without an allowlist relays any public host; the address policy still applies (PRX-02)', async () => {
+    const upstream = await textUpstream('hello');
+    const proxy = await proxyWith(testConfig({ upstream: { allowedHosts: null } }));
+    const res = await fetchRaw(u(proxy, `http://other.test:${upstream.port}/file.txt`));
+    expect(res.status).toBe(200);
+    expect(res.body.toString()).toBe('hello');
+    for (const host of ['private.test', 'metadata.test', 'cgnat.test', '192.168.1.1']) {
+      const refused = await fetchRaw(u(proxy, `http://${host}/a.ts`));
+      expect(refused.status).toBe(403);
+      expect(refused.headers[ERROR_HEADER.toLowerCase()]).toBe('address-blocked');
+    }
+    const health = await fetchRaw(buildHealthUrl(proxy.url, TEST_TOKEN, 'http://any.example/'));
+    expect(JSON.parse(health.body.toString()).upstreamAllowed).toBe(true);
+  });
+
   it.each([
     ['bad base64', (p: Proxy) => `${p.url}/v1/${TEST_TOKEN}/u/not*b64/x.ts`],
     [

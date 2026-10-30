@@ -22,7 +22,7 @@ export interface LogFields {
   code?: string;
   durationMs?: number;
   bytes?: number;
-  /** Startup only: the listening port and the number of configured hosts/origins. */
+  /** Startup only: the listening port and the number of configured hosts (0 = any)/origins. */
   port?: number;
   allowedHosts?: number;
   allowedOrigins?: number;

@@ -74,7 +74,7 @@ notepad "$env:APPDATA\SimpleIPTVProxy\config.json"
 | `listen.host` / `listen.port` | Must be a loopback address (`127.0.0.1` or `::1`); default port `8787`. Tailscale Serve connects here. The proxy refuses to start on any other address. |
 | `token` | Paste the token from step 3. |
 | `allowedOrigins` | Web pages allowed to call the proxy: the app's origin, e.g. `https://<your-user>.github.io` (no path, no trailing slash). Keep the `localhost` entries only if you develop the app. |
-| `upstream.allowedHosts` | Your provider's host names **as they appear in the URLs you added to the app** (the API/panel host, the M3U host). `*.example.net` allows every subdomain of `example.net` (not `example.net` itself). Edge hosts reached through redirects do not need to be listed. |
+| `upstream.allowedHosts` | **Optional.** Left out (the default in `config.example.json`), the proxy relays to **any public host**, so lists from any provider work without editing the config; private, loopback, tailnet and cloud-metadata addresses are still refused. To restrict it, list your providers' host names **as they appear in the URLs you added to the app** (the API/panel host, the M3U host). `*.example.net` allows every subdomain of `example.net` (not `example.net` itself). Edge hosts reached through redirects never need to be listed. An empty list is refused. |
 | `upstream.maxRedirects` | Redirect hops followed inside the proxy (default 5). |
 | `upstream.headersTimeoutMs` | 504 if the provider sends no response headers in time (default 15000 per hop). |
 | `upstream.idleTimeoutMs` | A stream with no data for this long is closed (default 30000). |
@@ -85,7 +85,7 @@ notepad "$env:APPDATA\SimpleIPTVProxy\config.json"
 | `grantTtlSeconds` | Lifetime of the URLs written into rewritten playlists (default 86400 = 24 h). |
 | `publicBaseUrl` | Optional. Normally omitted: the proxy builds playlist URLs from the `Host` and `X-Forwarded-Proto` headers that Tailscale Serve sends, giving `https://<pc>.<tailnet>.ts.net`. Set it (e.g. `https://<pc>.<tailnet>.ts.net/iptv`) only if you mount the proxy under a path. |
 
-Unknown keys, an invalid token, empty lists and bad values stop the proxy at startup with a message
+Unknown keys, an invalid token, an empty `allowedOrigins` (or an empty `allowedHosts` when present) and bad values stop the proxy at startup with a message
 naming the field (never its value).
 
 ### 5. Start it
@@ -94,7 +94,7 @@ naming the field (never its value).
 node C:\simple-iptv-proxy\server.ts
 ```
 
-It prints one JSON line with the port and how many hosts/origins are configured, then one line per
+It prints one JSON line with the port and how many hosts (`0` = no allowlist, any public host) and origins are configured, then one line per
 request with only the status, an error code, the duration and the byte count. **It never logs
 hosts, paths, query strings, tokens or URLs.** Stop it with Ctrl+C.
 
@@ -148,6 +148,57 @@ The PC must be on and awake while you watch: set **Settings › System › Power
 Sleep** to *Never* when plugged in (or `powercfg /change standby-timeout-ac 0`). Tailscale Serve
 keeps its configuration across reboots (`--bg`).
 
+## Set up on Linux
+
+The same program and configuration keys as on Windows; only paths and service management differ.
+Tested only by the automated suite on Linux (Node 24); not yet on a real Linux server.
+
+```sh
+# 1. Node.js 24 (distribution package, NodeSource or nvm), then check:
+node --version            # v24.x
+# 2. Copy the proxy folder (only proxy/ is needed), e.g. to ~/simple-iptv-proxy
+# 3. Token and configuration (default path: ~/.config/simple-iptv-proxy/config.json)
+cd ~/simple-iptv-proxy
+node server.ts --generate-token
+mkdir -p ~/.config/simple-iptv-proxy
+cp config.example.json ~/.config/simple-iptv-proxy/config.json
+chmod 600 ~/.config/simple-iptv-proxy/config.json
+nano ~/.config/simple-iptv-proxy/config.json   # paste the token; allowedOrigins = the app origin
+# 4. Start it (Ctrl+C stops it)
+node server.ts
+```
+
+Leave `upstream.allowedHosts` out (as in the example) to use lists from any provider without
+editing the configuration again; add it only if you want to restrict the relay.
+
+Run it as a user service so it starts at boot and restarts on failure
+(`~/.config/systemd/user/simple-iptv-proxy.service`):
+
+```ini
+[Unit]
+Description=Simple IPTV personal proxy
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node %h/simple-iptv-proxy/server.ts
+Restart=on-failure
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now simple-iptv-proxy
+loginctl enable-linger "$USER"      # keep it running without a login session
+journalctl --user -u simple-iptv-proxy -f
+```
+
+Use the path `which node` prints in `ExecStart`. Then expose it exactly as on Windows (step 6):
+install Tailscale (`curl -fsSL https://tailscale.com/install.sh | sh`, `sudo tailscale up`),
+enable MagicDNS and HTTPS certificates, and run `sudo tailscale serve --bg 8787`.
+
 ## Security warnings — read these
 
 - **Never use `tailscale funnel`, port forwarding on your router, or a public VPS** for this proxy.
@@ -180,7 +231,7 @@ keeps its configuration across reboots (`--bg`).
 - **Methods** `GET`, `HEAD` and CORS preflight `OPTIONS` only (405 otherwise, CONNECT refused).
 - **Origins**: requests with an `Origin` header must come from `allowedOrigins` (403 otherwise);
   requests without one (the `<video>` element, curl) are allowed.
-- **Upstream allowlist** for app-built URLs; redirects are followed inside the proxy (≤ 5 hops) and
+- **Optional upstream allowlist** for app-built URLs (without one: any public host); redirects are followed inside the proxy (≤ 5 hops) and
   never forwarded to the client.
 - **SSRF protection**: http/https only, no `user:pass@`, every DNS answer checked against private,
   loopback, link-local, CGNAT/Tailscale, documentation, multicast and reserved ranges (including

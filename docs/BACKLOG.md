@@ -70,6 +70,7 @@ Allowed statuses (exactly one per story):
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
 | LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Done |
 | PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | In Review |
+| PRX-02 | Proxy: optional upstream allowlist (any public host by default) | E1 | Must | 1 | PRX-01 | 8 | M3 | In Review |
 | PLY-06 | Diagnosable live playback failures | E3 | Must | 3 | PLY-04, SRC-09 | 8 | M3 | Done |
 | UX-07 | Mark protected content | E11 | Should | 3 | SRC-04, VOD-04, UX-04 | 8 | M3 | Done |
 
