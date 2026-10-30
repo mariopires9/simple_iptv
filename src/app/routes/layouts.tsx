@@ -2,6 +2,7 @@ import Box from '@mui/material/Box';
 import { Outlet, ScrollRestoration } from 'react-router';
 import { ConnectionBanner } from '@/ui/state';
 import { AppShell } from '../AppShell';
+import { SkipLink } from '../shell/SkipLink';
 import { FullScreen } from './FullScreen';
 import { OnboardingGuard } from './onboardingGuard';
 
@@ -26,6 +27,7 @@ export function ShellLayout() {
 export function FullScreenLayout() {
   return (
     <>
+      <SkipLink />
       {/* PWA-04: the onboarding flows add lists, which needs the network. */}
       <Box sx={{ position: 'sticky', top: 0, zIndex: 'appBar' }}>
         <ConnectionBanner />

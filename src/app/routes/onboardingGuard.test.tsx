@@ -1,7 +1,7 @@
 // UX-01: onboarding guard (AC1), the onboarding screen (AC2) and the first-run flow up to Home
 // (AC3) on the real route tree, with fake-indexeddb and the synthetic MSW panel.
 import 'fake-indexeddb/auto';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -112,7 +112,10 @@ describe('UX-01 AC2 — onboarding screen', () => {
     const router = renderRoute('/onboarding');
     await heading(ONBOARDING);
     const o = t.onboarding.options;
-    const links = screen.getAllByRole('link').map((l) => l.getAttribute('href'));
+    // The screen's own links (the UX-03 skip link sits before <main>).
+    const links = within(screen.getByRole('main'))
+      .getAllByRole('link')
+      .map((l) => l.getAttribute('href'));
     expect(links).toEqual([
       '/onboarding/xtream',
       '/onboarding/m3u-url',

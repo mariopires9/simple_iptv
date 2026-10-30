@@ -10,6 +10,8 @@ export const nav = {
   favorites: 'Favoritos',
   settings: 'Definições',
   search: 'Pesquisar',
+  /** UX-03: first focusable element, jumps to the main landmark. */
+  skipToContent: 'Saltar para o conteúdo',
   moreOptions: 'Mais opções',
   theme: 'Tema',
   themes: {
