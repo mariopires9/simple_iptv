@@ -16,8 +16,9 @@ import { Link, Navigate, useParams } from 'react-router';
 import { sourcesRepo, type LiveFormat, type Source } from '@/core/db';
 import { log } from '@/core/log';
 import { loadActiveSource } from '@/core/session';
-import { t } from '@/i18n';
+import { activeLocale, t } from '@/i18n';
 import { DelayedLoading, ProgressPanel, StateView, errorDetails, useToast } from '@/ui/state';
+import { describeEpgStatus } from '../epgStatus';
 import { overallStatus, type CheckStatus, type DiagnosticAction } from './checks';
 import { describeCheck, type DescribedCheck } from './describe';
 import { buildReport } from './report';
@@ -148,11 +149,24 @@ export function DiagnosticsScreen({ deps, writeClipboard }: DiagnosticsScreenPro
           {state.source.name} · {t.sources.myLists.kinds[state.source.kind]}
         </Typography>
       )}
+      {state.status === 'ready' && state.source.kind !== 'xtream' && (
+        <EpgCoverageLine source={state.source} />
+      )}
       <Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>
         {text.intro}
       </Typography>
       {content}
     </Box>
+  );
+}
+
+/** EPG-03 AC4: the share of the list's channels with a program guide. */
+function EpgCoverageLine({ source }: { source: Source }) {
+  const [now] = useState(Date.now);
+  return (
+    <Typography color="text.secondary" data-testid="diagnostics-epg" sx={{ mt: 1 }}>
+      {`${t.sources.edit.epg.title}: ${describeEpgStatus(source, t, activeLocale(), now)}`}
+    </Typography>
   );
 }
 

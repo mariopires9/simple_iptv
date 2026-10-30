@@ -64,6 +64,7 @@ import {
   type SavedLiveView,
 } from './liveState';
 import { NowNext } from './NowNext';
+import { createXmltvEpgService } from './xmltvEpg';
 import { PageCache } from './pageCache';
 import { createPager } from './pagers';
 import { neighbour } from './zapping';
@@ -411,11 +412,14 @@ export function LiveScreen() {
     [sourceId, canSaveView, categoryId, saver],
   );
 
-  // --- EPG (EPG-01) --------------------------------------------------------------------------
+  // --- EPG (EPG-01; XMLTV for M3U lists, EPG-02) ----------------------------------------------
   // One service per loaded source; leaving the screen (or the source) cancels what is in flight.
   const readySource = ready?.source;
   const epgService = useMemo(
-    () => (readySource ? createEpgService(readySource) : undefined),
+    () =>
+      readySource
+        ? (createEpgService(readySource) ?? createXmltvEpgService(readySource))
+        : undefined,
     [readySource],
   );
   useEffect(() => () => epgService?.cancel(), [epgService]);

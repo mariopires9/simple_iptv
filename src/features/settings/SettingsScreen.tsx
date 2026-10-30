@@ -3,7 +3,7 @@ import { t } from '@/i18n';
 import { SETTINGS_SECTIONS } from './sections';
 
 /**
- * Settings (UX-04, docs/UX_UI.md §4.8): Lists · Appearance · Language · Playback · Storage ·
+ * Settings (UX-04, docs/UX_UI.md §4.8): Lists · Appearance · Language · Playback · Proxy · Backup · Storage ·
  * Privacy · About, one component per section (`./sections`).
  */
 export function SettingsScreen() {

@@ -49,6 +49,7 @@ export {
   type RecentItemsOptions,
   type RecentItemsResult,
 } from './repos/history';
+export { epgRepo, MAX_PROGRAMME_MS } from './repos/epg';
 export { settingsRepo } from './repos/settings';
 export { vaultStore } from './repos/vault';
 export * from './types';

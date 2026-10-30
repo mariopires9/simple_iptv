@@ -25,7 +25,7 @@ afterEach(async () => {
 });
 
 describe('SettingsScreen (UX-04 AC1)', () => {
-  it('shows the sections in order: Lists, Appearance, Language, Playback, Personal proxy, Storage, Privacy, About', async () => {
+  it('shows the sections in order: Lists, Appearance, Language, Playback, Personal proxy, Backup, Storage, Privacy, About', async () => {
     renderSettings(<SettingsScreen />);
     const s = t.settings.sections;
     expect(
@@ -38,6 +38,7 @@ describe('SettingsScreen (UX-04 AC1)', () => {
       s.language,
       s.playback,
       s.proxy,
+      s.backup,
       s.storage,
       s.privacy,
       s.about,

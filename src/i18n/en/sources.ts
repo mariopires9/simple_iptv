@@ -395,5 +395,44 @@ export const sources = {
     passwordLost: 'The saved password can no longer be read on this device. Enter it again.',
     save: 'Save',
     saveAndTest: 'Test and save',
+    /** EPG-02/EPG-03: the XMLTV program guide of an M3U list. */
+    epg: {
+      title: 'Program guide',
+      url: 'Guide address (XMLTV)',
+      urlHelp:
+        'Optional. Leave empty to use the address announced by the list. .xml, .xml.gz and .xml.xz are supported.',
+      invalid: 'This address is not valid. It must start with http:// or https://.',
+      credentials: 'Addresses with a user name, password or token cannot be saved here.',
+      save: 'Save guide address',
+      saved: 'Guide address saved.',
+      refresh: 'Update guide',
+      refreshing: 'Updating guide…',
+      refreshed: 'Guide updated.',
+      refreshFailed: 'Could not update the guide.',
+      noUrl: 'This list does not announce a guide. Enter its address above.',
+      never: 'The guide has not been loaded yet.',
+      coverage: (percent: string, withEpg: string, total: string) =>
+        `${percent} of channels have a guide (${withEpg} of ${total}).`,
+      updated: (when: string) => `Updated ${when}.`,
+      failed: (when: string, reason: string) => `Last update ${when} failed: ${reason}`,
+      /** Matching by name is approximate (EPG-03): shown under the coverage. */
+      matchingNote:
+        'Channels are matched to the guide by their guide ID, or else by name; channels whose name fits several guide channels are left without a guide.',
+      errors: {
+        offline: 'you are offline.',
+        timeout: 'the server took too long to answer.',
+        blocked: 'the server blocked the request (CORS) or could not be reached.',
+        http: 'the server answered with an error.',
+        auth: 'access denied by the server.',
+        parse: 'the answer could not be read.',
+        'not-xmltv': 'the file is not an XMLTV guide.',
+        corrupt: 'the compressed file is damaged.',
+        'xz-unavailable': 'this browser cannot unpack .xz files here.',
+        'too-large': 'the guide is too large.',
+        storage: 'there is not enough storage space.',
+        internal: 'an unexpected error occurred.',
+        unknown: 'an unexpected error occurred.',
+      } as Record<string, string>,
+    },
   },
 };

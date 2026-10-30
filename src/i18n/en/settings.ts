@@ -7,6 +7,7 @@ export const settings = {
     language: 'Language',
     playback: 'Playback',
     proxy: 'Personal proxy',
+    backup: 'Backup',
     storage: 'Storage',
     privacy: 'Privacy',
     about: 'About',
@@ -164,6 +165,79 @@ export const settings = {
         continue: 'Continue',
       },
     },
+  },
+  backup: {
+    intro:
+      'Save your lists, favorites, watch history and settings to a file and restore them on another device. Channels, movies and series are not in the file: they are downloaded again after importing.',
+    exportTitle: 'Export',
+    includeSecrets: 'Include passwords and list addresses',
+    includeSecretsHint:
+      'They are encrypted with a password you choose. Without it, the file holds no passwords and you type them again after importing.',
+    password: 'Export password',
+    passwordHint: (min: number) =>
+      `At least ${min} characters. Keep it safe: without it, the passwords in the file cannot be recovered.`,
+    confirmPassword: 'Repeat the password',
+    errors: {
+      tooShort: (min: number) => `Use at least ${min} characters`,
+      mismatch: 'The passwords do not match',
+    },
+    export: 'Export to a file',
+    exporting: 'Exporting…',
+    exported: 'Backup file saved',
+    exportedMissing: (count: number) =>
+      count === 1
+        ? 'Backup file saved, without the password of 1 list (it could not be read)'
+        : `Backup file saved, without the passwords of ${count} lists (they could not be read)`,
+    exportError: 'The backup file could not be created',
+    importTitle: 'Import',
+    importHint: 'Pick a file exported from this app. You can review it before anything changes.',
+    choose: 'Import from a file',
+    readErrors: {
+      'too-large': 'This file is too large to be a backup.',
+      'not-json': 'This file is not a backup of this app.',
+      'not-backup': 'This file is not a backup of this app, or it is damaged.',
+      'newer-version': 'This backup was made by a newer version of the app. Update the app first.',
+    },
+    readError: 'The file could not be read',
+    preview: {
+      title: 'Import backup',
+      exportedAt: (date: string) => `Exported on ${date}`,
+      lists: (count: number, formatted: string) => (count === 1 ? '1 list' : `${formatted} lists`),
+      favorites: (count: number, formatted: string) =>
+        count === 1 ? '1 favorite' : `${formatted} favorites`,
+      history: (count: number, formatted: string) =>
+        count === 1 ? '1 watch history entry' : `${formatted} watch history entries`,
+      settings: (count: number, formatted: string) =>
+        count === 1 ? '1 setting' : `${formatted} settings`,
+      skipped: (count: number, formatted: string) =>
+        count === 1
+          ? '1 invalid entry will be ignored'
+          : `${formatted} invalid entries will be ignored`,
+      secretsIncluded: (lists: number, formatted: string) =>
+        lists === 1
+          ? 'Encrypted secrets: the password or address of 1 list'
+          : `Encrypted secrets: the passwords or addresses of ${formatted} lists`,
+      proxyAddressIgnored: 'Personal proxy address ignored (no token in the file)',
+      proxyTokenIncluded: 'Encrypted secrets: the personal proxy token',
+      noSecrets:
+        'No passwords or list addresses in this file: Xtream lists will ask for their password, and M3U lists from an address are left out.',
+      catalogue: 'Channels, movies and series are downloaded again after importing.',
+      password: 'Backup password',
+      passwordHint: 'Leave it empty to import without the passwords and list addresses.',
+      wrongPassword: 'Wrong password, or the file was changed.',
+      mode: 'How to import',
+      merge: 'Merge with this device',
+      mergeHint: 'Keeps the lists, favorites and history already here.',
+      replace: 'Replace this device’s data',
+      replaceHint:
+        'Removes the lists already here first, with their favorites, history and passwords.',
+      confirm: 'Import',
+      importing: 'Importing…',
+    },
+    importError: 'The backup could not be imported. Nothing on this device was changed.',
+    importPartial:
+      'The import stopped part-way: some data on this device may already have been replaced. The app will restart; check your lists and import again if needed.',
+    restart: 'Restart the app',
   },
   about: {
     version: 'Version',

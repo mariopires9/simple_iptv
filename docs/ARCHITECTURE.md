@@ -197,7 +197,7 @@ Catalog keys are composite: `key = "${sourceId}:${type}:${externalId}"` — allo
 | `seriesDetails` | `seriesKey` | `fetchedAt` | seasons + episodes (Xtream: cache TTL 24 h; M3U: written with the catalogue on every sync, VOD-04) |
 | `favorites` | `itemKey` | `[sourceId+type]`, `addedAt` | `type` |
 | `history` | `itemKey` | `[sourceId+type]`, `lastWatchedAt` | `positionSec?`, `durationSec?`, `episodeKey?`, `completed` |
-| `epgPrograms` | `[channelEpgId+start]` | `end`, `sourceId` | `title`, `desc?` (post-MVP, XMLTV) |
+| `epgPrograms` | `[channelEpgId+start]` | `end`, `sourceId` | `title`, `desc?` (XMLTV, EPG-02; `channelEpgId` = matched channel's item key, EPG-03) |
 | `settings` | `key` | — | `theme`, `locale` (ADR-015: `system`/`en`/`pt-PT`), `activeSourceId`, `lastRoute`, `lastChannelKey`, `onboardingDone`, `playLastChannelOnOpen`, `fullscreenOnLandscape` (UX-04), … (`SettingsMap` in `src/core/db/types.ts`) |
 | `searchIndex` | `sourceId` | — | serialized MiniSearch index (`toJSON`) |
 
