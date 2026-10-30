@@ -82,15 +82,15 @@ Allowed statuses (exactly one per story):
 | PLY-05 | Audio tracks and subtitles | Should | 3 | PLY-02 | Done |
 | SEC-02 | Master password | Should | 5 | SRC-01 | Done |
 | EXP-01 | Export/import settings | Should | 3 | SRC-08, FAV-03 | Done |
-| UX-05 | D-pad navigation | Should | 5 | UX-03 | In Progress |
+| UX-05 | D-pad navigation | Should | 5 | UX-03 | Done |
 | MSS-01 | Media Session | Should | 1 | PLY-02 | Done |
 | TEC-02 | Extract shared feature helpers into `src/ui` | Should | 3 | VOD-01, LIV-03 | Done |
 | TEC-03 | Review follow-ups: shared Live routes, one player-open signal, resume rule, flaky tests | Should | 3 | TEC-02, PWA-03, UX-06 | Done |
 | SEC-03 | Parental control PIN | Could | 3 | LIV-01, VOD-01 | Done |
 | EPG-04 | EPG grid | Could | 8 | EPG-03 | Done |
-| PRF-01 | Multiple profiles | Could | 5 | FAV-03 | Backlog |
-| CST-01 | Remote Playback / Cast | Could | 5 | PLY-02 | Backlog |
-| NAT-01 | Capacitor Android shell | Could | 8 | MVP | Backlog |
+| PRF-01 | Multiple profiles | Could | 5 | FAV-03 | Dropped (owner, 2026-10-30) |
+| CST-01 | Remote Playback / Cast | Could | 5 | PLY-02 | Dropped (owner, 2026-10-30) |
+| NAT-01 | Capacitor Android shell | Could | 8 | MVP | Dropped (owner, 2026-10-30) |
 
 ## Dependency graph (MVP)
 
@@ -132,3 +132,4 @@ flowchart LR
 | 2026-10-30 | PLY-05, MSS-01 | Verified with fakes only (no real hls.js tracks, Safari tracks or lock screen) | Check on iPhone/Android in DEP-02 | Open |
 | 2026-10-30 | EPG-02 | AC3 (100 MB, worker < 200 MB) measured in Node only (heap peak 109 MB); xz decoding (WASM) not verified in a browser; EPG-03 AC5 manual override not done | Measure in a browser during DEP-02 | Open |
 | 2026-10-30 | EPG-04 | ≥ 55 fps not measured (jsdom only); ARIA grid shape needs a screen-reader check; 48 h window fixed at open | Browser performance trace + screen reader in DEP-02 | Open |
+| 2026-10-30 | UX-05 | No real TV tested (Android TV, Fire TV, Tizen, webOS key codes from docs) | Manual check in DEP-02 | Open |

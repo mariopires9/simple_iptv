@@ -817,16 +817,19 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Dependencies:** PLY-01, SRC-02, ADR-010.
 
 ### NAT-01 — Android shell (Capacitor) — experimental
+- **Status:** Dropped by the product owner (2026-10-30); not planned.
 - **Priority:** Could · **Effort:** 8 (split before starting) · **Value:** High for Android users with HTTP-only providers
 - **Story:** As an Android user, I want an APK that uses the same app without the browser's restrictions, so that I can play HTTP-only providers.
 - **AC:** same codebase; `CapacitorHttp` for the API; cleartext allowed only for the user's hosts; APK build via GitHub Actions; no Play Store initially.
 - **Dependencies:** complete MVP.
 
 ### PRF-01 — Multiple profiles
+- **Status:** Dropped by the product owner (2026-10-30); not planned.
 - **Priority:** Could · **Effort:** 5 · **Value:** Low/Medium
 - **AC:** favorites, history and preferences per profile; shared sources; profile selection on open (optional).
 
 ### CST-01 — Remote Playback / Cast — experimental
+- **Status:** Dropped by the product owner (2026-10-30); not planned.
 - **Priority:** Could · **Effort:** 5 · **Value:** Medium
 - **AC:** AirPlay button (Safari, native engine) and Remote Playback API where supported; Cast SDK only after evaluating requirements (streams must be reachable by the receiver).
 
