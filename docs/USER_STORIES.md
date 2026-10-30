@@ -769,6 +769,16 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
   3. Given the report, Then it is published as a CI artifact.
 - **Dependencies:** FND-02, FND-03.
 
+### QA-04 — Start-up performance (Lighthouse mobile ≥ 90)
+- **Priority:** Must · **Effort:** 3 · **Value:** Medium
+- **Origin:** QA-03 measurement (2026-10-30): Performance 0.84 (FCP 2.4 s, LCP 3.9 s, TBT 100–160 ms, CLS 0) on the onboarding route; the LCP element waits ~3.4 s after the first byte for initial JS → lazy route → its strings → the onboarding check. Render-blocking CSS (~0.15–0.44 s) and ~55 KiB of unused JS are flagged.
+- **Story:** As a user on a phone, I want the first screen to appear quickly, so that the app feels instant.
+- **AC:**
+  1. Given Lighthouse CI (mobile, the QA-03 config), Then Performance ≥ 0.90 on the median of 3 runs, A11y and Best Practices stay ≥ 0.95.
+  2. Given the CI workflow, Then the `lighthouse` job is gating again (`continue-on-error` removed).
+  3. Given the bundle budgets (QA-03), Then they still pass.
+- **Dependencies:** QA-03.
+
 ### DEP-01 — Deploy to GitHub Pages
 - **Priority:** Must · **Effort:** 2 · **Value:** High
 - **Story:** As a user, I want to access the app at a public HTTPS address, so that I can use and install it on any device.

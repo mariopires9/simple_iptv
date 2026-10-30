@@ -31,7 +31,8 @@ Allowed statuses (exactly one per story):
 | FAV-02 | History / continue watching | E9 | Must | 2 | FND-05 | 2 | M2 | Done |
 | PWA-02 | Service worker and cache | E10 | Must | 3 | PWA-01 | 2 | M3 | Done |
 | PWA-05 | Persistent storage | E10 | Must | 1 | FND-05 | 2 | M3 | Done |
-| QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Backlog |
+| QA-03 | Performance budgets | E13 | Must | 2 | FND-02, FND-03 | 2 | M0 | Done |
+| QA-04 | Start-up performance (Lighthouse mobile ≥ 90) | E13 | Must | 3 | QA-03 | 8 | M3 | Ready |
 | DEP-01 | GitHub Pages deploy (**approval**) | E13 | Must | 2 | FND-02, PWA-01 | 2 | M0 | Done |
 | UX-01 | Onboarding | E11 | Must | 2 | FND-04 | 3 | M1 | Done |
 | UX-06 | Interface language (English / Português) | E11 | Must | 2 | FND-04, FND-05 | 3 | M1 | Done |
@@ -126,3 +127,4 @@ flowchart LR
 | 2026-10-29 | S-00 | Owner's provider redirects live streams to http edges without valid HTTPS → blocked in any HTTPS web app | Needs PRX-01 (proxy) or NAT-01; owner's hosting decision (2026-10-29): proxy on the owner's Windows PC (native Node), HTTPS via Tailscale Serve (not yet installed) | Open |
 | 2026-10-30 | PRX-01 | Code, gates and security review done; manual test on the owner's Windows PC (localhost first, then Tailscale Serve on a phone) deferred by the owner | Owner runs the `proxy/README.md` guide when ready; then Done | Open |
 | 2026-10-30 | PLY-06 | Merged from an interrupted parallel session; code review not recorded | Reviewed 2026-10-30: two probe defects fixed (no-cors+manual is always a network error; unreadable variant reported as ok) | Closed |
+| 2026-10-30 | QA-03 | Lighthouse mobile Performance 0.84 (< 0.90): start-up chain renders the first content at ~3.9 s LCP; A11y/BP 1.00 | Lighthouse job non-gating (owner decision); QA-04 raises it, then the job gates | Open |

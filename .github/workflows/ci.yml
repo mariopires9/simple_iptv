@@ -56,6 +56,9 @@ jobs:
   lighthouse:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # QA-03: not gating yet (owner decision, 2026-10-30). Performance measures 0.84 against 0.90
+    # because of the start-up chain; QA-04 brings it up, then remove `continue-on-error`.
+    continue-on-error: true
     env:
       LHCI: '@lhci/cli@0.15.1'
     steps:
