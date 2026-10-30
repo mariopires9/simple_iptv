@@ -15,7 +15,8 @@ export type ScheduleIdle = (callback: () => void) => () => void;
 
 const IDLE_TIMEOUT_MS = 3_000;
 
-const defaultSchedule: ScheduleIdle = (callback) => {
+/** Runs `callback` once the browser is idle (at most `IDLE_TIMEOUT_MS` later). */
+export const scheduleIdle: ScheduleIdle = (callback) => {
   const g = globalThis as {
     requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
     cancelIdleCallback?: (handle: number) => void;
@@ -36,7 +37,7 @@ let done = false;
  */
 export function scheduleStartupSync(
   start: StartDueSyncs = defaultStart,
-  schedule: ScheduleIdle = defaultSchedule,
+  schedule: ScheduleIdle = scheduleIdle,
 ): () => void {
   if (done) return () => undefined;
   return schedule(() => {

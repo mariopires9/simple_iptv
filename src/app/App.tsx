@@ -7,15 +7,16 @@ import {
   subscribeLocale,
 } from '@/i18n';
 import { isPlaybackActive, subscribePlayback } from '@/core/session';
+import { hasSources } from '@/features/sources';
 import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
 import { installChunkReload } from './chunkReload';
 import { installDataDeletionWatch } from './dataDeletionWatch';
 import { DatabaseUnavailableScreen, useDatabaseCheck } from './DatabaseUnavailableScreen';
 import { installResumeOnReconnect } from './pwa/resumeOnReconnect';
-import { scheduleStartupSync } from './pwa/startupSync';
+import { scheduleIdle, scheduleStartupSync } from './pwa/startupSync';
 import { UpdatePrompt } from './pwa/UpdatePrompt';
-import { AppRouter, getAppRouter } from './router';
+import { AppRouter, applyStartupRedirect, getAppRouter } from './router';
 import { StartupIndicator } from './StartupIndicator';
 
 /** The stored interface language is applied before the router's first render (UX-06). */
@@ -34,6 +35,34 @@ function useLanguageRestored(): boolean {
 }
 
 /**
+ * QA-04: the onboarding guard's question (any source?) is asked with the start-up storage check,
+ * before the router exists, so a first run starts the router on the onboarding route directly
+ * (`applyStartupRedirect`). The answer is cached by features/sources: the guard then decides on
+ * its first render. A failed read changes nothing (the guard handles it, as before).
+ */
+function useStartupSourcesChecked(): boolean {
+  const [checked, setChecked] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void hasSources()
+      .then(applyStartupRedirect)
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setChecked(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  return checked;
+}
+
+export interface AppProps {
+  /** Called once per mount, when the first screen is up and the browser is idle (QA-04). */
+  onStarted?: () => void;
+}
+
+/**
  * Theme and toasts (UX-02), then the start-up storage check, then the hash router (AppShell + lazy screens).
  * While the check runs only the themed background is shown (UX_UI §5: short loads do not flash a
  * spinner); it normally takes one IndexedDB open. A longer start (e.g. the schema upgrade of a new
@@ -48,9 +77,10 @@ function useLanguageRestored(): boolean {
  * navigation with no player mounted (`applyPendingLocale`), so it never tears down playback or a
  * form being filled in.
  */
-export function App() {
+export function App({ onStarted }: AppProps = {}) {
   const db = useDatabaseCheck();
   const languageRestored = useLanguageRestored();
+  const sourcesChecked = useStartupSourcesChecked();
   const locale = useSyncExternalStore(subscribeLocale, activeLocale);
   useEffect(() => installChunkReload(), []);
   // SRC-10: another tab deleted all data → lock the database and restart on onboarding.
@@ -60,9 +90,16 @@ export function App() {
   // PWA-04 AC2: scheduled syncs skipped while offline start when the connection returns.
   useEffect(() => installResumeOnReconnect(), []);
 
-  const routerReady = db.status === 'ready' && languageRestored;
+  const routerReady = db.status === 'ready' && languageRestored && sourcesChecked;
   // SRC-07 AC5: lists not synced for 24 h are refreshed once the app is up and idle.
   useEffect(() => (routerReady ? scheduleStartupSync() : undefined), [routerReady]);
+  // QA-04: work that is not needed for the first screen (the service worker) starts once a screen
+  // is up and the browser is idle; the storage-error screen counts (an update may fix it).
+  const settled = routerReady || db.status === 'unavailable';
+  useEffect(
+    () => (settled && onStarted ? scheduleIdle(onStarted) : undefined),
+    [settled, onStarted],
+  );
   useEffect(() => {
     if (!routerReady) return undefined;
     const router = getAppRouter();
