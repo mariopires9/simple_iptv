@@ -41,6 +41,8 @@ export interface PlayerControlsProps {
   visible: boolean;
   /** Only the top bar (back + title) is shown, e.g. under the error overlay. */
   minimal?: boolean;
+  /** PLY-09: the player covers the viewport; the bars keep clear of the notch and home bar. */
+  immersive?: boolean;
   paused: boolean;
   muted: boolean;
   volume: number;
@@ -146,6 +148,7 @@ export function PlayerControls({
   kind,
   visible,
   minimal = false,
+  immersive = false,
   paused,
   muted,
   volume,
@@ -190,6 +193,12 @@ export function PlayerControls({
           theme.transitions.create('opacity', { duration: theme.transitions.duration.short }),
         // Hidden controls still reveal themselves when they receive keyboard focus.
         '&:focus-within': { opacity: 1 },
+        ...(immersive && {
+          pt: 'env(safe-area-inset-top)',
+          pr: 'env(safe-area-inset-right)',
+          pb: 'env(safe-area-inset-bottom)',
+          pl: 'env(safe-area-inset-left)',
+        }),
       }}
     >
       {/* Top: back · title · live indicator */}

@@ -370,6 +370,20 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Tests:** link builders per platform (encoding), `.m3u` content and file name, direct-not-proxy URL (Xtream live `.ts`), player stopped before the hand-off, iOS "didn't open" notice, toggle default and stored value.
 - **Not claimed:** the VLC hand-off has not been verified on a real iPhone, Android device or desktop VLC yet (DEP-02); the iOS "didn't open" check is a heuristic (page still visible after 2 s).
 
+### PLY-09 — Immersive player in landscape
+- **Priority:** Should · **Effort:** 2 · **Value:** High
+- **Origin:** owner report (2026-11-02): on an iPhone, rotating the phone does not put the player in full screen right away. Browsers only allow the Fullscreen API from a user gesture (a rotation is not one) and iOS Safari only has the system video player, so the app uses a CSS "pseudo-fullscreen".
+- **Story:** As a phone user, I want the open player to fill the screen as soon as I turn the phone sideways, so that I can watch without an extra tap.
+- **AC:**
+  1. Given a touch device (coarse pointer) in landscape with a short viewport (`(pointer: coarse) and (orientation: landscape) and (max-height: 600px)`) and a live channel, movie or episode open, Then the player region covers the whole viewport (`position: fixed; inset: 0`, `100dvw`/`100dvh`, black background, video `object-fit: contain`, controls padded by `env(safe-area-inset-*)`), the app's top bar, bottom bar, rail and the rest of the page are hidden, and the controls auto-hide as in fullscreen. Back in portrait, Then the normal layout returns without a jump, keeping playback, position and focus.
+  2. Given a rotation, Then no playback, reload or engine restart starts; the fullscreen button still works, and real fullscreen from a tap (incl. the PLY-03 "Tap for fullscreen" prompt) is unchanged.
+  3. Given Settings › Playback, Then a "Full screen when rotating" toggle (en + pt-PT, one settings key `immersiveOnRotate`), default on.
+  4. Given a desktop or tablet (fine pointer or tall viewport), Then nothing changes.
+  5. Given the immersive mode, Then the player keeps its role and name and nothing hidden stays focusable (`inert` + `aria-hidden` on everything outside the player).
+- **Dependencies:** PLY-02, PLY-03, UX-04.
+- **Tests:** media-query mocks (immersive on/off, rotation back keeps the same elements and controller calls, attributes restored), auto-hide while immersive, fullscreen button while immersive, setting default/stored value, desktop unchanged; E2E on `chromium-mobile` with a landscape viewport.
+- **Not claimed:** not verified on a real iPhone or Android device yet; the optional Android "first tap requests real fullscreen + orientation lock" was not implemented (the PLY-03 prompt already offers it).
+
 ---
 
 ## E4 — Live TV

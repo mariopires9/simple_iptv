@@ -3,13 +3,14 @@
 // spinner, the playback error overlay and the screen-reader announcements.
 // PLY-03: fullscreen (Fullscreen API or the iPhone system player), landscape → fullscreen and
 // Picture-in-Picture. PLY-04: live reconnects with backoff, the error mapping and its actions,
-// and the "no sound" banner.
+// and the "no sound" banner. PLY-09: immersive player on a phone turned sideways.
 import FullscreenRounded from '@mui/icons-material/FullscreenRounded';
 import VolumeOffRounded from '@mui/icons-material/VolumeOffRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import GlobalStyles from '@mui/material/GlobalStyles';
 import { alpha } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -48,6 +49,13 @@ import { pickTrack, saveTrackPreference, useTrackPreference } from './trackPrefe
 import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
 import { useFullscreenOnLandscapeSetting } from './useFullscreenOnLandscapeSetting';
+import {
+  IMMERSIVE_HIDDEN_ATTR,
+  IMMERSIVE_QUERY,
+  useHideOutside,
+  useMediaQueryMatch,
+} from './useImmersive';
+import { useImmersiveOnRotateSetting } from './useImmersiveOnRotateSetting';
 import { useMediaSession } from './useMediaSession';
 import { useMediaState } from './useMediaState';
 import { usePictureInPicture } from './usePictureInPicture';
@@ -117,6 +125,12 @@ export interface PlayerViewProps {
    * Default: the stored setting (Settings › Playback, UX-04), else on for mobile devices.
    */
   fullscreenOnLandscape?: boolean;
+  /**
+   * PLY-09: on a touch phone in landscape, the player covers the whole viewport (CSS
+   * "pseudo-fullscreen": no gesture needed) and the rest of the app is hidden. Default: the
+   * stored setting (Settings › Playback), else on for mobile devices.
+   */
+  immersiveOnRotate?: boolean;
   /**
    * The entry declares headers (Referer/User-Agent…) the browser cannot send: a 401/403 is then
    * explained as a provider restriction (PLY-04 AC8).
@@ -188,6 +202,7 @@ export function PlayerView({
   onToggleChannelList,
   onClose,
   fullscreenOnLandscape,
+  immersiveOnRotate,
   requiredHeaders = false,
   platform: platformProp,
   autoFocus = true,
@@ -208,6 +223,12 @@ export function PlayerView({
   const storedFullscreenOnLandscape = useFullscreenOnLandscapeSetting(
     fullscreenOnLandscape === undefined && platform.mobile,
   );
+  const storedImmersiveOnRotate = useImmersiveOnRotateSetting(
+    immersiveOnRotate === undefined && platform.mobile,
+  );
+  const immersiveAllowed =
+    immersiveOnRotate ?? (platform.mobile && storedImmersiveOnRotate !== false);
+  const immersive = useMediaQueryMatch(IMMERSIVE_QUERY, immersiveAllowed);
   // One stable rewriter per view that delegates to the latest prop; updated before the play
   // effect below runs, so a descriptor and its rewriter given together are used together.
   const rewriterRef = useRef<UrlRewriter>(rewriter ?? identityRewriter);
@@ -231,6 +252,7 @@ export function PlayerView({
   const media = useMediaState(video);
   const [region, setRegion] = useState<HTMLDivElement | null>(null);
   const [controls, setControls] = useState<HTMLDivElement | null>(null);
+  useHideOutside(region, immersive);
 
   // One "load" per descriptor/startAt/reload; errors and readiness are tied to the load they
   // belong to, so a new load starts clean without resetting state inside an effect.
@@ -760,10 +782,20 @@ export function PlayerView({
       // UX-05: the D-pad moves between the player's controls only; Back closes the player.
       {...{ [DPAD_SCOPE_ATTRIBUTE]: '' }}
       data-testid="player-region"
+      data-immersive={immersive || undefined}
       sx={{
         position: 'relative',
         width: '100%',
         height: '100%',
+        // PLY-09: the whole viewport, above the (hidden) rest of the app; menus, dialogs and
+        // toasts (higher layers) still open above it.
+        ...(immersive && {
+          position: 'fixed',
+          inset: 0,
+          width: '100dvw',
+          height: '100dvh',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+        }),
         overflow: 'hidden',
         bgcolor: 'common.black',
         color: 'common.white',
@@ -772,6 +804,7 @@ export function PlayerView({
         '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' },
       }}
     >
+      {immersive && <GlobalStyles styles={IMMERSIVE_STYLES} />}
       {/* Captions/subtitles come from the stream's own text tracks (PLY-05, track menu); there
           is no separate caption file to attach here. */}
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
@@ -844,6 +877,7 @@ export function PlayerView({
         onToggleChannelList={onToggleChannelList}
         onToggleFullscreen={toggleFullscreen}
         fullscreen={fullscreen.active}
+        immersive={immersive}
         onTogglePictureInPicture={pip.supported ? pip.toggle : undefined}
         pictureInPicture={pip.active}
         onClose={onClose}
@@ -999,6 +1033,12 @@ export function PlayerView({
     </Box>
   );
 }
+
+/** PLY-09: while immersive, what is outside the player is hidden and the page does not scroll. */
+const IMMERSIVE_STYLES = {
+  [`[${IMMERSIVE_HIDDEN_ATTR}]`]: { visibility: 'hidden !important' },
+  html: { overflow: 'hidden' },
+} as const;
 
 /** "Starting from the beginning" (VOD-03 AC4): the saved position was not seekable. */
 function ResumeNotice({ onDone }: { onDone: () => void }) {

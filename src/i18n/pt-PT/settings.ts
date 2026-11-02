@@ -29,6 +29,9 @@ export const settings = {
     fullscreenOnLandscape: 'Ecrã inteiro na horizontal',
     fullscreenOnLandscapeHint:
       'Em telemóveis e tablets, rodar o dispositivo durante a reprodução sugere o ecrã inteiro',
+    immersiveOnRotate: 'Ecrã inteiro ao rodar',
+    immersiveOnRotateHint:
+      'Em telemóveis, rodar o dispositivo para a horizontal faz o leitor aberto ocupar o ecrã todo, sem tocar',
     showOpenInVlc: "Mostrar 'Abrir no VLC'",
     showOpenInVlcHint:
       'Acrescenta ao leitor um botão que abre o canal, filme ou episódio na app VLC, para emissões que este browser não consegue reproduzir',

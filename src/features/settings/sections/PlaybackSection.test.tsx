@@ -93,6 +93,21 @@ describe('PlaybackSection (UX-04 AC1)', () => {
     expect(await screen.findByRole('switch', { name: text.showOpenInVlc })).toBeChecked();
   });
 
+  it('PLY-09: "Full screen when rotating" is on by default and is saved for the player', async () => {
+    const user = userEvent.setup();
+    renderSettings(<PlaybackSection />);
+    const immersive = await screen.findByRole('switch', { name: text.immersiveOnRotate });
+    expect(immersive).toBeChecked();
+    expect(immersive).toHaveAccessibleDescription(text.immersiveOnRotateHint);
+    await user.click(immersive);
+    expect(immersive).not.toBeChecked();
+    await waitFor(async () => expect(await settingsRepo.get('immersiveOnRotate')).toBe(false));
+    cleanup();
+
+    renderSettings(<PlaybackSection />);
+    expect(await screen.findByRole('switch', { name: text.immersiveOnRotate })).not.toBeChecked();
+  });
+
   it('UX-07: "Hide protected content" is off by default and is saved for the screens', async () => {
     const user = userEvent.setup();
     renderSettings(<PlaybackSection />);
