@@ -403,6 +403,11 @@ export interface SettingsMap {
    */
   showOpenInVlc: boolean;
   /**
+   * On a touch phone turned to landscape, the open player covers the whole screen (CSS
+   * "pseudo-fullscreen", PLY-09; Settings › Playback). Absent = on.
+   */
+  immersiveOnRotate: boolean;
+  /**
    * Last global searches, most recent first (SCH-02, max. 10). Untrusted on read: owned and
    * validated by features/search.
    */
