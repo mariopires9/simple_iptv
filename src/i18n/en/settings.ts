@@ -122,6 +122,48 @@ export const settings = {
     usageUnknown: 'This browser does not report the space used.',
     iosInstall:
       'Install the app to prevent Safari from deleting your data after 7 days without use',
+    /** STO-01: what is stored, per list and for the whole app. */
+    breakdown: {
+      title: 'What is stored',
+      loading: 'Measuring the stored data…',
+      failed: 'The stored data could not be measured.',
+      note: 'Sizes are estimates.',
+      about: (size: string) => `about ${size}`,
+      noLists: 'No lists on this device.',
+      catalogue: 'Catalogue',
+      catalogueCounts: (live: string, movies: string, series: string, episodes: string) =>
+        `${live} channels · ${movies} movies · ${series} series · ${episodes} with episodes`,
+      search: 'Search index',
+      guide: 'Guide',
+      appTitle: 'App',
+      appFiles: 'App files',
+      appFilesHint: 'Needed to open the app offline. Never cleared.',
+      otherCaches: 'Other cached files',
+      images:
+        'Logos and posters are kept in the browser’s own cache, which the app cannot measure or clear.',
+    },
+    /** STO-01: "Clear cached data". */
+    clear: {
+      action: 'Clear cached data',
+      title: 'Clear cached data',
+      message:
+        'Your lists, settings, favorites and history are kept. A list update in progress is stopped first.',
+      size: (size: string) => `about ${size}`,
+      guide: 'Guide',
+      guideHint: 'Filled again on the next guide update.',
+      search: 'Search indexes',
+      searchHint: 'Rebuilt on the next sync or the first search.',
+      otherCaches: 'Other cached files',
+      otherCachesHint: 'Nothing else to do.',
+      catalogue: 'Lists’ catalogue',
+      catalogueHint: 'Each selected list must sync again. The app restarts on My lists.',
+      allLists: 'All lists',
+      fileListHint: 'Local file: it must be picked again to sync.',
+      confirm: 'Clear',
+      clearing: 'Clearing cached data…',
+      done: 'Cached data cleared.',
+      failed: 'Some data could not be cleared. You can try again.',
+    },
   },
   privacy: {
     title: 'Privacy and data',

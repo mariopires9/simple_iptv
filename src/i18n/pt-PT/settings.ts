@@ -122,6 +122,47 @@ export const settings = {
     usageUnknown: 'Este navegador não indica o espaço utilizado.',
     iosInstall:
       'Instale a aplicação para evitar que o Safari apague os seus dados após 7 dias sem utilização',
+    breakdown: {
+      title: 'O que está guardado',
+      loading: 'A medir os dados guardados…',
+      failed: 'Não foi possível medir os dados guardados.',
+      note: 'Os tamanhos são estimativas.',
+      about: (size: string) => `cerca de ${size}`,
+      noLists: 'Não há listas neste dispositivo.',
+      catalogue: 'Catálogo',
+      catalogueCounts: (live: string, movies: string, series: string, episodes: string) =>
+        `${live} canais · ${movies} filmes · ${series} séries · ${episodes} com episódios`,
+      search: 'Índice de pesquisa',
+      guide: 'Guia',
+      appTitle: 'Aplicação',
+      appFiles: 'Ficheiros da aplicação',
+      appFilesHint: 'Necessários para abrir a aplicação sem rede. Nunca são limpos.',
+      otherCaches: 'Outros ficheiros em cache',
+      images:
+        'Os logótipos e capas ficam na cache do próprio navegador, que a aplicação não consegue medir nem limpar.',
+    },
+    clear: {
+      action: 'Limpar dados em cache',
+      title: 'Limpar dados em cache',
+      message:
+        'As suas listas, definições, favoritos e histórico são mantidos. Uma atualização de lista em curso é parada primeiro.',
+      size: (size: string) => `cerca de ${size}`,
+      guide: 'Guia',
+      guideHint: 'Volta a ser preenchido na próxima atualização do guia.',
+      search: 'Índices de pesquisa',
+      searchHint: 'Reconstruídos na próxima sincronização ou na primeira pesquisa.',
+      otherCaches: 'Outros ficheiros em cache',
+      otherCachesHint: 'Não é preciso fazer mais nada.',
+      catalogue: 'Catálogo das listas',
+      catalogueHint:
+        'Cada lista selecionada tem de sincronizar novamente. A aplicação reinicia em As minhas listas.',
+      allLists: 'Todas as listas',
+      fileListHint: 'Ficheiro local: tem de ser escolhido novamente para sincronizar.',
+      confirm: 'Limpar',
+      clearing: 'A limpar os dados em cache…',
+      done: 'Dados em cache limpos.',
+      failed: 'Não foi possível limpar alguns dados. Pode tentar novamente.',
+    },
   },
   privacy: {
     title: 'Privacidade e dados',

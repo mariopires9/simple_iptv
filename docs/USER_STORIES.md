@@ -753,6 +753,20 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Tests:** unit (protection rule, import flag, sort/search/pager filtering, Home data); component (badges, disabled Play, hidden items, setting).
 - **Risks:** filtering paged Live categories needs one read of the category's keys when the setting is on (M3U lists only; Xtream items are never flagged).
 
+### STO-01 — Storage breakdown and "Clear cached data"
+- **Priority:** Should · **Effort:** 3 · **Value:** Medium
+- **Story:** As a user whose device shows hundreds of MB used by the app, I want to see what takes the space and free what can be fetched again, without losing my lists or settings.
+- **Context:** owner request (2026-11-02): an iPhone shows "Espaço utilizado 509,4 MB" in Settings › Storage.
+- **AC:**
+  1. Given Settings › Storage, Then a breakdown per list (catalogue: channels/movies/series/episodes; search index; guide) plus the app files (precache) is shown. Sizes are estimates (row counts × sampled average JSON size; Cache Storage from `content-length` or the body size), labelled "about"; computing never blocks the UI (idle chunks, spinner, cancelled on unmount). Logos/posters are not cached by the app (ARCHITECTURE.md §7: browser HTTP cache only), so the screen says they cannot be measured or cleared here; any other Cache Storage cache of this app is shown and clearable as "Other cached files".
+  2. Given "Clear cached data", Then a dialog with checkboxes, each with its estimated size and consequence: Guide (filled again on the next guide update), Search indexes (rebuilt on the next sync / first search), Other cached files (only when present), Lists' catalogue (per list or all; each must sync again). Default: guide + search (+ other cached files), no catalogue.
+  3. Never removed: lists and their vault secrets, settings (personal proxy and token, master password, parental PIN, playback preferences, learned live formats), favorites, history, the app-shell precache.
+  4. Given a list's catalogue cleared, Then its sync state is reset ("never synced"), it is queued for a sync and the app restarts on My lists (same path as a backup import); favorites/history keep their item keys and work again after the re-sync.
+  5. Given a sync, guide import or index build in progress, Then the data worker is stopped first (as "Delete all data" does); IndexedDB writes are per-transaction, so nothing is half-written.
+  6. Given the strings, Then they exist in en and pt-PT; the dialog is accessible (labelled, hints as descriptions); the "Space used" total and the breakdown refresh after clearing.
+- **Dependencies:** PWA-05, SRC-10, EXP-01.
+- **Tests:** unit (what each option removes and keeps, sync-state reset, worker stopped first, cache sizes, abort); component (estimates shown, defaults, restart, refreshed total, failure + retry).
+
 ---
 
 ## E12 — Security and privacy
