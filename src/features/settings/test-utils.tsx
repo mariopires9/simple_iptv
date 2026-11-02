@@ -4,6 +4,8 @@ import type { ReactElement } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { ToastProvider } from '@/ui/state';
 import { ThemeModeProvider } from '@/ui/theme';
+import { SETTINGS_OPEN_KEY } from './sectionState';
+import { SETTINGS_SECTIONS } from './sections';
 
 /** Renders `element` at `/settings` (with `/settings/sources` and `/settings/privacy` stubs). */
 export function renderSettings(element: ReactElement) {
@@ -23,4 +25,9 @@ export function renderSettings(element: ReactElement) {
     </ThemeModeProvider>,
   );
   return { ...view, router };
+}
+
+/** UX-08: start with every Settings section expanded (they are collapsed by default). */
+export function expandAllSettingsSections() {
+  localStorage.setItem(SETTINGS_OPEN_KEY, JSON.stringify(SETTINGS_SECTIONS.map((s) => s.id)));
 }

@@ -13,14 +13,16 @@ import { isMessagesLoaded, loadAllMessages, t, unloadMessagesForTests } from '@/
 import { installMatchMedia } from '@/ui/test-utils/matchMedia';
 import { settingsRoutes } from '../routes';
 import { SettingsScreen } from '../SettingsScreen';
-import { renderSettings } from '../test-utils';
+import { expandAllSettingsSections, renderSettings } from '../test-utils';
 
 let media: ReturnType<typeof installMatchMedia>;
 beforeEach(() => {
+  expandAllSettingsSections();
   media = installMatchMedia({ width: 1200 });
   installPromptStore(); // src/main.tsx starts it at boot
 });
 afterEach(async () => {
+  localStorage.clear();
   // Unmount first (TEC-03): the setup file's cleanup runs after this hook, and a screen still
   // mounted could re-read state while it is reset below and cache it for the next test.
   cleanup();
@@ -50,7 +52,11 @@ describe('Settings › Install app (PWA-01 AC3)', () => {
     const region = screen.getByRole('region', { name: t.install.title });
     expect(within(region).getByRole('heading', { level: 2, name: t.install.title })).toBeVisible();
 
-    await user.click(within(region).getByRole('button', { name: t.install.button }));
+    // The section heading is a disclosure button with the same name (UX-08): take the action.
+    const action = within(region)
+      .getAllByRole('button', { name: t.install.button })
+      .find((b) => !b.hasAttribute('aria-expanded'));
+    await user.click(action!);
     expect(prompt).toHaveBeenCalledTimes(1);
     expect(await within(region).findByText(t.install.installed)).toBeInTheDocument();
   });

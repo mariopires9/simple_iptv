@@ -767,6 +767,17 @@ Dependencies `Done`; verifiable AC; expected files/areas listed; questions resol
 - **Dependencies:** PWA-05, SRC-10, EXP-01.
 - **Tests:** unit (what each option removes and keeps, sync-state reset, worker stopped first, cache sizes, abort); component (estimates shown, defaults, restart, refreshed total, failure + retry).
 
+### UX-08 — Collapsible Settings sections
+- **Priority:** Should · **Effort:** 1 · **Value:** Medium
+- **Story:** As a user, I want the Settings page to show less at once, so I can find the section I need without scrolling through every option.
+- **Context:** owner request (2026-11-02): "less information on the Settings page, or the possibility to hide sections".
+- **AC:**
+  1. Given Settings, Then every section shows only its heading, collapsed by default; the heading is a button (`aria-expanded`, `aria-controls`) inside the `h2`, and the section stays a labelled region.
+  2. Given a section expanded or collapsed, Then the choice is remembered on this device (`simple-iptv:` localStorage key, removed by "Delete all data"); storage unavailable → the choice lasts for the visit.
+  3. Given a section rendered outside the Settings screen, Then it is always expanded.
+- **Dependencies:** UX-04.
+- **Tests:** component (collapsed by default, expand/collapse, remembered); e2e helpers expand sections before using them.
+
 ---
 
 ## E12 — Security and privacy

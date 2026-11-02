@@ -1,7 +1,7 @@
 // QA-02 AC2 / UX-03 AC2: axe on every route, light and dark, with no serious/critical violations.
 // Three tests (onboarding, browsing, settings) so they run in parallel and a failure is local.
 import type { Page } from '@playwright/test';
-import { addXtreamSource } from './support/app';
+import { addXtreamSource, expandAllSettingsSections, openSettingsSection } from './support/app';
 import { formatFindings, seriousViolations, type AxeFinding } from './support/axe';
 import { expect, test } from './support/test';
 
@@ -158,6 +158,10 @@ test.describe('axe: no serious or critical violations', () => {
     });
     await test.step('axe /settings with a saved personal proxy', async () => {
       await page.goto('./#/settings');
+      // Sections start collapsed (UX-08): open them all, so axe also sees every section's controls
+      // (the open set is remembered, so `check` reloads the page with them still expanded).
+      await openSettingsSection(page, 'Personal proxy'); // waits for the lazy screen to render
+      await expandAllSettingsSections(page);
       const section = proxySection(page);
       await section.getByRole('textbox', { name: 'Proxy address' }).fill(PROXY.url);
       await section.getByLabel('Access token', { exact: true }).fill(PROXY.token);
