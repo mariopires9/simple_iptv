@@ -7,6 +7,7 @@ import {
   deleteAllData,
   mainNav,
   openSettings,
+  openSettingsSection,
   PANEL,
   storedRows,
 } from './support/app';
@@ -176,6 +177,7 @@ test.describe('smoke', () => {
   test('language switch to Português', async ({ page }) => {
     await addXtreamSource(page);
     await openSettings(page);
+    await openSettingsSection(page, 'Language');
     await page.getByRole('radio', { name: 'Português' }).check();
     await expect(page.getByRole('heading', { name: 'Definições', level: 1 })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'pt-PT');
@@ -191,6 +193,7 @@ test.describe('smoke', () => {
     // (src/app/shell/navItems.tsx), so they switch with the language.
     await addXtreamSource(page);
     await openSettings(page);
+    await openSettingsSection(page, 'Language');
     await page.getByRole('radio', { name: 'Português' }).check();
     await expect(page.getByRole('heading', { name: 'Definições', level: 1 })).toBeVisible();
     await expect(mainNav(page, 'Direto', 'Navegação principal')).toBeVisible({ timeout: 3_000 });
@@ -201,6 +204,7 @@ test.describe('smoke', () => {
   }) => {
     await addXtreamSource(page);
     await openSettings(page);
+    await openSettingsSection(page, 'Language');
     await page.getByRole('radio', { name: 'Português' }).check();
     await expect(page.getByRole('heading', { name: 'Definições', level: 1 })).toBeVisible();
     await deleteAllData(page, {

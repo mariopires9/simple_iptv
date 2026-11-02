@@ -76,6 +76,7 @@ Allowed statuses (exactly one per story):
 | PLY-08 | Open in an external player (VLC) | E3 | Must | 2 | PLY-02 | 8 | M3 | In Review |
 | PLY-09 | Immersive player when rotating to landscape | E3 | Should | 2 | PLY-03 | 8 | M3 | In Review |
 | STO-01 | Storage breakdown and clear cached data (keeps lists and settings) | E11 | Should | 3 | UX-04 | 8 | M3 | In Review |
+| UX-08 | Collapsible Settings sections (collapsed by default, open ones remembered) | E11 | Should | 1 | UX-04 | 8 | M3 | In Review |
 | UX-07 | Mark protected content | E11 | Should | 3 | SRC-04, VOD-04, UX-04 | 8 | M3 | Done |
 
 ## Post-MVP

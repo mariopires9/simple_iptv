@@ -27,6 +27,19 @@ export async function openSettings(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
 }
 
+/** UX-08: expands the named Settings section (sections start collapsed). */
+export async function openSettingsSection(page: Page, name: string): Promise<void> {
+  const toggle = page.getByRole('heading', { level: 2, name }).getByRole('button');
+  if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+
+/** UX-08: expands every Settings section, so a whole-page check sees all their controls. */
+export async function expandAllSettingsSections(page: Page): Promise<void> {
+  const collapsed = page.locator('section h2 button[aria-expanded="false"]');
+  while ((await collapsed.count()) > 0) await collapsed.first().click();
+}
+
 /** Onboarding → Xtream form → "Test and save" → "Go to Home", waiting for the catalogue sync. */
 export async function addXtreamSource(page: Page): Promise<void> {
   await page.goto('./');

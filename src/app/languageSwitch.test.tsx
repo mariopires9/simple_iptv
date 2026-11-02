@@ -17,12 +17,15 @@ import { getAppRouter, resetAppRouter } from './router';
 let media: ReturnType<typeof installMatchMedia>;
 
 beforeEach(() => {
+  // Settings sections start collapsed (UX-08); open Language and Playback for these tests.
+  localStorage.setItem('simple-iptv:settings-open', JSON.stringify(['language', 'playback']));
   setSourcesPresent(true);
   media = installMatchMedia({ width: 1400 });
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  localStorage.removeItem('simple-iptv:settings-open');
   invalidateSourcesPresence();
   resetAppRouter();
   media.restore();
