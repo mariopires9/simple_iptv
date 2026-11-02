@@ -15,6 +15,11 @@ import { log } from '@/core/log';
 import { t } from '@/i18n';
 import { formatBytes } from '@/ui/format';
 import { SettingsSection } from '../SettingsSection';
+import { backupRestart } from '../backup/importBackup';
+import { clearCachedData, type ClearResult, type ClearSelection } from '../storage/clearCachedData';
+import { ClearCachedDataDialog } from '../storage/ClearCachedDataDialog';
+import { StorageBreakdownView, type BreakdownState } from '../storage/StorageBreakdownView';
+import { loadStorageBreakdown, type StorageBreakdown } from '../storage/storageUsage';
 
 /** Injectable platform checks (tests). */
 export interface StorageSectionProps {
@@ -23,17 +28,26 @@ export interface StorageSectionProps {
   /** iOS/iPadOS (any browser there is Safari's WebKit). */
   isIOS?: () => boolean;
   isInstalled?: () => boolean;
+  /** STO-01: the breakdown estimate, the clear, and the restart after a catalogue clear. */
+  loadBreakdown?: (signal: AbortSignal) => Promise<StorageBreakdown>;
+  clear?: (selection: ClearSelection) => Promise<ClearResult>;
+  restart?: () => void;
 }
 
 /**
  * Settings › Storage (PWA-05): whether the browser keeps the data (`persisted()`), a way to ask
  * again, the space used (`estimate()`), and on iOS outside the installed app the 7-day warning.
+ * STO-01: what is stored (per list and app-wide, estimated off the critical path, cancelled on
+ * unmount) and "Clear cached data"; the space used and the breakdown are read again afterwards.
  */
 export function StorageSection({
   loadStatus = getStorageStatus,
   requestPersist = requestPersistentStorage,
   isIOS = () => getCapabilities().isIOS,
   isInstalled = isInstalledApp,
+  loadBreakdown = (signal) => loadStorageBreakdown(signal),
+  clear = (selection) => clearCachedData(selection),
+  restart = () => backupRestart.restartOnLists(),
 }: StorageSectionProps) {
   const text = t.settings.storage;
   const [status, setStatus] = useState<StorageStatus>();
@@ -42,6 +56,26 @@ export function StorageSection({
   const [busy, setBusy] = useState(false);
   const [iosWarning] = useState(() => isIOS() && !isInstalled());
   const mounted = useRef(true);
+  const [breakdown, setBreakdown] = useState<BreakdownState>({ kind: 'loading' });
+  /** Bumped after a clear: the breakdown and the space used are read again. */
+  const [generation, setGeneration] = useState(0);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [cleared, setCleared] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadBreakdown(controller.signal).then(
+      (data) => {
+        if (!controller.signal.aborted) setBreakdown({ kind: 'ready', data });
+      },
+      (error: unknown) => {
+        if (controller.signal.aborted) return;
+        log.warn('settings: the storage breakdown could not be estimated', { error });
+        setBreakdown({ kind: 'failed' });
+      },
+    );
+    return () => controller.abort();
+  }, [loadBreakdown, generation]);
 
   useEffect(() => {
     mounted.current = true;
@@ -51,7 +85,7 @@ export function StorageSection({
     return () => {
       mounted.current = false;
     };
-  }, [loadStatus]);
+  }, [loadStatus, generation]);
 
   const request = async () => {
     setBusy(true);
@@ -111,6 +145,39 @@ export function StorageSection({
               <Typography color="text.secondary">{usageText}</Typography>
             </Box>
           </>
+        )}
+        <StorageBreakdownView state={breakdown} />
+        <Box>
+          <Button
+            variant="outlined"
+            disabled={breakdown.kind !== 'ready'}
+            onClick={() => {
+              setCleared(false);
+              setClearOpen(true);
+            }}
+          >
+            {t.settings.storage.clear.action}
+          </Button>
+          {cleared && (
+            <Typography role="status" color="text.secondary" sx={{ mt: 1 }}>
+              {t.settings.storage.clear.done}
+            </Typography>
+          )}
+        </Box>
+        {clearOpen && breakdown.kind === 'ready' && (
+          <ClearCachedDataDialog
+            open
+            breakdown={breakdown.data}
+            clear={clear}
+            restart={restart}
+            onClose={() => setClearOpen(false)}
+            onCleared={() => {
+              setClearOpen(false);
+              setCleared(true);
+              setBreakdown({ kind: 'loading' });
+              setGeneration((g) => g + 1);
+            }}
+          />
         )}
       </Stack>
     </SettingsSection>

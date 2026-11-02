@@ -54,3 +54,11 @@ export { settingsRepo } from './repos/settings';
 export { vaultStore, VaultSwapConflictError, type SecretSwap } from './repos/vault';
 export * from './types';
 export { isProtectedStream, isProtectedItem, type StreamFlags } from './protection';
+export {
+  storageRepo,
+  jsonSize,
+  SIZE_SAMPLE_ROWS,
+  type EstimateOptions,
+  type PartEstimate,
+  type SourceStorageEstimate,
+} from './repos/storage';
