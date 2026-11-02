@@ -18,6 +18,7 @@ import {
   resetLearnedLiveFormats,
   saveFullscreenOnLandscape,
   saveHideProtectedContent,
+  saveImmersiveOnRotate,
   saveLiveFormat,
   savePlayLastChannelOnOpen,
   saveShowOpenInVlc,
@@ -70,6 +71,10 @@ interface SettingField<V> {
 const FULLSCREEN: SettingField<boolean> = {
   get: (s) => s.fullscreenOnLandscape,
   set: (s, fullscreenOnLandscape) => ({ ...s, fullscreenOnLandscape }),
+};
+const IMMERSIVE: SettingField<boolean> = {
+  get: (s) => s.immersiveOnRotate,
+  set: (s, immersiveOnRotate) => ({ ...s, immersiveOnRotate }),
 };
 const SHOW_VLC: SettingField<boolean> = {
   get: (s) => s.showOpenInVlc,
@@ -146,6 +151,12 @@ export function PlaybackSection() {
           onChange={(checked) =>
             change(FULLSCREEN, checked, () => saveFullscreenOnLandscape(checked))
           }
+        />
+        <SwitchRow
+          label={text.immersiveOnRotate}
+          hint={text.immersiveOnRotateHint}
+          checked={settings.immersiveOnRotate}
+          onChange={(checked) => change(IMMERSIVE, checked, () => saveImmersiveOnRotate(checked))}
         />
         <SwitchRow
           label={text.showOpenInVlc}

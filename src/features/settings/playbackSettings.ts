@@ -1,5 +1,6 @@
 // Settings › Playback (UX-04 AC1): reads and writes the playback preferences. Consumers:
 // - `fullscreenOnLandscape` → PlayerView's rotation prompt (src/player/ui, PLY-03 AC3);
+// - `immersiveOnRotate` → PlayerView's immersive landscape mode on phones (PLY-09);
 // - `showOpenInVlc` → PlayerView's "Open in VLC" action (PLY-08);
 // - `playLastChannelOnOpen` → the Live screen (features/live/liveState.ts, LIV-03);
 // - the active list's `prefs.liveFormat` → `resolveStream` (Xtream only; M3U entries carry their
@@ -30,6 +31,8 @@ export interface ActiveListFormat {
 export interface PlaybackSettings {
   /** Default on (the player only offers it on phones and tablets). */
   fullscreenOnLandscape: boolean;
+  /** PLY-09: default on (the player only uses it on touch phones in landscape). */
+  immersiveOnRotate: boolean;
   /** PLY-08: default on for phones and tablets, off on desktop. */
   showOpenInVlc: boolean;
   /** Default off (LIV-03). */
@@ -51,8 +54,9 @@ function toActiveList(source: Source | undefined): ActiveListFormat | undefined 
 }
 
 export async function loadPlaybackSettings(): Promise<PlaybackSettings> {
-  const [fullscreen, showVlc, playLast, hideProtected, activeId] = await Promise.all([
+  const [fullscreen, immersive, showVlc, playLast, hideProtected, activeId] = await Promise.all([
     settingsRepo.get('fullscreenOnLandscape'),
+    settingsRepo.get('immersiveOnRotate'),
     settingsRepo.get('showOpenInVlc'),
     settingsRepo.get('playLastChannelOnOpen'),
     settingsRepo.get('hideProtectedContent'),
@@ -61,6 +65,7 @@ export async function loadPlaybackSettings(): Promise<PlaybackSettings> {
   const source = activeId === undefined ? undefined : await sourcesRepo.get(activeId);
   return {
     fullscreenOnLandscape: fullscreen !== false,
+    immersiveOnRotate: immersive !== false,
     showOpenInVlc: typeof showVlc === 'boolean' ? showVlc : defaultShowOpenInVlc(),
     playLastChannelOnOpen: playLast === true,
     hideProtectedContent: hideProtected === true,
@@ -70,6 +75,10 @@ export async function loadPlaybackSettings(): Promise<PlaybackSettings> {
 
 export function saveFullscreenOnLandscape(enabled: boolean): Promise<void> {
   return settingsRepo.set('fullscreenOnLandscape', enabled);
+}
+
+export function saveImmersiveOnRotate(enabled: boolean): Promise<void> {
+  return settingsRepo.set('immersiveOnRotate', enabled);
 }
 
 export function saveShowOpenInVlc(enabled: boolean): Promise<void> {

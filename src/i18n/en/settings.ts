@@ -30,6 +30,9 @@ export const settings = {
     fullscreenOnLandscape: 'Fullscreen in landscape',
     fullscreenOnLandscapeHint:
       'On phones and tablets, turning the device sideways during playback offers fullscreen',
+    immersiveOnRotate: 'Full screen when rotating',
+    immersiveOnRotateHint:
+      'On phones, turning the device sideways makes the open player fill the screen, without a tap',
     showOpenInVlc: "Show 'Open in VLC'",
     showOpenInVlcHint:
       "Adds a player button that opens the channel, movie or episode in the VLC app, for streams this browser can't play",
