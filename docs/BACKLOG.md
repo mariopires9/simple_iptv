@@ -69,8 +69,8 @@ Allowed statuses (exactly one per story):
 | DEP-02 | Manual validation on devices | E13 | Must | 3 | Release candidate | 8 | M3 | Ready |
 | TEC-01 | Load feature strings with their feature | E15 | Must | 3 | — | 5 | M2 | Done |
 | LIV-05 | Live player integration follow-ups | E4 | Must | 2 | PLY-03, PLY-04, LIV-03 | 6 | M1 | Done |
-| PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | In Review |
-| PRX-02 | Proxy: optional upstream allowlist (any public host by default) | E1 | Must | 1 | PRX-01 | 8 | M3 | In Review |
+| PRX-01 | Personal proxy (ADR-010) | E1 | Must | 5 | PLY-01, SRC-02, SRC-09 | 8 | M3 | Done |
+| PRX-02 | Proxy: optional upstream allowlist (any public host by default) | E1 | Must | 1 | PRX-01 | 8 | M3 | Done |
 | PLY-06 | Diagnosable live playback failures | E3 | Must | 3 | PLY-04, SRC-09 | 8 | M3 | Done |
 | PLY-07 | Automatic live format per channel (learned; iOS HLS first; stall fallback) | E3 | Must | 3 | PLY-06 | 8 | M3 | In Review |
 | PLY-08 | Open in an external player (VLC) | E3 | Must | 2 | PLY-02 | 8 | M3 | In Review |
@@ -127,8 +127,8 @@ flowchart LR
 | Date | Story | Impediment | Action | Status |
 |---|---|---|---|---|
 | 2026-10-29 | QA-02 | WebKit E2E not green in CI (mobile: sync snackbar blocks bottom nav; desktop: slow first sync, one stuck live load) | WebKit row `continue-on-error` until fixed; confirm on a real iPhone in DEP-02 | Open |
-| 2026-10-29 | S-00 | Owner's provider redirects live streams to http edges without valid HTTPS → blocked in any HTTPS web app | Needs PRX-01 (proxy) or NAT-01; owner's hosting decision (2026-10-29): proxy on the owner's Windows PC (native Node), HTTPS via Tailscale Serve (not yet installed) | Open |
-| 2026-10-30 | PRX-01 | Code, gates and security review done; manual test on the owner's Windows PC (localhost first, then Tailscale Serve on a phone) deferred by the owner | Owner runs the `proxy/README.md` guide when ready; then Done | Open |
+| 2026-10-29 | S-00 | Owner's provider redirects live streams to http edges without valid HTTPS → blocked in any HTTPS web app | Needs PRX-01 (proxy) or NAT-01; proxy running on the owner's Linux server over Tailscale Serve since 2026-11-02 (PRX-01/02 Done); remaining iPhone codec cases handled by PLY-07/PLY-08 | Closed |
+| 2026-10-30 | PRX-01 | Code, gates and security review done; manual test on the owner's Windows PC (localhost first, then Tailscale Serve on a phone) deferred by the owner | Owner ran it on a Linux server with Tailscale Serve and an iPhone (2026-11-02): pass | Closed |
 | 2026-10-30 | PLY-06 | Merged from an interrupted parallel session; code review not recorded | Reviewed 2026-10-30: two probe defects fixed (no-cors+manual is always a network error; unreadable variant reported as ok) | Closed |
 | 2026-10-30 | QA-03 | Lighthouse mobile Performance 0.84 (< 0.90): start-up chain renders the first content at ~3.9 s LCP; A11y/BP 1.00 | Lighthouse job non-gating (owner decision); QA-04 raised it to 0.94 locally and made the job gating again | Closed |
 | 2026-10-30 | UX-03 | AC4 (NVDA/VoiceOver zapping) needs a manual check | Owner runs the checklist in docs/progress/UX-03.md during DEP-02; then Done | Open |
